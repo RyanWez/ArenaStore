@@ -74,4 +74,15 @@ export async function orderRoutes(server: FastifyInstance) {
       });
     }
   });
+
+  // GET /api/users/:telegramId/profile (Customer Profile & Stats for Telegram Bot)
+  server.get<{
+    Params: { telegramId: string };
+  }>("/api/users/:telegramId/profile", async (request) => {
+    const profile = await orderService.getUserProfile(request.params.telegramId);
+    return {
+      ok: true,
+      data: profile,
+    };
+  });
 }

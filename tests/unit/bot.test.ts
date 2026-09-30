@@ -11,6 +11,7 @@ import {
   buildProductDetailKeyboard,
   buildCheckoutKeyboard,
   buildOrderListKeyboard,
+  buildProfileKeyboard,
 } from "../../apps/bot/src/keyboards/store.keyboards";
 import {
   formatStartMessage,
@@ -20,6 +21,7 @@ import {
   formatCheckoutMessage,
   formatSlipReceivedMessage,
   formatDeliveryMessage,
+  formatProfileMessage,
 } from "../../apps/bot/src/formatters/messages";
 import { BotProduct, BotCategory } from "../../apps/bot/src/services/catalog.service";
 
@@ -83,14 +85,32 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(buttons.some((b) => b.text.includes("ပစ္စည်းများဝယ်ယူရန်"))).toBe(true);
       expect(buttons.some((b) => b.text.includes("ကျွန်ုပ်၏အော်ဒါများ"))).toBe(true);
       expect(buttons.some((b) => b.text.includes("Wallet"))).toBe(true);
+      expect(buttons.some((b) => b.text.includes("My Profile"))).toBe(true);
       expect(buttons.some((b) => b.text.includes("Help & Support"))).toBe(true);
       expect(buttons.some((b) => b.text.includes("Channel"))).toBe(true);
 
       const shopBtn = buttons.find((b) => b.text.includes("ပစ္စည်းများဝယ်ယူရန်"));
       expect((shopBtn as any).icon_custom_emoji_id).toBe("4958714256343171878");
+      expect((shopBtn as any).style).toBe("success");
+
+      const profileBtn = buttons.find((b) => b.text.includes("My Profile"));
+      expect((profileBtn as any).icon_custom_emoji_id).toBe("5373012449597335010");
 
       const channelBtn = buttons.find((b) => b.text.includes("Channel"));
       expect((channelBtn as any).url).toBe("https://t.me/arenasellerstore");
+
+      // Verify 2x2 column structure
+      expect(keyboard.inline_keyboard[0].length).toBe(2); // Row 1: Shop & Orders
+      expect(keyboard.inline_keyboard[1].length).toBe(2); // Row 2: Wallet & Profile
+      expect(keyboard.inline_keyboard[2].length).toBe(2); // Row 3: Support & Channel
+    });
+
+    it("builds profile keyboard with Back button and animated back icon", () => {
+      const keyboard = buildProfileKeyboard();
+      const rows = keyboard.inline_keyboard;
+      expect(rows[0][0].text).toBe("Back");
+      expect((rows[0][0] as any).icon_custom_emoji_id).toBe("5456187398977247949");
+      expect(rows[0][0].callback_data).toBe("menu_start");
     });
 
     it("builds 2-column categories grid with icon_custom_emoji_id (matching Screenshot 1)", () => {
@@ -131,7 +151,7 @@ describe("Phase 4 Customer Telegram Bot", () => {
       const rows = qty1Keyboard.inline_keyboard;
 
       // Row 1: Stepper [-] [1] [+] with animated icons
-      expect(rows[0][0].text).toBe("🚫"); // cannot decrease below 1
+      expect(rows[0][0].text).toBe(" "); // cannot decrease below 1 (single space icon button to prevent double emoji)
       expect((rows[0][0] as any).icon_custom_emoji_id).toBe("5210952531676504517");
       expect(rows[0][1].text).toBe("1");
       expect((rows[0][1] as any).icon_custom_emoji_id).toBe("5226929552319594190");
@@ -152,6 +172,7 @@ describe("Phase 4 Customer Telegram Bot", () => {
       // Row 5: Buy Now with dynamic total and animated icon
       expect(rows[4][0].text).toBe("Buy Now · 3,900 Ks");
       expect((rows[4][0] as any).icon_custom_emoji_id).toBe("5267300544094948794");
+      expect((rows[4][0] as any).style).toBe("success");
       expect(rows[4][0].callback_data).toBe("checkout_10_1");
 
       // Row 6: Back
@@ -225,6 +246,30 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(deliveryMsg).toContain("<pre><code>user: premium@gemini.ai\npass: Secret12345</code></pre>");
       expect(deliveryMsg).toContain("လုံခြုံရေး သတိပေးချက်");
     });
+
+    it("formats profile card matching Screenshot 2 with user details and MMK stats", () => {
+      const profileMsg = formatProfileMessage({
+        fullName: "RYAN WEZ",
+        username: "ryanwez",
+        telegramId: "8777968077",
+        joinedDate: "2026-09-12",
+        walletBalanceMmk: 0,
+        totalDepositsMmk: 0,
+        totalSpentMmk: 5550,
+        ordersCount: 1,
+      });
+
+      expect(profileMsg).toContain("My Profile");
+      expect(profileMsg).toContain("5373012449597335010"); // Animated PROFILE custom emoji
+      expect(profileMsg).toContain("RYAN WEZ");
+      expect(profileMsg).toContain("@ryanwez");
+      expect(profileMsg).toContain("8777968077");
+      expect(profileMsg).toContain("2026-09-12");
+      expect(profileMsg).toContain("Active");
+      expect(profileMsg).toContain("Wallet Balance:</b> 0 MMK");
+      expect(profileMsg).toContain("Total Spent:</b> 5,550 MMK");
+      expect(profileMsg).toContain("Orders:</b> 1");
+    });
   });
 
   describe("BotCatalogService & Stock Edge Cases", () => {
@@ -271,8 +316,8 @@ describe("Phase 4 Customer Telegram Bot", () => {
       const keyboard = buildProductDetailKeyboard(limitedProduct, 3);
       const rows = keyboard.inline_keyboard;
 
-      // Row 1: Stepper [+] should be disabled (🚫)
-      expect(rows[0][2].text).toBe("🚫");
+      // Row 1: Stepper [+] should be disabled (icon-only button with CANCEL animated emoji)
+      expect(rows[0][2].text).toBe(" ");
       expect(rows[0][2].callback_data).toBe("noop");
 
       // Presets > stock (5, 10, 20, 30, 50) should be noop
@@ -339,6 +384,163 @@ describe("Phase 4 Customer Telegram Bot", () => {
 
       expect(submission.submissionId).toBe(888);
       expect(submission.status).toBe("SUBMITTED");
+    });
+
+    it("fetches user profile stats or returns resilient defaults", async () => {
+      const { botOrderService } = await import("../../apps/bot/src/services/order.service");
+      const profile = await botOrderService.getUserProfile("8777968077");
+      expect(profile).toBeDefined();
+      expect(typeof profile.ordersCount).toBe("number");
+      expect(typeof profile.totalSpentMmk).toBe("number");
+      expect(typeof profile.walletBalanceMmk).toBe("number");
+      expect(profile.joinedDate).toBeDefined();
+    });
+  });
+
+  describe("Prepaid Wallet Architecture (Recommendations A to D)", () => {
+    it("Recommendation A: formats insufficient balance message and calculates deficit shortcut keyboard", async () => {
+      const { formatInsufficientBalanceMessage } = await import(
+        "../../apps/bot/src/formatters/messages"
+      );
+      const { buildInsufficientBalanceKeyboard } = await import(
+        "../../apps/bot/src/keyboards/store.keyboards"
+      );
+
+      const msg = formatInsufficientBalanceMessage({
+        productName: "Gemini Advanced 18 Months",
+        quantity: 2,
+        totalMmk: 7800,
+        walletBalanceMmk: 3000,
+        deficitMmk: 4800,
+      });
+
+      expect(msg).toContain("လက်ကျန်ငွေ မလုံလောက်ပါ");
+      expect(msg).toContain("7,800 MMK");
+      expect(msg).toContain("3,000 MMK");
+      expect(msg).toContain("4,800 MMK");
+
+      const kb = buildInsufficientBalanceKeyboard({
+        productId: 10,
+        quantity: 2,
+        deficitMmk: 4800,
+      });
+
+      const buttons = kb.inline_keyboard.flat();
+      const deficitBtn = buttons.find((b) =>
+        b.text.includes("4,800 Ks အတိအကျ ငွေဖြည့်မည်")
+      );
+      expect(deficitBtn).toBeDefined();
+      expect((deficitBtn as any).callback_data).toBe("topup_deficit_10_2_4800");
+    });
+
+    it("Recommendation B: formats wallet dashboard and provides quick top-up preset options", async () => {
+      const { formatWalletMessage } = await import(
+        "../../apps/bot/src/formatters/messages"
+      );
+      const { buildWalletKeyboard } = await import(
+        "../../apps/bot/src/keyboards/store.keyboards"
+      );
+
+      const msg = formatWalletMessage({
+        fullName: "Ryan Wez",
+        balanceMmk: 25000,
+        totalSpentMmk: 50000,
+      });
+
+      expect(msg).toContain("Arena Store Wallet");
+      expect(msg).toContain("25,000 MMK");
+      expect(msg).toContain("50,000 MMK");
+
+      const kb = buildWalletKeyboard();
+      const buttons = kb.inline_keyboard.flat();
+      expect(buttons.some((b) => b.text.includes("5,000 Ks"))).toBe(true);
+      expect(buttons.some((b) => b.text.includes("10,000 Ks"))).toBe(true);
+      expect(buttons.some((b) => b.text.includes("20,000 Ks"))).toBe(true);
+      expect(buttons.some((b) => b.text.includes("50,000 Ks"))).toBe(true);
+      expect(buttons.some((b) => b.text.includes("စိတ်ကြိုက်ပမာဏ"))).toBe(true);
+    });
+
+    it("Recommendation C: creates top-up request, accepts slip proof, and approves credit", async () => {
+      const { botOrderService } = await import(
+        "../../apps/bot/src/services/order.service"
+      );
+
+      const testUser = `test_wallet_user_${Date.now()}`;
+      const initBal = await botOrderService.getWalletBalance(testUser);
+      expect(initBal).toBe(0);
+
+      const topUp = await botOrderService.createTopUpRequest({
+        telegramId: testUser,
+        amountMmk: 20000,
+      });
+
+      expect(topUp.id).toBeDefined();
+      expect(topUp.amountMmk).toBe(20000);
+      expect(topUp.status).toBe("PENDING");
+
+      const slipResult = await botOrderService.submitTopUpSlip({
+        topUpId: topUp.id,
+        telegramId: testUser,
+        fileId: "slip_photo_id_test_123",
+        amountMmk: 20000,
+        paymentMethod: "KPAY",
+      });
+
+      expect(slipResult.status).toBe("SUBMITTED");
+
+      const approval = await botOrderService.approveTopUp(topUp.id);
+      expect(approval).not.toBeNull();
+      expect(approval?.newBalance).toBe(20000);
+
+      const updatedBal = await botOrderService.getWalletBalance(testUser);
+      expect(updatedBal).toBe(20000);
+    });
+
+    it("Recommendation D: performs atomic wallet deduction and delivers digital credentials instantly", async () => {
+      const { botOrderService } = await import(
+        "../../apps/bot/src/services/order.service"
+      );
+      const { formatWalletDeliveryMessage } = await import(
+        "../../apps/bot/src/formatters/messages"
+      );
+
+      const testUser = `instant_buyer_${Date.now()}`;
+      await botOrderService.creditWallet(testUser, 10000);
+
+      // Attempt purchase of Gemini Pro (product 10, price 3900)
+      const purchase = await botOrderService.purchaseWithWallet({
+        telegramId: testUser,
+        customerName: "Instant Buyer",
+        productId: 10,
+        quantity: 2,
+      });
+
+      expect(purchase.success).toBe(true);
+      expect(purchase.totalMmk).toBe(7800);
+      expect(purchase.remainingBalance).toBe(2200);
+      expect(purchase.credentialsText).toBeDefined();
+      expect(purchase.orderId).toBeDefined();
+
+      const newBal = await botOrderService.getWalletBalance(testUser);
+      expect(newBal).toBe(2200);
+
+      const orders = await botOrderService.getUserOrders(testUser);
+      expect(orders.length).toBe(1);
+      expect(orders[0].status).toBe("DELIVERED");
+
+      const deliveryMsg = formatWalletDeliveryMessage({
+        publicOrderNo: purchase.publicOrderNo!,
+        productName: purchase.productName!,
+        quantity: purchase.quantity!,
+        totalMmk: purchase.totalMmk!,
+        remainingBalanceMmk: purchase.remainingBalance!,
+        credentialsText: purchase.credentialsText!,
+      });
+
+      expect(deliveryMsg).toContain("အော်ဒါ အောင်မြင်စွာ ပို့ဆောင်ပြီးပါပြီ");
+      expect(deliveryMsg).toContain(purchase.publicOrderNo!);
+      expect(deliveryMsg).toContain("2,200 MMK");
+      expect(deliveryMsg).toContain("<pre>");
     });
   });
 

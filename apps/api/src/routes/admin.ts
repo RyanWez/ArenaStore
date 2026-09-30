@@ -54,7 +54,7 @@ export async function adminRoutes(server: FastifyInstance) {
             mode: "LIVE_UPSTREAM",
             synced: {
               categories: upstreamCats.length,
-              products: upstreamProds.length,
+              products: upstreamProds.products.length,
             },
             message: "Live catalog synced from XPro Partner API.",
           };

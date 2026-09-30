@@ -8,21 +8,29 @@ import { BOT_EMOJIS } from "@arena/shared";
  */
 export function buildMainMenuKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
+    // Row 1: 2 Columns (Storefront & Orders)
     .add({
       text: "ပစ္စည်းများဝယ်ယူရန်",
       callback_data: "menu_categories",
       icon_custom_emoji_id: BOT_EMOJIS.BAGS,
+      style: "success",
+    } as any)
+    .add({
+      text: "My Profile",
+      callback_data: "menu_profile",
+      icon_custom_emoji_id: BOT_EMOJIS.PROFILE,
     })
     .row()
-    .add({
-      text: "ကျွန်ုပ်၏အော်ဒါများ",
-      callback_data: "menu_orders",
-      icon_custom_emoji_id: BOT_EMOJIS.BOX,
-    })
+    // Row 2: 2 Columns (Wallet & My Profile -> 2x2 core store grid)
     .add({
       text: "Wallet",
       callback_data: "menu_wallet",
       icon_custom_emoji_id: BOT_EMOJIS.MONEY,
+    })
+    .add({
+      text: "ကျွန်ုပ်၏အော်ဒါများ",
+      callback_data: "menu_orders",
+      icon_custom_emoji_id: BOT_EMOJIS.BOX,
     })
     .row()
     .add({
@@ -35,6 +43,17 @@ export function buildMainMenuKeyboard(): InlineKeyboard {
       url: botConfig.CHANNEL_URL,
       icon_custom_emoji_id: BOT_EMOJIS.SPEAKER,
     });
+}
+
+/**
+ * Builds My Profile Keyboard with Back navigation.
+ */
+export function buildProfileKeyboard(): InlineKeyboard {
+  return new InlineKeyboard().add({
+    text: "Back",
+    callback_data: "menu_start",
+    icon_custom_emoji_id: BOT_EMOJIS.BACK,
+  });
 }
 
 /**
@@ -126,15 +145,15 @@ export function buildProductDetailKeyboard(
   const totalMmk = product.retailPriceMmk * quantity;
   const keyboard = new InlineKeyboard();
 
-  // Row 1: Stepper [-] [qty] [+] with animated icons
+  // Row 1: Stepper [-] [qty] [+] with single animated custom icons
   const canDecrease = quantity > 1;
   const canIncrease = quantity < product.stock;
 
   keyboard
     .add({
-      text: canDecrease ? " " : "🚫",
+      text: " ",
       callback_data: canDecrease ? `qty_step_${product.id}_${quantity - 1}` : "noop",
-      ...(canDecrease ? { icon_custom_emoji_id: BOT_EMOJIS.MINUS } : { icon_custom_emoji_id: BOT_EMOJIS.CANCEL }),
+      icon_custom_emoji_id: canDecrease ? BOT_EMOJIS.MINUS : BOT_EMOJIS.CANCEL,
     })
     .add({
       text: `${quantity}`,
@@ -142,9 +161,9 @@ export function buildProductDetailKeyboard(
       icon_custom_emoji_id: BOT_EMOJIS.COUNTER,
     })
     .add({
-      text: canIncrease ? " " : "🚫",
+      text: " ",
       callback_data: canIncrease ? `qty_step_${product.id}_${quantity + 1}` : "noop",
-      ...(canIncrease ? { icon_custom_emoji_id: BOT_EMOJIS.PLUS } : { icon_custom_emoji_id: BOT_EMOJIS.CANCEL }),
+      icon_custom_emoji_id: canIncrease ? BOT_EMOJIS.PLUS : BOT_EMOJIS.CANCEL,
     })
     .row();
 
@@ -187,7 +206,8 @@ export function buildProductDetailKeyboard(
       text: `Buy Now · ${totalMmk.toLocaleString("en-US")} Ks`,
       callback_data: `checkout_${product.id}_${quantity}`,
       icon_custom_emoji_id: BOT_EMOJIS.BUY_NOW,
-    })
+      style: "success",
+    } as any)
     .row();
 
   // Row 6: Back to Category's Product List with animated arrow
@@ -209,7 +229,8 @@ export function buildCheckoutKeyboard(orderId: string): InlineKeyboard {
       text: "Cancel Order",
       callback_data: `cancel_order_${orderId}`,
       icon_custom_emoji_id: BOT_EMOJIS.CANCEL,
-    })
+      style: "danger",
+    } as any)
     .row()
     .add({
       text: "Need Help? Contact Admin",
@@ -221,16 +242,40 @@ export function buildCheckoutKeyboard(orderId: string): InlineKeyboard {
 /**
  * Builds Order Status / Delivery Viewer Keyboard.
  */
-export function buildOrderListKeyboard(orders: Array<{ id: string; publicOrderNo: string; status: string }>): InlineKeyboard {
+export function buildOrderListKeyboard(
+  orders: Array<{ id: string; publicOrderNo: string; productName?: string; status: string }>
+): InlineKeyboard {
   const keyboard = new InlineKeyboard();
 
-  for (const ord of orders.slice(0, 8)) {
-    const iconId = ord.status === "DELIVERED" ? BOT_EMOJIS.CHECK : ord.status === "PAYMENT_SUBMITTED" ? BOT_EMOJIS.HOURGLASS : BOT_EMOJIS.RECEIPT;
-    keyboard.add({
-      text: ord.publicOrderNo,
-      callback_data: `view_order_${ord.id}`,
-      icon_custom_emoji_id: iconId,
-    }).row();
+  if (orders.length === 0) {
+    keyboard
+      .add({
+        text: "ပစ္စည်းများ စတင်ဝယ်ယူရန်",
+        callback_data: "menu_categories",
+        icon_custom_emoji_id: BOT_EMOJIS.BAGS,
+        style: "success",
+      } as any)
+      .row();
+  } else {
+    for (const ord of orders.slice(0, 8)) {
+      const iconId =
+        ord.status === "DELIVERED"
+          ? BOT_EMOJIS.CHECK
+          : ord.status === "PAYMENT_SUBMITTED"
+          ? BOT_EMOJIS.HOURGLASS
+          : BOT_EMOJIS.RECEIPT;
+      const label = ord.productName
+        ? `${ord.publicOrderNo} · ${ord.productName.slice(0, 16)}`
+        : ord.publicOrderNo;
+
+      keyboard
+        .add({
+          text: label,
+          callback_data: `view_order_${ord.id}`,
+          icon_custom_emoji_id: iconId,
+        })
+        .row();
+    }
   }
 
   keyboard.add({
@@ -239,4 +284,126 @@ export function buildOrderListKeyboard(orders: Array<{ id: string; publicOrderNo
     icon_custom_emoji_id: BOT_EMOJIS.BACK,
   });
   return keyboard;
+}
+
+/**
+ * Builds Wallet Dashboard Top-Up Presets Keyboard.
+ */
+export function buildWalletKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .add({
+      text: "5,000 Ks",
+      callback_data: "topup_amount_5000",
+      icon_custom_emoji_id: BOT_EMOJIS.PRICE,
+    })
+    .add({
+      text: "10,000 Ks",
+      callback_data: "topup_amount_10000",
+      icon_custom_emoji_id: BOT_EMOJIS.PRICE,
+    })
+    .row()
+    .add({
+      text: "20,000 Ks",
+      callback_data: "topup_amount_20000",
+      icon_custom_emoji_id: BOT_EMOJIS.PRICE,
+    })
+    .add({
+      text: "50,000 Ks",
+      callback_data: "topup_amount_50000",
+      icon_custom_emoji_id: BOT_EMOJIS.PRICE,
+    })
+    .row()
+    .add({
+      text: "စိတ်ကြိုက်ပမာဏ ရိုက်ထည့်မည်",
+      callback_data: "topup_custom",
+      icon_custom_emoji_id: BOT_EMOJIS.COUNTER,
+    })
+    .row()
+    .add({
+      text: "Back to Menu",
+      callback_data: "menu_start",
+      icon_custom_emoji_id: BOT_EMOJIS.BACK,
+    });
+}
+
+/**
+ * Builds Top-Up invoice keyboard with cancel option.
+ */
+export function buildTopUpInvoiceKeyboard(): InlineKeyboard {
+  return new InlineKeyboard().add({
+    text: "Cancel Top-up",
+    callback_data: "cancel_topup",
+    icon_custom_emoji_id: BOT_EMOJIS.CANCEL,
+    style: "danger",
+  } as any);
+}
+
+/**
+ * Builds Insufficient Balance Keyboard with direct Top-up shortcut.
+ */
+export function buildInsufficientBalanceKeyboard(params: {
+  productId: number;
+  quantity: number;
+  deficitMmk: number;
+}): InlineKeyboard {
+  return new InlineKeyboard()
+    .add({
+      text: `💳 ${params.deficitMmk.toLocaleString("en-US")} Ks အတိအကျ ငွေဖြည့်မည်`,
+      callback_data: `topup_deficit_${params.productId}_${params.quantity}_${params.deficitMmk}`,
+      icon_custom_emoji_id: BOT_EMOJIS.BUY_NOW,
+      style: "success",
+    } as any)
+    .row()
+    .add({
+      text: "Wallet သို့ သွားမည်",
+      callback_data: "menu_wallet",
+      icon_custom_emoji_id: BOT_EMOJIS.MONEY,
+    })
+    .row()
+    .add({
+      text: "Back",
+      callback_data: `prod_${params.productId}`,
+      icon_custom_emoji_id: BOT_EMOJIS.BACK,
+    });
+}
+
+/**
+ * Builds Purchase Confirmation Keyboard.
+ */
+export function buildPurchaseConfirmKeyboard(params: {
+  productId: number;
+  quantity: number;
+}): InlineKeyboard {
+  return new InlineKeyboard()
+    .add({
+      text: "အတည်ပြု ဝယ်ယူမည်",
+      callback_data: `buy_confirm_${params.productId}_${params.quantity}`,
+      icon_custom_emoji_id: BOT_EMOJIS.CHECK,
+      style: "success",
+    } as any)
+    .row()
+    .add({
+      text: "မဝယ်ယူတော့ပါ",
+      callback_data: `prod_${params.productId}`,
+      icon_custom_emoji_id: BOT_EMOJIS.CANCEL,
+      style: "danger",
+    } as any);
+}
+
+/**
+ * Builds Order Detail viewer back navigation keyboard.
+ */
+export function buildOrderDetailKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .add({
+      text: "အော်ဒါများသို့ ပြန်သွားမည်",
+      callback_data: "menu_orders",
+      icon_custom_emoji_id: BOT_EMOJIS.BOX,
+    })
+    .row()
+    .add({
+      text: "Main Menu",
+      callback_data: "menu_start",
+      icon_custom_emoji_id: BOT_EMOJIS.BACK,
+    });
 }

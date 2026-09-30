@@ -67,6 +67,7 @@ describe("Telegram Custom Emoji & HTML Formatting", () => {
     expect(BOT_EMOJIS.MONEY).toBe("5316661434996765842");
     expect(BOT_EMOJIS.CHAT).toBe("5443038326535759644");
     expect(BOT_EMOJIS.SPEAKER).toBe("5836698068061261980");
+    expect(BOT_EMOJIS.PROFILE).toBe("5373012449597335010");
 
     // Stepper & Controls
     expect(BOT_EMOJIS.BUY_NOW).toBe("5267300544094948794");

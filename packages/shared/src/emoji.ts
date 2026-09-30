@@ -12,6 +12,7 @@ export const BOT_EMOJIS = {
   MONEY: "5316661434996765842",      // 💰
   CHAT: "5443038326535759644",       // 💬
   SPEAKER: "5836698068061261980",    // 📢
+  PROFILE: "5373012449597335010",    // 👤
 
   // Store & Stepper Controls
   BUY_NOW: "5267300544094948794",    // 💳
