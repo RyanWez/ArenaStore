@@ -1,0 +1,16 @@
+{
+  "name": "arena-store",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:admin": "pnpm --filter @arena/admin dev",
+    "dev:api": "pnpm --filter @arena/api dev",
+    "dev:bot": "pnpm --filter @arena/bot dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2"
+  }
+}

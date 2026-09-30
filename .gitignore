@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Nuxt 3 & Nitro outputs
+.nuxt/
+.output/
+.nitro/
+
+# Builds & compiled files
+dist/
+build/
+coverage/
+.turbo/
+
+# Environment and secrets (CRITICAL: Never commit .env)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs and local data
+*.log
+logs/
+*.sqlite
+*.sqlite-journal
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test & report outputs
+playwright-report/
+test-results/
+.nyc_output/

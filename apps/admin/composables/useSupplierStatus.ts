@@ -1,0 +1,60 @@
+import { ref } from 'vue'
+
+const supplierBalanceUsd = ref<string>('1.00')
+const isOnline = ref<boolean>(true)
+const isSyncing = ref<boolean>(false)
+const lastSyncMessage = ref<string>('')
+
+export function useSupplierStatus() {
+  async function fetchStatus() {
+    try {
+      const res = await $fetch<{
+        ok: boolean
+        supplier: {
+          balanceUsd: string | number
+          currency: string
+          health: string
+          version: string
+        }
+      }>('/api/admin/supplier/status')
+
+      if (res.ok && res.supplier) {
+        supplierBalanceUsd.value = String(res.supplier.balanceUsd)
+        isOnline.value = res.supplier.health === 'ONLINE'
+      }
+    } catch {
+      // Keep optimistic values if offline during preview
+    }
+  }
+
+  async function syncCatalog() {
+    isSyncing.value = true
+    try {
+      const res = await $fetch<{
+        ok: boolean
+        synced: { categories: number; products: number }
+      }>('/api/admin/supplier/sync', {
+        method: 'POST',
+      })
+      if (res.ok) {
+        lastSyncMessage.value = `Synced ${res.synced.categories} categories & ${res.synced.products} products.`
+      }
+      await fetchStatus()
+      return res
+    } catch (err: any) {
+      lastSyncMessage.value = `Sync failed: ${err.message}`
+      throw err
+    } finally {
+      isSyncing.value = false
+    }
+  }
+
+  return {
+    supplierBalanceUsd,
+    isOnline,
+    isSyncing,
+    lastSyncMessage,
+    fetchStatus,
+    syncCatalog,
+  }
+}

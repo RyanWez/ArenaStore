@@ -1,0 +1,386 @@
+XPro Seller — Partner API v1 Documentation
+:root{--bg:#0b1220;--card:#111c31;--line:#1f2f4d;--txt:#e6edf7;--mut:#93a4c0;
+--pri:#3b82f6;--ok:#22c55e;--warn:#f59e0b;--dan:#ef4444;--code:#0a1526}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);
+font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:32px 20px 80px}
+header{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:28px}
+h1{margin:0 0 6px;font-size:30px;letter-spacing:-.3px}
+h2{margin:38px 0 12px;font-size:21px;border-left:4px solid var(--pri);padding-left:10px}
+h3{margin:24px 0 8px;font-size:16px;color:#cfe0ff}
+p,li{color:var(--txt)}
+.mut{color:var(--mut)}
+code{background:var(--code);border:1px solid var(--line);border-radius:6px;
+padding:1px 6px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+font-size:13.5px;color:#9fd0ff}
+pre{background:var(--code);border:1px solid var(--line);border-radius:10px;
+padding:14px 16px;overflow:auto}
+pre code{background:none;border:0;padding:0;color:#c8e1ff}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+th{background:#14213a;color:#cfe0ff}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+padding:16px 18px;margin:14px 0}
+.badge{display:inline-block;border-radius:6px;padding:1px 8px;font-size:12px;
+font-weight:700;margin-right:6px}
+.get{background:#12351f;color:#7ee2a0;border:1px solid #1d5c34}
+.post{background:#1a2a4d;color:#8ab4ff;border:1px solid #2a4a86}
+.warn{border-left:4px solid var(--warn)}
+.dan{border-left:4px solid var(--dan)}
+.ok{border-left:4px solid var(--ok)}
+nav a{display:block;color:#9fd0ff;text-decoration:none;padding:3px 0}
+nav a:hover{text-decoration:underline}
+footer{margin-top:50px;border-top:1px solid var(--line);padding-top:16px;
+color:var(--mut);font-size:13px}
+XPro Seller — Partner API v1
+REST JSON API for resellers · generated 30 Sep 2026 06:37 UTC
+Base URL
+http://paid2.daki.cc:4153/api/partner/v1
+Auth
+Authorization: Bearer sk_live_xxxxxxxxxxxxxxxxxxxx
+Currency
+USD ·
+Format
+JSON (UTF-8)
+Contents
+1. Getting started
+2. Authentication
+3. Conventions
+4. Endpoints
+5. Ordering & delivery
+6. Error codes
+7. Rate limits
+8. Code samples
+9. Hosting the API
+10. FAQ & safety
+1. Getting started
+Open XProSellerStoreBot on Telegram → main menu →
+🔑 API
+(or send
+/api
+).
+➕ Create Key
+→ send a name → copy the
+sk_live_…
+secret.
+Top up your wallet inside the bot.
+Bot balance = API balance.
+Call the endpoints below from your own server.
+Max 3 active keys. You can view them again in
+API → 🗂 My Keys
+, rotate with
+♻️ Regenerate
+(old key dies
+instantly) or kill with
+🗑 Revoke
+.
+2. Authentication
+Every endpoint except
+/health
+requires the bearer header:
+Authorization: Bearer sk_live_xxxxxxxxxxxxxxxxxxxx
+Keys are stored hashed (HMAC-SHA256) on our side. Never place a
+key in frontend JavaScript, a mobile app, or a public repository.
+3. Conventions
+Success responses always contain
+"ok": true
+.
+Errors always contain
+"ok": false
+and an
+error.code
+string (see §6).
+Money values are USD strings/numbers with 2 decimals.
+Every response carries a
+requestId
+on errors — quote it in support.
+Timestamps are UTC.
+4. Endpoints
+Method
+Path
+Auth
+Description
+GET
+/health
+no
+Service status check
+GET
+/balance
+yes
+Wallet balance
+GET
+/catalog/categories
+yes
+All categories
+GET
+/catalog/products
+yes
+Products list
+GET
+/catalog/products/{id}
+yes
+One product + live stock
+POST
+/orders
+yes
+Create order, get delivery
+GET
+/orders
+yes
+Your API orders
+GET
+/orders/{id}
+yes
+Single order + delivery
+GET
+/usage
+yes
+Balance, orders, spend, limits
+GET /catalog/products — query parameters
+Param
+Type
+Description
+category
+string / id
+Filter by category
+search
+string
+Name contains
+inStock
+bool
+true
+= only items with stock > 0
+limit
+int
+Page size (default 50)
+offset
+int
+Page offset
+{
+  "ok": true,
+  "products": [
+    { "id": 12, "name": "ChatGPT Plus", "category": "Accounts",
+      "price": 4.50, "currency": "USD", "stock": 37,
+      "description": "1 month private account", "inStock": true }
+  ],
+  "total": 1
+}
+5. Ordering & delivery
+POST /orders — request body
+Field
+Type
+Required
+Notes
+productId
+int
+yes
+From the catalog
+quantity
+int
+yes
+1 … available stock
+externalOrderId
+string
+recommended
+Your shop's order id — makes the call idempotent
+{
+  "ok": true,
+  "order": {
+    "orderId": 481, "externalOrderId": "shop-1001", "productId": 12,
+    "productName": "ChatGPT Plus", "quantity": 2,
+    "unitPrice": 4.50, "total": 9.00, "currency": "USD",
+    "status": "COMPLETED"
+  },
+  "delivery": { "type": "CREDENTIALS", "lines": ["mail:pass", "mail2:pass2"] },
+  "balanceAfter": "116.50"
+}
+Idempotency.
+Sending the same
+externalOrderId
+again returns the
+same
+order with
+"duplicate": true
+— you are never charged twice, even after a
+network timeout. Always retry with the same id.
+Delivery.
+delivery.lines[]
+holds exactly
+quantity
+items — one account/key per line. Store them on your side
+immediately; the same content can also be re-read via
+GET /orders/{id}
+.
+Atomic billing.
+Wallet charge and stock
+reservation are one conditional SQL transaction. If delivery fails, the order
+is rolled back and your wallet refunded automatically — no half-orders.
+6. Error codes
+{ "ok": false,
+  "error": { "code": "INSUFFICIENT_BALANCE", "message": "...",
+             "requestId": "req_ab12", "required": 9.0, "balance": 3.2 } }
+Code
+HTTP
+Meaning
+What to do
+INVALID_API_KEY
+401
+Missing / invalid / revoked key
+Check the header, regenerate in bot
+RATE_LIMIT_EXCEEDED
+429
+Too many calls
+Back off, retry after 60s
+INVALID_REQUEST
+400
+Bad body or params
+Fix payload
+PRODUCT_NOT_FOUND
+404
+Unknown / disabled product
+Re-sync catalog
+OUT_OF_STOCK
+409
+Not enough stock (wallet NOT charged)
+Lower quantity or retry later
+INSUFFICIENT_BALANCE
+402
+Wallet too low
+Top up in the bot
+ORDER_FAILED
+400
+Could not complete
+Retry with same externalOrderId
+7. Rate limits
+Per key, 60-second sliding window.
+Tier
+Requests / min
+Orders / min
+limited
+10
+2
+standard (default)
+60
+10
+premium
+300
+50
+8. Code samples
+cURL
+API="http://paid2.daki.cc:4153/api/partner/v1"
+KEY="sk_live_xxxxxxxxxxxxxxxxxxxx"
+
+curl -s "$API/balance" -H "Authorization: Bearer $KEY"
+
+curl -s -X POST "$API/orders" \
+  -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"productId":12,"quantity":2,"externalOrderId":"shop-1001"}'
+Python
+import requests
+
+API = "http://paid2.daki.cc:4153/api/partner/v1"
+KEY = "sk_live_xxxxxxxxxxxxxxxxxxxx"
+H = {"Authorization": f"Bearer {KEY}"}
+
+products = requests.get(f"{API}/catalog/products",
+                        params={"inStock": "true"}, headers=H).json()
+
+r = requests.post(f"{API}/orders", headers=H, json={
+    "productId": 12, "quantity": 1, "externalOrderId": "shop-1001",
+}).json()
+
+if r["ok"]:
+    for line in r["delivery"]["lines"]:
+        print(line)
+else:
+    print("error:", r["error"]["code"], r["error"]["message"])
+Node.js
+const API = "http://paid2.daki.cc:4153/api/partner/v1";
+const KEY = "sk_live_xxxxxxxxxxxxxxxxxxxx";
+
+const res = await fetch(`${API}/orders`, {
+  method: "POST",
+  headers: { Authorization: `Bearer ${KEY}`,
+             "Content-Type": "application/json" },
+  body: JSON.stringify({ productId: 12, quantity: 1,
+                         externalOrderId: "shop-1001" }),
+});
+const data = await res.json();
+if (data.ok) console.log(data.delivery.lines);
+else console.error(data.error.code);
+PHP
+$ch = curl_init("http://paid2.daki.cc:4153/api/partner/v1/orders");
+curl_setopt_array($ch, [
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_POST => true,
+  CURLOPT_HTTPHEADER => ["Authorization: Bearer sk_live_xxxxxxxxxxxxxxxxxxxx",
+                         "Content-Type: application/json"],
+  CURLOPT_POSTFIELDS => json_encode([
+    "productId" => 12, "quantity" => 1, "externalOrderId" => "shop-1001"]),
+]);
+$data = json_decode(curl_exec($ch), true);
+9. Hosting the API (for the store owner)
+The Partner API is a
+separate process
+next to the bot, using the same
+database. Telegram does
+not
+give you a public URL — you must run it on
+your own VPS / server. A domain is optional — the server's public IP works.
+pip install -r requirements.txt
+python api_server.py          # listens on 0.0.0.0:4153
+Keep both processes alive (systemd, screen, pm2 or Docker):
+# /etc/systemd/system/xpro-api.service
+[Service]
+WorkingDirectory=/root/xpro
+ExecStart=/usr/bin/python3 api_server.py
+Restart=always
+Then put Nginx/Caddy in front for HTTPS:
+location /api/ {
+    proxy_pass http://127.0.0.1:4153;
+    proxy_set_header Host $host;
+}
+No domain?
+Nothing to set — the bot auto-detects your server's public
+IP and uses
+http://<your-ip>:4153
+as the Base URL. Just open the
+port in your firewall (
+ufw allow 8080
+). Only set
+API_PUBLIC_URL
+if you later buy a domain.
+.env
+values:
+# API_PUBLIC_URL=https://yourdomain.com   # optional, only with a domain
+# SERVER_IP=123.45.67.89                  # optional, if auto-detect fails
+API_HOST=0.0.0.0
+API_PORT=4153
+API_KEY_SECRET=<long random string — never change after keys exist>
+API_MAX_KEYS=3
+The IP setup works fine, but traffic is plain HTTP.
+When you can, buy a cheap domain + free Let's Encrypt certificate and switch to
+API_PUBLIC_URL=https://yourdomain.com
+.
+10. FAQ & safety
+Do I need my own server?
+Yes. The bot and the API both run on your VPS. The bot works through
+Telegram's long-polling (no URL needed), but resellers must call the API over
+HTTP, so the API needs a reachable address.
+Can the bot and API run together?
+Yes — SQLite runs in WAL mode with busy timeouts, so both processes can read
+and write at the same time without double-selling.
+What happens if my key leaks?
+Open
+API → My Keys → ♻️ Regenerate
+(or 🗑 Revoke). The old key stops
+working instantly.
+How do I get paid?
+Resellers pre-fund their bot wallet; every API order deducts from it
+automatically at the same price shown in the bot.
+XPro Seller · Partner API v1 · Base URL
+http://paid2.daki.cc:4153/api/partner/v1
+· This file was
+generated for you by the bot. Keep your API key private.

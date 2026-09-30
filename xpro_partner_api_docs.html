@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>XPro Seller — Partner API v1 Documentation</title>
+<style>
+:root{--bg:#0b1220;--card:#111c31;--line:#1f2f4d;--txt:#e6edf7;--mut:#93a4c0;
+--pri:#3b82f6;--ok:#22c55e;--warn:#f59e0b;--dan:#ef4444;--code:#0a1526}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);
+font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+.wrap{max-width:960px;margin:0 auto;padding:32px 20px 80px}
+header{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:28px}
+h1{margin:0 0 6px;font-size:30px;letter-spacing:-.3px}
+h2{margin:38px 0 12px;font-size:21px;border-left:4px solid var(--pri);padding-left:10px}
+h3{margin:24px 0 8px;font-size:16px;color:#cfe0ff}
+p,li{color:var(--txt)}
+.mut{color:var(--mut)}
+code{background:var(--code);border:1px solid var(--line);border-radius:6px;
+padding:1px 6px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+font-size:13.5px;color:#9fd0ff}
+pre{background:var(--code);border:1px solid var(--line);border-radius:10px;
+padding:14px 16px;overflow:auto}
+pre code{background:none;border:0;padding:0;color:#c8e1ff}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+th{background:#14213a;color:#cfe0ff}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+padding:16px 18px;margin:14px 0}
+.badge{display:inline-block;border-radius:6px;padding:1px 8px;font-size:12px;
+font-weight:700;margin-right:6px}
+.get{background:#12351f;color:#7ee2a0;border:1px solid #1d5c34}
+.post{background:#1a2a4d;color:#8ab4ff;border:1px solid #2a4a86}
+.warn{border-left:4px solid var(--warn)}
+.dan{border-left:4px solid var(--dan)}
+.ok{border-left:4px solid var(--ok)}
+nav a{display:block;color:#9fd0ff;text-decoration:none;padding:3px 0}
+nav a:hover{text-decoration:underline}
+footer{margin-top:50px;border-top:1px solid var(--line);padding-top:16px;
+color:var(--mut);font-size:13px}
+</style>
+</head><body><div class="wrap">
+
+<header>
+  <h1>XPro Seller — Partner API v1</h1>
+  <p class="mut">REST JSON API for resellers · generated 30 Sep 2026 06:37 UTC</p>
+  <p><b>Base URL</b> <code>http://paid2.daki.cc:4153/api/partner/v1</code><br>
+     <b>Auth</b> <code>Authorization: Bearer sk_live_xxxxxxxxxxxxxxxxxxxx</code><br>
+     <b>Currency</b> USD · <b>Format</b> JSON (UTF-8)</p>
+</header>
+
+<nav class="card">
+  <b>Contents</b>
+  <a href="#start">1. Getting started</a>
+  <a href="#auth">2. Authentication</a>
+  <a href="#conv">3. Conventions</a>
+  <a href="#endpoints">4. Endpoints</a>
+  <a href="#orders">5. Ordering &amp; delivery</a>
+  <a href="#errors">6. Error codes</a>
+  <a href="#limits">7. Rate limits</a>
+  <a href="#samples">8. Code samples</a>
+  <a href="#hosting">9. Hosting the API</a>
+  <a href="#faq">10. FAQ &amp; safety</a>
+</nav>
+
+<h2 id="start">1. Getting started</h2>
+<ol>
+  <li>Open XProSellerStoreBot on Telegram → main menu → <b>🔑 API</b> (or send <code>/api</code>).</li>
+  <li><b>➕ Create Key</b> → send a name → copy the <code>sk_live_…</code> secret.</li>
+  <li>Top up your wallet inside the bot. <b>Bot balance = API balance.</b></li>
+  <li>Call the endpoints below from your own server.</li>
+</ol>
+<div class="card warn">Max 3 active keys. You can view them again in
+<b>API → 🗂 My Keys</b>, rotate with <b>♻️ Regenerate</b> (old key dies
+instantly) or kill with <b>🗑 Revoke</b>.</div>
+
+<h2 id="auth">2. Authentication</h2>
+<p>Every endpoint except <code>/health</code> requires the bearer header:</p>
+<pre><code>Authorization: Bearer sk_live_xxxxxxxxxxxxxxxxxxxx</code></pre>
+<p class="mut">Keys are stored hashed (HMAC-SHA256) on our side. Never place a
+key in frontend JavaScript, a mobile app, or a public repository.</p>
+
+<h2 id="conv">3. Conventions</h2>
+<ul>
+  <li>Success responses always contain <code>"ok": true</code>.</li>
+  <li>Errors always contain <code>"ok": false</code> and an
+      <code>error.code</code> string (see §6).</li>
+  <li>Money values are USD strings/numbers with 2 decimals.</li>
+  <li>Every response carries a <code>requestId</code> on errors — quote it in support.</li>
+  <li>Timestamps are UTC.</li>
+</ul>
+
+<h2 id="endpoints">4. Endpoints</h2>
+<table>
+<tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/health</code></td><td>no</td><td>Service status check</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/balance</code></td><td>yes</td><td>Wallet balance</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/catalog/categories</code></td><td>yes</td><td>All categories</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/catalog/products</code></td><td>yes</td><td>Products list</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/catalog/products/{id}</code></td><td>yes</td><td>One product + live stock</td></tr>
+<tr><td><span class="badge post">POST</span></td><td><code>/orders</code></td><td>yes</td><td>Create order, get delivery</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/orders</code></td><td>yes</td><td>Your API orders</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/orders/{id}</code></td><td>yes</td><td>Single order + delivery</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/usage</code></td><td>yes</td><td>Balance, orders, spend, limits</td></tr>
+</table>
+
+<h3>GET /catalog/products — query parameters</h3>
+<table>
+<tr><th>Param</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>category</code></td><td>string / id</td><td>Filter by category</td></tr>
+<tr><td><code>search</code></td><td>string</td><td>Name contains</td></tr>
+<tr><td><code>inStock</code></td><td>bool</td><td><code>true</code> = only items with stock &gt; 0</td></tr>
+<tr><td><code>limit</code></td><td>int</td><td>Page size (default 50)</td></tr>
+<tr><td><code>offset</code></td><td>int</td><td>Page offset</td></tr>
+</table>
+<pre><code>{
+  "ok": true,
+  "products": [
+    { "id": 12, "name": "ChatGPT Plus", "category": "Accounts",
+      "price": 4.50, "currency": "USD", "stock": 37,
+      "description": "1 month private account", "inStock": true }
+  ],
+  "total": 1
+}</code></pre>
+
+<h2 id="orders">5. Ordering &amp; delivery</h2>
+<h3>POST /orders — request body</h3>
+<table>
+<tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr>
+<tr><td><code>productId</code></td><td>int</td><td>yes</td><td>From the catalog</td></tr>
+<tr><td><code>quantity</code></td><td>int</td><td>yes</td><td>1 … available stock</td></tr>
+<tr><td><code>externalOrderId</code></td><td>string</td><td>recommended</td><td>Your shop's order id — makes the call idempotent</td></tr>
+</table>
+<pre><code>{
+  "ok": true,
+  "order": {
+    "orderId": 481, "externalOrderId": "shop-1001", "productId": 12,
+    "productName": "ChatGPT Plus", "quantity": 2,
+    "unitPrice": 4.50, "total": 9.00, "currency": "USD",
+    "status": "COMPLETED"
+  },
+  "delivery": { "type": "CREDENTIALS", "lines": ["mail:pass", "mail2:pass2"] },
+  "balanceAfter": "116.50"
+}</code></pre>
+<div class="card ok"><b>Idempotency.</b> Sending the same
+<code>externalOrderId</code> again returns the <i>same</i> order with
+<code>"duplicate": true</code> — you are never charged twice, even after a
+network timeout. Always retry with the same id.</div>
+<div class="card"><b>Delivery.</b> <code>delivery.lines[]</code> holds exactly
+<code>quantity</code> items — one account/key per line. Store them on your side
+immediately; the same content can also be re-read via
+<code>GET /orders/{id}</code>.</div>
+<div class="card dan"><b>Atomic billing.</b> Wallet charge and stock
+reservation are one conditional SQL transaction. If delivery fails, the order
+is rolled back and your wallet refunded automatically — no half-orders.</div>
+
+<h2 id="errors">6. Error codes</h2>
+<pre><code>{ "ok": false,
+  "error": { "code": "INSUFFICIENT_BALANCE", "message": "...",
+             "requestId": "req_ab12", "required": 9.0, "balance": 3.2 } }</code></pre>
+<table>
+<tr><th>Code</th><th>HTTP</th><th>Meaning</th><th>What to do</th></tr>
+<tr><td><code>INVALID_API_KEY</code></td><td>401</td><td>Missing / invalid / revoked key</td><td>Check the header, regenerate in bot</td></tr>
+<tr><td><code>RATE_LIMIT_EXCEEDED</code></td><td>429</td><td>Too many calls</td><td>Back off, retry after 60s</td></tr>
+<tr><td><code>INVALID_REQUEST</code></td><td>400</td><td>Bad body or params</td><td>Fix payload</td></tr>
+<tr><td><code>PRODUCT_NOT_FOUND</code></td><td>404</td><td>Unknown / disabled product</td><td>Re-sync catalog</td></tr>
+<tr><td><code>OUT_OF_STOCK</code></td><td>409</td><td>Not enough stock (wallet NOT charged)</td><td>Lower quantity or retry later</td></tr>
+<tr><td><code>INSUFFICIENT_BALANCE</code></td><td>402</td><td>Wallet too low</td><td>Top up in the bot</td></tr>
+<tr><td><code>ORDER_FAILED</code></td><td>400</td><td>Could not complete</td><td>Retry with same externalOrderId</td></tr>
+</table>
+
+<h2 id="limits">7. Rate limits</h2>
+<p>Per key, 60-second sliding window.</p>
+<table>
+<tr><th>Tier</th><th>Requests / min</th><th>Orders / min</th></tr>
+<tr><td>limited</td><td>10</td><td>2</td></tr>
+<tr><td>standard (default)</td><td>60</td><td>10</td></tr>
+<tr><td>premium</td><td>300</td><td>50</td></tr>
+</table>
+
+<h2 id="samples">8. Code samples</h2>
+<h3>cURL</h3>
+<pre><code>API="http://paid2.daki.cc:4153/api/partner/v1"
+KEY="sk_live_xxxxxxxxxxxxxxxxxxxx"
+
+curl -s "$API/balance" -H "Authorization: Bearer $KEY"
+
+curl -s -X POST "$API/orders" \
+  -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"productId":12,"quantity":2,"externalOrderId":"shop-1001"}'</code></pre>
+
+<h3>Python</h3>
+<pre><code>import requests
+
+API = "http://paid2.daki.cc:4153/api/partner/v1"
+KEY = "sk_live_xxxxxxxxxxxxxxxxxxxx"
+H = {"Authorization": f"Bearer {KEY}"}
+
+products = requests.get(f"{API}/catalog/products",
+                        params={"inStock": "true"}, headers=H).json()
+
+r = requests.post(f"{API}/orders", headers=H, json={
+    "productId": 12, "quantity": 1, "externalOrderId": "shop-1001",
+}).json()
+
+if r["ok"]:
+    for line in r["delivery"]["lines"]:
+        print(line)
+else:
+    print("error:", r["error"]["code"], r["error"]["message"])</code></pre>
+
+<h3>Node.js</h3>
+<pre><code>const API = "http://paid2.daki.cc:4153/api/partner/v1";
+const KEY = "sk_live_xxxxxxxxxxxxxxxxxxxx";
+
+const res = await fetch(`${API}/orders`, {
+  method: "POST",
+  headers: { Authorization: `Bearer ${KEY}`,
+             "Content-Type": "application/json" },
+  body: JSON.stringify({ productId: 12, quantity: 1,
+                         externalOrderId: "shop-1001" }),
+});
+const data = await res.json();
+if (data.ok) console.log(data.delivery.lines);
+else console.error(data.error.code);</code></pre>
+
+<h3>PHP</h3>
+<pre><code>$ch = curl_init("http://paid2.daki.cc:4153/api/partner/v1/orders");
+curl_setopt_array($ch, [
+  CURLOPT_RETURNTRANSFER =&gt; true,
+  CURLOPT_POST =&gt; true,
+  CURLOPT_HTTPHEADER =&gt; ["Authorization: Bearer sk_live_xxxxxxxxxxxxxxxxxxxx",
+                         "Content-Type: application/json"],
+  CURLOPT_POSTFIELDS =&gt; json_encode([
+    "productId" =&gt; 12, "quantity" =&gt; 1, "externalOrderId" =&gt; "shop-1001"]),
+]);
+$data = json_decode(curl_exec($ch), true);</code></pre>
+
+<h2 id="hosting">9. Hosting the API (for the store owner)</h2>
+<p>The Partner API is a <b>separate process</b> next to the bot, using the same
+database. Telegram does <b>not</b> give you a public URL — you must run it on
+your own VPS / server. A domain is optional — the server's public IP works.</p>
+<pre><code>pip install -r requirements.txt
+python api_server.py          # listens on 0.0.0.0:4153</code></pre>
+<p>Keep both processes alive (systemd, screen, pm2 or Docker):</p>
+<pre><code># /etc/systemd/system/xpro-api.service
+[Service]
+WorkingDirectory=/root/xpro
+ExecStart=/usr/bin/python3 api_server.py
+Restart=always</code></pre>
+<p>Then put Nginx/Caddy in front for HTTPS:</p>
+<pre><code>location /api/ {
+    proxy_pass http://127.0.0.1:4153;
+    proxy_set_header Host $host;
+}</code></pre>
+<p><b>No domain?</b> Nothing to set — the bot auto-detects your server's public
+IP and uses <code>http://&lt;your-ip&gt;:4153</code> as the Base URL. Just open the
+port in your firewall (<code>ufw allow 8080</code>). Only set
+<code>API_PUBLIC_URL</code> if you later buy a domain.</p>
+<p><code>.env</code> values:</p>
+<pre><code># API_PUBLIC_URL=https://yourdomain.com   # optional, only with a domain
+# SERVER_IP=123.45.67.89                  # optional, if auto-detect fails
+API_HOST=0.0.0.0
+API_PORT=4153
+API_KEY_SECRET=&lt;long random string — never change after keys exist&gt;
+API_MAX_KEYS=3</code></pre>
+<div class="card warn">The IP setup works fine, but traffic is plain HTTP.
+When you can, buy a cheap domain + free Let's Encrypt certificate and switch to
+<code>API_PUBLIC_URL=https://yourdomain.com</code>.</div>
+
+<h2 id="faq">10. FAQ &amp; safety</h2>
+<h3>Do I need my own server?</h3>
+<p>Yes. The bot and the API both run on your VPS. The bot works through
+Telegram's long-polling (no URL needed), but resellers must call the API over
+HTTP, so the API needs a reachable address.</p>
+<h3>Can the bot and API run together?</h3>
+<p>Yes — SQLite runs in WAL mode with busy timeouts, so both processes can read
+and write at the same time without double-selling.</p>
+<h3>What happens if my key leaks?</h3>
+<p>Open <b>API → My Keys → ♻️ Regenerate</b> (or 🗑 Revoke). The old key stops
+working instantly.</p>
+<h3>How do I get paid?</h3>
+<p>Resellers pre-fund their bot wallet; every API order deducts from it
+automatically at the same price shown in the bot.</p>
+
+<footer>XPro Seller · Partner API v1 · Base URL <code>http://paid2.daki.cc:4153/api/partner/v1</code> · This file was
+generated for you by the bot. Keep your API key private.</footer>
+
+</div></body></html>

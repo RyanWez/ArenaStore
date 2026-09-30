@@ -1,0 +1,17 @@
+{
+  "name": "@arena-store/tests",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:ui": "playwright test --config playwright.config.ts"
+  },
+  "dependencies": {
+    "@arena/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "vitest": "^3.0.7"
+  }
+}
