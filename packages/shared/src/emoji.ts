@@ -1,12 +1,17 @@
 /**
- * Telegram Custom Emoji & HTML formatting utilities.
- *
- * Supplier text includes placeholders like:
- * `{pe:5353054453832368599}🤖 Gemini AI 18 MONTH`
- *
- * For Telegram Bot HTML message mode, this must be rendered as:
- * `<tg-emoji emoji-id="5353054453832368599">✨</tg-emoji>🤖 Gemini AI 18 MONTH`
+ * Animated Custom Emojis provided for Arena Store Telegram Bot
  */
+export const BOT_EMOJIS = {
+  WAVE: "5215248074498128418",      // 👋
+  SPARKLES: "5325547803936572038",  // ✨
+  LIGHTNING: "5226570145161302027", // ⚡️
+  DOWN_ARROW: "5193062103103058714",// 👇
+  BAGS: "4958714256343171878",       // 🛍
+  BOX: "5472335930549347896",        // 📦
+  MONEY: "5316661434996765842",      // 💰
+  CHAT: "5443038326535759644",       // 💬
+  SPEAKER: "5836698068061261980",    // 📢
+} as const;
 
 /**
  * Escapes special HTML characters to prevent message parse errors or XSS in Telegram HTML mode.
@@ -20,14 +25,22 @@ export function escapeHtml(str: string): string {
 }
 
 /**
+ * Creates a valid Telegram <tg-emoji> tag with safe HTML escaping.
+ */
+export function tgEmoji(emojiId: string, fallbackEmoji: string = "✨"): string {
+  return `<tg-emoji emoji-id="${emojiId}">${escapeHtml(fallbackEmoji)}</tg-emoji>`;
+}
+
+/**
  * Parses raw text containing {pe:<id>} placeholders and produces safe Telegram HTML.
- * All raw text is safely HTML-escaped before the tg-emoji tags are inserted.
+ * Consumes any immediate unicode emoji following {pe:<id>} into the <tg-emoji> tag
+ * to prevent double emoji display (e.g. animated emoji + duplicate standard emoji).
  */
 export function formatTelegramCustomEmoji(rawText: string, fallbackEmoji: string = "✨"): string {
   if (!rawText) return "";
 
-  // Split on the placeholder pattern: {pe:<numeric-id>}
-  const regex = /\{pe:(\d+)\}/g;
+  // Split on the placeholder pattern: {pe:<numeric-id>} followed optionally by immediate unicode emoji
+  const regex = /\{pe:(\d+)\}(?:\s*([\p{Extended_Pictographic}\uFE0F\u200D]+))?/gu;
   let lastIndex = 0;
   let result = "";
   let match: RegExpExecArray | null;
@@ -37,7 +50,10 @@ export function formatTelegramCustomEmoji(rawText: string, fallbackEmoji: string
     result += escapeHtml(textBefore);
 
     const emojiId = match[1];
-    result += `<tg-emoji emoji-id="${emojiId}">${escapeHtml(fallbackEmoji)}</tg-emoji>`;
+    const immediateEmoji = match[2];
+    const displayFallback = immediateEmoji || fallbackEmoji;
+
+    result += `<tg-emoji emoji-id="${emojiId}">${escapeHtml(displayFallback)}</tg-emoji>`;
 
     lastIndex = regex.lastIndex;
   }
@@ -52,7 +68,9 @@ export function formatTelegramCustomEmoji(rawText: string, fallbackEmoji: string
  */
 export function stripCustomEmojiPlaceholders(rawText: string): string {
   if (!rawText) return "";
-  return rawText.replace(/\{pe:\d+\}/g, "").trim();
+  return rawText
+    .replace(/\{pe:\d+\}(?:\s*[\p{Extended_Pictographic}\uFE0F\u200D]+\s*)?/gu, "")
+    .trim();
 }
 
 export interface ParsedEmojiText {
@@ -62,11 +80,18 @@ export interface ParsedEmojiText {
 
 /**
  * Extracts custom emoji ID and clean label for Telegram inline keyboard buttons (icon_custom_emoji_id).
+ * Strips both the {pe:<id>} placeholder and any immediate duplicate fallback emoji,
+ * ensuring buttons and headers don't show double emojis (e.g. [G] 🤖 Gemini -> [G] Gemini).
  */
 export function parseCustomEmoji(rawText: string): ParsedEmojiText {
   if (!rawText) return { emojiId: null, cleanText: "" };
   const match = /\{pe:(\d+)\}/.exec(rawText);
   const emojiId = match ? match[1] : null;
-  const cleanText = rawText.replace(/\{pe:\d+\}/g, "").trim();
+
+  // Strip placeholder and immediately following unicode emoji if present
+  const cleanText = rawText
+    .replace(/\{pe:\d+\}(?:\s*[\p{Extended_Pictographic}\uFE0F\u200D]+\s*)?/gu, "")
+    .trim();
+
   return { emojiId, cleanText };
 }

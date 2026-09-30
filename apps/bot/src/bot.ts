@@ -39,8 +39,8 @@ export function createBot(): Bot<BotContext> {
     await next();
   });
 
-  // 3. /start Command Handler
-  bot.command("start", async (ctx) => {
+  // 3. /start and /menu Command Handlers
+  bot.command(["start", "menu"], async (ctx) => {
     ctx.session.awaitingCustomQuantity = false;
     const firstName = ctx.from?.first_name || "Customer";
 

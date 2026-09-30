@@ -76,7 +76,7 @@ describe("Phase 4 Customer Telegram Bot", () => {
   });
 
   describe("Storefront Keyboards Architecture", () => {
-    it("builds main menu with all 5 navigation options", () => {
+    it("builds main menu with all 5 navigation options and animated custom emojis", () => {
       const keyboard = buildMainMenuKeyboard();
       const buttons = keyboard.inline_keyboard.flat();
 
@@ -85,6 +85,9 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(buttons.some((b) => b.text.includes("Wallet"))).toBe(true);
       expect(buttons.some((b) => b.text.includes("Help & Support"))).toBe(true);
       expect(buttons.some((b) => b.text.includes("Channel"))).toBe(true);
+
+      const shopBtn = buttons.find((b) => b.text.includes("ပစ္စည်းများဝယ်ယူရန်"));
+      expect((shopBtn as any).icon_custom_emoji_id).toBe("4958714256343171878");
     });
 
     it("builds 2-column categories grid with icon_custom_emoji_id (matching Screenshot 1)", () => {
@@ -137,8 +140,8 @@ describe("Phase 4 Customer Telegram Bot", () => {
       // Row 4: Custom Quantity
       expect(rows[3][0].text).toBe("🎉 Custom Quantity");
 
-      // Row 5: Buy Now with dynamic total
-      expect(rows[4][0].text).toBe("💳 Buy Now · 3,900 Ks");
+      // Row 5: Buy Now with dynamic total and green accent 🟢
+      expect(rows[4][0].text).toBe("🟢 Buy Now · 3,900 Ks");
       expect(rows[4][0].callback_data).toBe("checkout_10_1");
 
       // Row 6: Back
@@ -151,16 +154,20 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(rowsQty5[0][0].text).toBe("➖"); // can decrease from 5
       expect(rowsQty5[0][0].callback_data).toBe("qty_step_10_4");
       expect(rowsQty5[1][1].text).toBe("✅ 5"); // 5 is now selected
-      expect(rowsQty5[4][0].text).toBe("💳 Buy Now · 19,500 Ks"); // 3900 * 5 = 19500
+      expect(rowsQty5[4][0].text).toBe("🟢 Buy Now · 19,500 Ks"); // 3900 * 5 = 19500
     });
   });
 
   describe("Storefront Messages & HTML Formatting", () => {
-    it("formats start message in Myanmar language with customer greeting", () => {
+    it("formats start message in Myanmar language with customer greeting and animated emojis", () => {
       const msg = formatStartMessage("Aung Aung");
       expect(msg).toContain("Aung Aung");
       expect(msg).toContain("Arena Store");
       expect(msg).toContain("KPay / WavePay");
+      expect(msg).toContain("5215248074498128418"); // 👋
+      expect(msg).toContain("5325547803936572038"); // ✨
+      expect(msg).toContain("5226570145161302027"); // ⚡️
+      expect(msg).toContain("5193062103103058714"); // 👇
     });
 
     it("formats product detail card with expandable quote and price (matching Screenshot 3)", () => {

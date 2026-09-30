@@ -1,38 +1,38 @@
 import { BotCategory, BotProduct } from "../services/catalog.service";
 import { botConfig } from "../config";
-import { escapeHtml } from "@arena/shared";
+import { escapeHtml, BOT_EMOJIS, tgEmoji } from "@arena/shared";
 
 /**
- * Formats the Welcome /start greeting message.
+ * Formats the Welcome /start greeting message with animated custom emojis.
  */
 export function formatStartMessage(firstName: string): string {
-  return `👋 မင်္ဂလာပါ <b>${escapeHtml(firstName)}</b>,
+  return `${tgEmoji(BOT_EMOJIS.WAVE, "👋")} မင်္ဂလာပါ <b>${escapeHtml(firstName)}</b>,
 
-<b>Arena Store</b> မှ ကြိုဆိုပါသည်! ✨
+<b>Arena Store</b> မှ ကြိုဆိုပါသည်! ${tgEmoji(BOT_EMOJIS.SPARKLES, "✨")}
 တရားဝင် ဒစ်ဂျစ်တယ် အကောင့်များ၊ AI Tools များနှင့် ဂိမ်းလက်မှတ်များကို မြန်မာကျပ်ငွေ (MMK) ဖြင့် လွယ်ကူလျင်မြန်စွာ ဝယ်ယူနိုင်ပါသည်။
 
-⚡️ <b>အဓိက အားသာချက်များ:</b>
+${tgEmoji(BOT_EMOJIS.LIGHTNING, "⚡️")} <b>အဓိက အားသာချက်များ:</b>
 • မြန်မာကျပ်ငွေ (KPay / WavePay) ဖြင့် တိုက်ရိုက် ငွေပေးချေနိုင်ခြင်း
 • ငွေလွှဲစစ်ဆေးပြီးသည်နှင့် အကောင့်အချက်အလက်များ ချက်ချင်း ရရှိခြင်း
 • ၁၀၀% အာမခံချက် အပြည့်အဝ ပေးအပ်ခြင်း
 
-ဝယ်ယူလိုသော ပစ္စည်း အမျိုးအစားများကို ရွေးချယ်ရန် အောက်ပါ ခလုတ်ကို နှိပ်ပါ 👇`;
+ဝယ်ယူလိုသော ပစ္စည်း အမျိုးအစားများကို ရွေးချယ်ရန် အောက်ပါ ခလုတ်ကို နှိပ်ပါ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}`;
 }
 
 /**
  * Formats the Categories header message matching Screenshot 1.
  */
 export function formatCategoriesMessage(): string {
-  return `<blockquote>🛍 <b>Store Categories</b> ❞
-Choose a category to browse products 👇</blockquote>`;
+  return `<blockquote>${tgEmoji(BOT_EMOJIS.BAGS, "🛍")} <b>Store Categories</b> ❞
+Choose a category to browse products ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}</blockquote>`;
 }
 
 /**
  * Formats the Product List header message matching Screenshot 2.
  */
 export function formatProductsListMessage(categoryName: string): string {
-  return `<blockquote>🎁 <b>Available Products — ${escapeHtml(categoryName)}</b> ❞
-Tap a product to view details & buy 👇</blockquote>`;
+  return `<blockquote>${tgEmoji(BOT_EMOJIS.BAGS, "🎁")} <b>Available Products — ${escapeHtml(categoryName)}</b> ❞
+Tap a product to view details & buy ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}</blockquote>`;
 }
 
 /**

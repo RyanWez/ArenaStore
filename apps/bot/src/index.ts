@@ -15,6 +15,17 @@ async function main() {
   console.log(`🤖 Arena Store Telegram Bot running as @${me.username} (ID: ${me.id})`);
   console.log(`✨ Custom Emojis (icon_custom_emoji_id) and MMK Pricing active.`);
 
+  // Automatically register bot menu commands in Telegram UI
+  try {
+    await bot.api.setMyCommands([
+      { command: "start", description: "Start Arena Store" },
+      { command: "menu", description: "Open Main Menu" },
+    ]);
+    console.log("📋 Bot menu commands registered: /start and /menu");
+  } catch (err: any) {
+    console.warn("Could not register bot commands:", err.message);
+  }
+
   // Start polling
   bot.start({
     onStart: (botInfo) => {

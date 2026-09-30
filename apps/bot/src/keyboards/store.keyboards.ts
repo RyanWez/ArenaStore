@@ -1,19 +1,40 @@
 import { InlineKeyboard } from "grammy";
 import { BotCategory, BotProduct } from "../services/catalog.service";
 import { botConfig } from "../config";
+import { BOT_EMOJIS } from "@arena/shared";
 
 /**
- * Builds the Main Start Menu Keyboard.
+ * Builds the Main Start Menu Keyboard with animated custom emojis.
  */
 export function buildMainMenuKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
-    .text("🛍 ပစ္စည်းများဝယ်ယူရန်", "menu_categories")
+    .add({
+      text: "ပစ္စည်းများဝယ်ယူရန်",
+      callback_data: "menu_categories",
+      icon_custom_emoji_id: BOT_EMOJIS.BAGS,
+    })
     .row()
-    .text("📦 ကျွန်ုပ်၏အော်ဒါများ", "menu_orders")
-    .text("💰 Wallet", "menu_wallet")
+    .add({
+      text: "ကျွန်ုပ်၏အော်ဒါများ",
+      callback_data: "menu_orders",
+      icon_custom_emoji_id: BOT_EMOJIS.BOX,
+    })
+    .add({
+      text: "Wallet",
+      callback_data: "menu_wallet",
+      icon_custom_emoji_id: BOT_EMOJIS.MONEY,
+    })
     .row()
-    .url("🎧 Help & Support", `https://t.me/${botConfig.SUPPORT_USERNAME}`)
-    .url("📢 Channel", botConfig.CHANNEL_URL);
+    .add({
+      text: "Help & Support",
+      url: `https://t.me/${botConfig.SUPPORT_USERNAME}`,
+      icon_custom_emoji_id: BOT_EMOJIS.CHAT,
+    })
+    .add({
+      text: "Channel",
+      url: botConfig.CHANNEL_URL,
+      icon_custom_emoji_id: BOT_EMOJIS.SPEAKER,
+    });
 }
 
 /**
@@ -133,7 +154,7 @@ export function buildProductDetailKeyboard(
   // Row 5: Buy Now with Total Price in Option A ("3,900 Ks")
   keyboard
     .text(
-      `💳 Buy Now · ${totalMmk.toLocaleString("en-US")} Ks`,
+      `🟢 Buy Now · ${totalMmk.toLocaleString("en-US")} Ks`,
       `checkout_${product.id}_${quantity}`
     )
     .row();
