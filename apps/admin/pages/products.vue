@@ -344,119 +344,122 @@ function toggleProductStatus(product: ProductItem) {
     </div>
 
     <!-- Edit Pricing Drawer / Modal -->
-    <div
-      v-if="isDrawerOpen && selectedProduct"
-      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-    >
-      <div class="w-full max-w-md p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
-        <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-          <div>
-            <h3 class="font-bold text-base text-slate-900 dark:text-white">
-              Edit Product Pricing
-            </h3>
-            <p class="text-xs text-slate-400 mt-0.5 truncate max-w-[280px]">
-              {{ selectedProduct.nameMmk }}
-            </p>
-          </div>
-          <button
-            type="button"
-            @click="isDrawerOpen = false"
-            class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-          >
-            <i class="pi pi-times"></i>
-          </button>
-        </div>
-
-        <div class="space-y-4 text-sm">
-          <!-- Upstream Cost Info -->
-          <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between text-xs">
-            <span class="text-slate-500 dark:text-slate-400">Upstream USD Cost:</span>
-            <span class="font-mono font-bold text-slate-800 dark:text-white">
-              ${{ selectedProduct.supplierPriceUsd }} USD (~{{ (parseFloat(selectedProduct.supplierPriceUsd) * 4500).toLocaleString() }} Ks)
-            </span>
-          </div>
-
-          <!-- Profit Margin Percentage -->
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Desired Profit Margin (%)
-            </label>
-            <div class="flex items-center gap-2">
-              <input
-                v-model.number="editForm.marginPct"
-                @input="recalculatePrice"
-                type="number"
-                min="0"
-                max="500"
-                class="w-full px-3 py-2 rounded-xl text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <span class="text-xs text-slate-400 font-bold">%</span>
+    <Transition name="modal">
+      <div
+        v-if="isDrawerOpen && selectedProduct"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+        @click.self="isDrawerOpen = false"
+      >
+        <div class="modal-card w-full max-w-md p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-5">
+          <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+            <div>
+              <h3 class="font-bold text-base text-slate-900 dark:text-white">
+                Edit Product Pricing
+              </h3>
+              <p class="text-xs text-slate-400 mt-0.5 truncate max-w-[280px]">
+                {{ selectedProduct.nameMmk }}
+              </p>
             </div>
-          </div>
-
-          <!-- Retail Price MMK -->
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Final MMK Retail Price
-            </label>
-            <div class="relative">
-              <input
-                v-model.number="editForm.retailPriceMmk"
-                type="number"
-                step="50"
-                class="w-full px-3 py-2 rounded-xl text-sm font-bold bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-semibold">MMK</span>
-            </div>
-          </div>
-
-          <!-- Local Stock Cap -->
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Local Stock Limit (Optional)
-            </label>
-            <input
-              v-model.number="editForm.localStockLimit"
-              type="number"
-              placeholder="Leave empty for unlimited"
-              class="w-full px-3 py-2 rounded-xl text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
-
-          <!-- Active Switch in modal -->
-          <div class="flex items-center justify-between pt-2">
-            <span class="text-xs font-semibold text-slate-700 dark:text-slate-300">Allow Customer Purchases</span>
             <button
               type="button"
-              @click="editForm.isActive = !editForm.isActive"
-              class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out"
-              :class="editForm.isActive ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'"
+              @click="isDrawerOpen = false"
+              class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
             >
-              <span
-                class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out"
-                :class="editForm.isActive ? 'translate-x-4' : 'translate-x-0'"
-              ></span>
+              <i class="pi pi-times"></i>
+            </button>
+          </div>
+
+          <div class="space-y-4 text-sm">
+            <!-- Upstream Cost Info -->
+            <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between text-xs">
+              <span class="text-slate-500 dark:text-slate-400">Upstream USD Cost:</span>
+              <span class="font-mono font-bold text-slate-800 dark:text-white">
+                ${{ selectedProduct.supplierPriceUsd }} USD (~{{ (parseFloat(selectedProduct.supplierPriceUsd) * 4500).toLocaleString() }} Ks)
+              </span>
+            </div>
+
+            <!-- Profit Margin Percentage -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Desired Profit Margin (%)
+              </label>
+              <div class="flex items-center gap-2">
+                <input
+                  v-model.number="editForm.marginPct"
+                  @input="recalculatePrice"
+                  type="number"
+                  min="0"
+                  max="500"
+                  class="w-full px-3 py-2 rounded-xl text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <span class="text-xs text-slate-400 font-bold">%</span>
+              </div>
+            </div>
+
+            <!-- Retail Price MMK -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Final MMK Retail Price
+              </label>
+              <div class="relative">
+                <input
+                  v-model.number="editForm.retailPriceMmk"
+                  type="number"
+                  step="50"
+                  class="w-full px-3 py-2 rounded-xl text-sm font-bold bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-semibold">MMK</span>
+              </div>
+            </div>
+
+            <!-- Local Stock Cap -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Local Stock Limit (Optional)
+              </label>
+              <input
+                v-model.number="editForm.localStockLimit"
+                type="number"
+                placeholder="Leave empty for unlimited"
+                class="w-full px-3 py-2 rounded-xl text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
+            <!-- Active Switch in modal -->
+            <div class="flex items-center justify-between pt-2">
+              <span class="text-xs font-semibold text-slate-700 dark:text-slate-300">Allow Customer Purchases</span>
+              <button
+                type="button"
+                @click="editForm.isActive = !editForm.isActive"
+                class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out"
+                :class="editForm.isActive ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'"
+              >
+                <span
+                  class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out"
+                  :class="editForm.isActive ? 'translate-x-4' : 'translate-x-0'"
+                ></span>
+              </button>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+            <button
+              type="button"
+              @click="isDrawerOpen = false"
+              class="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              @click="saveProductChanges"
+              class="px-5 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-all"
+            >
+              Save Changes
             </button>
           </div>
         </div>
-
-        <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
-          <button
-            type="button"
-            @click="isDrawerOpen = false"
-            class="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            @click="saveProductChanges"
-            class="px-5 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-all"
-          >
-            Save Changes
-          </button>
-        </div>
       </div>
-    </div>
+    </Transition>
   </div>
 </template>

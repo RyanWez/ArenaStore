@@ -16,22 +16,24 @@ const { isCollapsed, isMobileOpen, closeMobile } = useSidebar()
       <Sidebar />
     </div>
 
-    <!-- Mobile Drawer Sidebar (Sliding Overlay) -->
-    <div
-      v-if="isMobileOpen"
-      class="lg:hidden fixed inset-0 z-50 flex"
-    >
-      <!-- Backdrop overlay -->
+    <!-- Mobile Drawer Sidebar (Sliding Overlay with Transition) -->
+    <Transition name="drawer">
       <div
-        class="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300"
-        @click="closeMobile"
-      ></div>
+        v-if="isMobileOpen"
+        class="lg:hidden fixed inset-0 z-50 flex"
+      >
+        <!-- Backdrop overlay -->
+        <div
+          class="fixed inset-0 bg-black/60 backdrop-blur-sm"
+          @click="closeMobile"
+        ></div>
 
-      <!-- Drawer Content -->
-      <div class="relative w-72 max-w-[85vw] h-full shadow-2xl z-10 transition-transform duration-300">
-        <Sidebar :is-mobile="true" :on-item-click="closeMobile" />
+        <!-- Drawer Content -->
+        <div class="drawer-panel relative w-72 max-w-[85vw] h-full shadow-2xl z-10">
+          <Sidebar :is-mobile="true" :on-item-click="closeMobile" />
+        </div>
       </div>
-    </div>
+    </Transition>
 
     <!-- Main Content Layout (smooth margin/padding transition matching sidebar width) -->
     <div

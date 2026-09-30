@@ -249,97 +249,100 @@ async function saveCategory() {
     </div>
 
     <!-- Edit Category Modal -->
-    <div
-      v-if="isEditModalOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-    >
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5">
-        <div class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
-          <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <i class="pi pi-pencil text-indigo-500"></i>
-            Edit Category
-          </h3>
-          <button
-            type="button"
-            @click="isEditModalOpen = false"
-            class="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-slate-200"
-          >
-            <i class="pi pi-times text-xs"></i>
-          </button>
-        </div>
-
-        <form @submit.prevent="saveCategory" class="space-y-4">
-          <!-- Icon Emoji -->
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-              Category Emoji / Icon
-            </label>
-            <input
-              v-model="editForm.iconEmoji"
-              type="text"
-              maxlength="4"
-              class="w-20 px-3 py-2 text-center text-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-            />
-          </div>
-
-          <!-- Name -->
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-              Category Name
-            </label>
-            <input
-              v-model="editForm.name"
-              type="text"
-              required
-              class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-            />
-          </div>
-
-          <!-- Sort Order -->
-          <div>
-            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-              Sort Sequence (Lower numbers appear first)
-            </label>
-            <input
-              v-model.number="editForm.sortOrder"
-              type="number"
-              step="5"
-              class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-mono"
-            />
-          </div>
-
-          <!-- Active Toggle -->
-          <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60">
-            <div>
-              <span class="text-xs font-semibold text-slate-800 dark:text-slate-200 block">Category Visibility</span>
-              <span class="text-[11px] text-slate-400">Enable in customer Telegram Bot</span>
-            </div>
-            <input
-              v-model="editForm.isActive"
-              type="checkbox"
-              class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-            />
-          </div>
-
-          <!-- Submit Buttons -->
-          <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
+    <Transition name="modal">
+      <div
+        v-if="isEditModalOpen"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+        @click.self="isEditModalOpen = false"
+      >
+        <div class="modal-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+            <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <i class="pi pi-pencil text-indigo-500"></i>
+              Edit Category
+            </h3>
             <button
               type="button"
               @click="isEditModalOpen = false"
-              class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
+              class="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-slate-200"
             >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              :disabled="isSaving"
-              class="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors shadow-sm disabled:opacity-50"
-            >
-              {{ isSaving ? 'Saving...' : 'Save Changes' }}
+              <i class="pi pi-times text-xs"></i>
             </button>
           </div>
-        </form>
+
+          <form @submit.prevent="saveCategory" class="space-y-4">
+            <!-- Icon Emoji -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                Category Emoji / Icon
+              </label>
+              <input
+                v-model="editForm.iconEmoji"
+                type="text"
+                maxlength="4"
+                class="w-20 px-3 py-2 text-center text-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+
+            <!-- Name -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                Category Name
+              </label>
+              <input
+                v-model="editForm.name"
+                type="text"
+                required
+                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+
+            <!-- Sort Order -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                Sort Sequence (Lower numbers appear first)
+              </label>
+              <input
+                v-model.number="editForm.sortOrder"
+                type="number"
+                step="5"
+                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-mono"
+              />
+            </div>
+
+            <!-- Active Toggle -->
+            <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60">
+              <div>
+                <span class="text-xs font-semibold text-slate-800 dark:text-slate-200 block">Category Visibility</span>
+                <span class="text-[11px] text-slate-400">Enable in customer Telegram Bot</span>
+              </div>
+              <input
+                v-model="editForm.isActive"
+                type="checkbox"
+                class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+              />
+            </div>
+
+            <!-- Submit Buttons -->
+            <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                @click="isEditModalOpen = false"
+                class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                :disabled="isSaving"
+                class="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors shadow-sm disabled:opacity-50"
+              >
+                {{ isSaving ? 'Saving...' : 'Save Changes' }}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
+    </Transition>
   </div>
 </template>

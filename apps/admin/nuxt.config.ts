@@ -6,6 +6,10 @@ export default defineNuxtConfig({
   compatibilityDate: '2026-09-30',
   telemetry: false,
   devtools: { enabled: true },
+  app: {
+    pageTransition: { name: 'page', mode: 'out-in' },
+    layoutTransition: { name: 'layout', mode: 'out-in' },
+  },
   runtimeConfig: {
     public: {
       apiBaseUrl: process.env.API_BASE_URL || 'http://localhost:4000',

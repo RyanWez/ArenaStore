@@ -478,124 +478,127 @@ function formatCurrency(amount: number): string {
     </div>
 
     <!-- Order Detail Modal -->
-    <div
-      v-if="isDetailModalOpen && selectedOrder"
-      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-    >
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
-        <!-- Modal Header -->
-        <div class="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
+    <Transition name="modal">
+      <div
+        v-if="isDetailModalOpen && selectedOrder"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+        @click.self="isDetailModalOpen = false"
+      >
+        <div class="modal-card bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
+          <!-- Modal Header -->
+          <div class="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
+            <div>
+              <div class="flex items-center gap-2.5">
+                <h3 class="text-lg font-bold text-slate-900 dark:text-white font-mono">
+                  {{ selectedOrder.publicOrderNo }}
+                </h3>
+                <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                  {{ selectedOrder.status }}
+                </span>
+              </div>
+              <p class="text-xs text-slate-500 font-mono mt-0.5">External ID: {{ selectedOrder.externalOrderId }}</p>
+            </div>
+            <button
+              type="button"
+              @click="isDetailModalOpen = false"
+              class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+            >
+              <i class="pi pi-times text-xs"></i>
+            </button>
+          </div>
+
+          <!-- Customer & Order Metadata Grid -->
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 text-xs">
+            <div>
+              <span class="text-slate-500 block">Customer</span>
+              <span class="font-semibold text-slate-800 dark:text-slate-200">{{ selectedOrder.customer.firstName }}</span>
+              <span class="text-slate-400 block font-mono text-[11px]">{{ selectedOrder.customer.username ? `@${selectedOrder.customer.username}` : `ID: ${selectedOrder.customer.telegramId}` }}</span>
+            </div>
+            <div>
+              <span class="text-slate-500 block">Order Date</span>
+              <span class="font-semibold text-slate-800 dark:text-slate-200">{{ selectedOrder.createdAt }}</span>
+            </div>
+            <div>
+              <span class="text-slate-500 block">Total Price (MMK)</span>
+              <span class="font-bold text-indigo-600 dark:text-indigo-400 text-sm">{{ formatCurrency(selectedOrder.totalAmountMmk) }}</span>
+            </div>
+          </div>
+
+          <!-- Items Table -->
           <div>
-            <div class="flex items-center gap-2.5">
-              <h3 class="text-lg font-bold text-slate-900 dark:text-white font-mono">
-                {{ selectedOrder.publicOrderNo }}
-              </h3>
-              <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                {{ selectedOrder.status }}
+            <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Purchased Items</h4>
+            <div class="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-semibold border-b border-slate-200 dark:border-slate-800">
+                  <tr>
+                    <th class="py-2.5 px-3">Product</th>
+                    <th class="py-2.5 px-3">Qty</th>
+                    <th class="py-2.5 px-3">Unit Price</th>
+                    <th class="py-2.5 px-3 text-right">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
+                  <tr v-for="item in selectedOrder.items" :key="item.id">
+                    <td class="py-2.5 px-3 font-medium text-slate-800 dark:text-slate-200">
+                      {{ item.productName }}
+                    </td>
+                    <td class="py-2.5 px-3">{{ item.quantity }}</td>
+                    <td class="py-2.5 px-3">{{ formatCurrency(item.unitPriceMmk) }}</td>
+                    <td class="py-2.5 px-3 text-right font-semibold">{{ formatCurrency(item.subtotalMmk) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Delivered Credentials Card (if DELIVERED) -->
+          <div v-if="selectedOrder.delivery" class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-2">
+            <div class="flex items-center justify-between text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+              <span class="flex items-center gap-1.5">
+                <i class="pi pi-key"></i>
+                Delivered Digital Goods (Credentials / Invite Link)
               </span>
+              <span>{{ selectedOrder.delivery.deliveredAt }}</span>
             </div>
-            <p class="text-xs text-slate-500 font-mono mt-0.5">External ID: {{ selectedOrder.externalOrderId }}</p>
-          </div>
-          <button
-            type="button"
-            @click="isDetailModalOpen = false"
-            class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-          >
-            <i class="pi pi-times text-xs"></i>
-          </button>
-        </div>
-
-        <!-- Customer & Order Metadata Grid -->
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 text-xs">
-          <div>
-            <span class="text-slate-500 block">Customer</span>
-            <span class="font-semibold text-slate-800 dark:text-slate-200">{{ selectedOrder.customer.firstName }}</span>
-            <span class="text-slate-400 block font-mono text-[11px]">{{ selectedOrder.customer.username ? `@${selectedOrder.customer.username}` : `ID: ${selectedOrder.customer.telegramId}` }}</span>
-          </div>
-          <div>
-            <span class="text-slate-500 block">Order Date</span>
-            <span class="font-semibold text-slate-800 dark:text-slate-200">{{ selectedOrder.createdAt }}</span>
-          </div>
-          <div>
-            <span class="text-slate-500 block">Total Price (MMK)</span>
-            <span class="font-bold text-indigo-600 dark:text-indigo-400 text-sm">{{ formatCurrency(selectedOrder.totalAmountMmk) }}</span>
-          </div>
-        </div>
-
-        <!-- Items Table -->
-        <div>
-          <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Purchased Items</h4>
-          <div class="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
-            <table class="w-full text-left text-xs">
-              <thead class="bg-slate-50 dark:bg-slate-800/60 text-slate-500 font-semibold border-b border-slate-200 dark:border-slate-800">
-                <tr>
-                  <th class="py-2.5 px-3">Product</th>
-                  <th class="py-2.5 px-3">Qty</th>
-                  <th class="py-2.5 px-3">Unit Price</th>
-                  <th class="py-2.5 px-3 text-right">Subtotal</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-200 dark:divide-slate-800">
-                <tr v-for="item in selectedOrder.items" :key="item.id">
-                  <td class="py-2.5 px-3 font-medium text-slate-800 dark:text-slate-200">
-                    {{ item.productName }}
-                  </td>
-                  <td class="py-2.5 px-3">{{ item.quantity }}</td>
-                  <td class="py-2.5 px-3">{{ formatCurrency(item.unitPriceMmk) }}</td>
-                  <td class="py-2.5 px-3 text-right font-semibold">{{ formatCurrency(item.subtotalMmk) }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- Delivered Credentials Card (if DELIVERED) -->
-        <div v-if="selectedOrder.delivery" class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-2">
-          <div class="flex items-center justify-between text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-            <span class="flex items-center gap-1.5">
-              <i class="pi pi-key"></i>
-              Delivered Digital Goods (Credentials / Invite Link)
-            </span>
-            <span>{{ selectedOrder.delivery.deliveredAt }}</span>
-          </div>
-          <div class="relative">
-            <pre class="p-3 bg-slate-950 text-emerald-400 rounded-xl font-mono text-xs overflow-x-auto select-all">{{ selectedOrder.delivery.credentialsText }}</pre>
-          </div>
-        </div>
-
-        <!-- Payment Slip Submission Card (if SUBMITTED) -->
-        <div v-if="selectedOrder.paymentSubmission" class="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 space-y-3">
-          <div class="flex items-center justify-between text-xs font-semibold text-amber-700 dark:text-amber-300">
-            <span class="flex items-center gap-1.5">
-              <i class="pi pi-receipt"></i>
-              Customer Payment Proof ({{ selectedOrder.paymentSubmission.paymentMethod }})
-            </span>
-            <span>Ref: {{ selectedOrder.paymentSubmission.transactionRef }}</span>
-          </div>
-          <div class="flex items-center gap-4">
-            <img
-              :src="selectedOrder.paymentSubmission.slipImageUrl"
-              alt="Payment Slip"
-              class="w-20 h-24 object-cover rounded-lg border border-amber-500/30 shadow-sm"
-            />
-            <div class="text-xs space-y-1">
-              <p class="text-slate-700 dark:text-slate-300 font-medium">Submitted Amount: {{ formatCurrency(selectedOrder.paymentSubmission.submittedAmountMmk) }}</p>
-              <p class="text-slate-500 font-mono">Time: {{ selectedOrder.paymentSubmission.submittedAt }}</p>
+            <div class="relative">
+              <pre class="p-3 bg-slate-950 text-emerald-400 rounded-xl font-mono text-xs overflow-x-auto select-all">{{ selectedOrder.delivery.credentialsText }}</pre>
             </div>
           </div>
-        </div>
 
-        <!-- Modal Footer -->
-        <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
-          <button
-            type="button"
-            @click="isDetailModalOpen = false"
-            class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
-          >
-            Close
-          </button>
+          <!-- Payment Slip Submission Card (if SUBMITTED) -->
+          <div v-if="selectedOrder.paymentSubmission" class="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 space-y-3">
+            <div class="flex items-center justify-between text-xs font-semibold text-amber-700 dark:text-amber-300">
+              <span class="flex items-center gap-1.5">
+                <i class="pi pi-receipt"></i>
+                Customer Payment Proof ({{ selectedOrder.paymentSubmission.paymentMethod }})
+              </span>
+              <span>Ref: {{ selectedOrder.paymentSubmission.transactionRef }}</span>
+            </div>
+            <div class="flex items-center gap-4">
+              <img
+                :src="selectedOrder.paymentSubmission.slipImageUrl"
+                alt="Payment Slip"
+                class="w-20 h-24 object-cover rounded-lg border border-amber-500/30 shadow-sm"
+              />
+              <div class="text-xs space-y-1">
+                <p class="text-slate-700 dark:text-slate-300 font-medium">Submitted Amount: {{ formatCurrency(selectedOrder.paymentSubmission.submittedAmountMmk) }}</p>
+                <p class="text-slate-500 font-mono">Time: {{ selectedOrder.paymentSubmission.submittedAt }}</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Modal Footer -->
+          <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+            <button
+              type="button"
+              @click="isDetailModalOpen = false"
+              class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
+            >
+              Close
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </Transition>
   </div>
 </template>

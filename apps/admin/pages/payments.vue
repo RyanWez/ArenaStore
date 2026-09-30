@@ -272,130 +272,136 @@ function confirmReject() {
     </div>
 
     <!-- Zoomable Slip Preview Modal -->
-    <div
-      v-if="isSlipModalOpen && selectedSlip"
-      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
-    >
-      <div class="w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4 p-5 animate-in fade-in zoom-in-95 duration-150">
-        <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-          <div>
-            <h3 class="font-bold text-base text-slate-900 dark:text-white">
-              Slip Verification — {{ selectedSlip.publicOrderNo }}
-            </h3>
-            <p class="text-xs text-slate-400">
-              Customer: {{ selectedSlip.customerName }} ({{ selectedSlip.telegramUsername }}) · {{ selectedSlip.paymentMethod }}
-            </p>
-          </div>
-          <button
-            type="button"
-            @click="isSlipModalOpen = false"
-            class="text-slate-400 hover:text-slate-200"
-          >
-            <i class="pi pi-times text-lg"></i>
-          </button>
-        </div>
-
-        <!-- High-res Image Preview Area -->
-        <div class="max-h-[60vh] overflow-auto rounded-xl bg-black/40 border border-slate-800 flex items-center justify-center p-2">
-          <img
-            :src="selectedSlip.slipImageUrl"
-            alt="Full Receipt"
-            class="max-h-[55vh] object-contain rounded-lg shadow-md"
-          />
-        </div>
-
-        <!-- Transaction Details Row -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
-          <div>
-            <span class="text-slate-400 block">Item:</span>
-            <span class="font-medium text-slate-800 dark:text-slate-200">{{ selectedSlip.productName }}</span>
-          </div>
-          <div>
-            <span class="text-slate-400 block">Total Amount:</span>
-            <span class="font-bold text-slate-900 dark:text-white">{{ selectedSlip.submittedAmountMmk.toLocaleString() }} Ks</span>
-          </div>
-          <div>
-            <span class="text-slate-400 block">Transaction Ref:</span>
-            <span class="font-mono text-slate-800 dark:text-slate-200">{{ selectedSlip.transactionRef }}</span>
-          </div>
-          <div>
-            <span class="text-slate-400 block">Submitted:</span>
-            <span class="text-slate-600 dark:text-slate-300">{{ selectedSlip.submittedAt }}</span>
-          </div>
-        </div>
-
-        <!-- Modal Bottom Actions -->
-        <div class="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-800">
-          <button
-            v-if="selectedSlip.status === 'SUBMITTED'"
-            type="button"
-            @click="openRejectDialog(selectedSlip)"
-            class="px-4 py-2 rounded-xl text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors"
-          >
-            Reject Payment
-          </button>
-          <div v-else></div>
-
-          <div class="flex items-center gap-3">
+    <Transition name="modal">
+      <div
+        v-if="isSlipModalOpen && selectedSlip"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+        @click.self="isSlipModalOpen = false"
+      >
+        <div class="modal-card w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4 p-5">
+          <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+            <div>
+              <h3 class="font-bold text-base text-slate-900 dark:text-white">
+                Slip Verification — {{ selectedSlip.publicOrderNo }}
+              </h3>
+              <p class="text-xs text-slate-400">
+                Customer: {{ selectedSlip.customerName }} ({{ selectedSlip.telegramUsername }}) · {{ selectedSlip.paymentMethod }}
+              </p>
+            </div>
             <button
               type="button"
               @click="isSlipModalOpen = false"
-              class="px-4 py-2 rounded-xl text-xs font-medium text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              class="text-slate-400 hover:text-slate-200"
             >
-              Close
+              <i class="pi pi-times text-lg"></i>
             </button>
+          </div>
+
+          <!-- High-res Image Preview Area -->
+          <div class="max-h-[60vh] overflow-auto rounded-xl bg-black/40 border border-slate-800 flex items-center justify-center p-2">
+            <img
+              :src="selectedSlip.slipImageUrl"
+              alt="Full Receipt"
+              class="max-h-[55vh] object-contain rounded-lg shadow-md"
+            />
+          </div>
+
+          <!-- Transaction Details Row -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
+            <div>
+              <span class="text-slate-400 block">Item:</span>
+              <span class="font-medium text-slate-800 dark:text-slate-200">{{ selectedSlip.productName }}</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block">Total Amount:</span>
+              <span class="font-bold text-slate-900 dark:text-white">{{ selectedSlip.submittedAmountMmk.toLocaleString() }} Ks</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block">Transaction Ref:</span>
+              <span class="font-mono text-slate-800 dark:text-slate-200">{{ selectedSlip.transactionRef }}</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block">Submitted:</span>
+              <span class="text-slate-600 dark:text-slate-300">{{ selectedSlip.submittedAt }}</span>
+            </div>
+          </div>
+
+          <!-- Modal Bottom Actions -->
+          <div class="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-800">
             <button
               v-if="selectedSlip.status === 'SUBMITTED'"
               type="button"
-              @click="approvePayment(selectedSlip)"
-              :disabled="isProcessing"
-              class="inline-flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 transition-all disabled:opacity-50"
+              @click="openRejectDialog(selectedSlip)"
+              class="px-4 py-2 rounded-xl text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors"
             >
-              <i class="pi pi-check"></i>
-              <span>Approve & Deliver Now</span>
+              Reject Payment
+            </button>
+            <div v-else></div>
+
+            <div class="flex items-center gap-3">
+              <button
+                type="button"
+                @click="isSlipModalOpen = false"
+                class="px-4 py-2 rounded-xl text-xs font-medium text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                Close
+              </button>
+              <button
+                v-if="selectedSlip.status === 'SUBMITTED'"
+                type="button"
+                @click="approvePayment(selectedSlip)"
+                :disabled="isProcessing"
+                class="inline-flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 transition-all disabled:opacity-50"
+              >
+                <i class="pi pi-check"></i>
+                <span>Approve & Deliver Now</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Reject Reason Dialog -->
+    <Transition name="modal">
+      <div
+        v-if="isRejectModalOpen && selectedSlip"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+        @click.self="isRejectModalOpen = false"
+      >
+        <div class="modal-card w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
+          <h3 class="text-base font-bold text-slate-900 dark:text-white">
+            Reject Payment Slip
+          </h3>
+          <p class="text-xs text-slate-400">
+            State the reason why order <span class="font-mono text-white">{{ selectedSlip.publicOrderNo }}</span> was rejected. This reason will be sent to the customer on Telegram.
+          </p>
+
+          <textarea
+            v-model="rejectReason"
+            rows="3"
+            class="w-full p-3 rounded-xl text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500"
+            placeholder="e.g. Invalid transaction ID or wrong amount..."
+          ></textarea>
+
+          <div class="flex items-center justify-end gap-3 pt-2">
+            <button
+              type="button"
+              @click="isRejectModalOpen = false"
+              class="px-4 py-2 rounded-xl text-xs font-medium text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              @click="confirmReject"
+              class="px-4 py-2 rounded-xl text-xs font-semibold bg-red-600 hover:bg-red-500 text-white shadow-md shadow-red-600/30"
+            >
+              Confirm Rejection
             </button>
           </div>
         </div>
       </div>
-    </div>
-
-    <!-- Reject Reason Dialog -->
-    <div
-      v-if="isRejectModalOpen && selectedSlip"
-      class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
-    >
-      <div class="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
-        <h3 class="text-base font-bold text-slate-900 dark:text-white">
-          Reject Payment Slip
-        </h3>
-        <p class="text-xs text-slate-400">
-          State the reason why order <span class="font-mono text-white">{{ selectedSlip.publicOrderNo }}</span> was rejected. This reason will be sent to the customer on Telegram.
-        </p>
-
-        <textarea
-          v-model="rejectReason"
-          rows="3"
-          class="w-full p-3 rounded-xl text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500"
-          placeholder="e.g. Invalid transaction ID or wrong amount..."
-        ></textarea>
-
-        <div class="flex items-center justify-end gap-3 pt-2">
-          <button
-            type="button"
-            @click="isRejectModalOpen = false"
-            class="px-4 py-2 rounded-xl text-xs font-medium text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            @click="confirmReject"
-            class="px-4 py-2 rounded-xl text-xs font-semibold bg-red-600 hover:bg-red-500 text-white shadow-md shadow-red-600/30"
-          >
-            Confirm Rejection
-          </button>
-        </div>
-      </div>
-    </div>
+    </Transition>
   </div>
 </template>
