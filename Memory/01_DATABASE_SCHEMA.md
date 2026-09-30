@@ -2,35 +2,32 @@
 
 ## Status
 
-Draft domain model. No database migration has been created yet.
+Schema designed and implemented via Drizzle ORM in `packages/db`. Core entities support both upstream partner mapping and the **Prepaid Wallet Architecture**.
 
-## Planned entities
+## Primary Entities
 
-| Entity | Purpose | Key fields |
+| Entity | Purpose | Key Fields |
 |---|---|---|
-| `users` | Telegram customers and staff identities | telegramId, username, role, status |
-| `categories` | Arena Store product groupings | name, slug, sortOrder, active |
-| `products` | Local sellable products mapped to upstream products | upstreamProductId, MMK price, limits, active |
-| `product_supplier_snapshots` | Latest read-only supplier catalog state | USD cost, supplier stock, deliveryType, syncedAt |
-| `orders` | Internal source of truth for customer purchases | publicOrderNo, status, totals, externalOrderId |
-| `order_items` | Product, quantity, local price and supplier cost snapshot | productId, quantity, unitPriceMmk |
-| `order_deliveries` | Encrypted delivery payload and delivery status | orderId, encryptedPayload, deliveredAt |
-| `payment_submissions` | Manual proof / automated provider records | orderId, method, reference, status |
-| `wallet_ledger` | Optional customer wallet credits/debits | userId, amountMmk, reason |
-| `stock_reservations` | Time-limited held quantity before payment expiry | productId, orderId, quantity, expiresAt |
-| `promo_codes` | Discounts and usage limits | code, type, value, startsAt, endsAt |
-| `referrals` | Referrer relationship and reward state | referrerId, referredId, status |
-| `support_tickets` | Customer support context | userId, orderId, status, assignedTo |
-| `audit_logs` | Immutable privileged admin actions | actorId, action, entityType, entityId |
-| `app_settings` | Encrypted/controlled system settings | key, value, updatedAt |
+| `users` | Telegram customers and admin staff | `id`, `telegramId`, `username`, `firstName`, `role`, `status`, `createdAt` |
+| `wallets` | Customer live prepaid MMK wallet balances | `id`, `userId`, `balanceMmk`, `totalDepositedMmk`, `totalSpentMmk`, `updatedAt` |
+| `topup_requests` | Wallet deposit slip submissions | `id`, `userId`, `amountMmk`, `reference`, `paymentMethod` (KPAY/WAVEPAY), `slipFileId`, `status` (PENDING/SUBMITTED/APPROVED/REJECTED), `approvedAt` |
+| `wallet_ledger` | Immutable audit trail of all credits and debits | `id`, `walletId`, `amountMmk`, `type` (TOPUP_CREDIT/ORDER_DEBIT/REFUND_CREDIT), `referenceId`, `createdAt` |
+| `categories` | Arena Store product categories | `id`, `name`, `cleanName`, `emojiId`, `sortOrder`, `active` |
+| `products` | Local sellable products mapped to upstream | `id`, `categoryId`, `upstreamProductId`, `name`, `cleanName`, `emojiId`, `retailPriceMmk`, `stockLimit`, `active` |
+| `product_supplier_snapshots` | Latest read-only supplier catalog state | `id`, `productId`, `supplierPriceUsd`, `supplierStock`, `deliveryType`, `syncedAt` |
+| `orders` | Customer product purchases (Wallet-funded) | `id`, `publicOrderNo`, `userId`, `totalMmk`, `status` (DELIVERED/PROCESSING/CANCELLED/REFUNDED), `paymentSource` (WALLET), `externalOrderId`, `createdAt` |
+| `order_items` | Products and quantities inside an order | `id`, `orderId`, `productId`, `quantity`, `unitPriceMmk`, `subtotalMmk` |
+| `order_deliveries` | Encrypted digital credentials delivered | `id`, `orderId`, `encryptedCredentials` (AES-256-GCM), `deliveryType`, `deliveredAt` |
+| `stock_reservations` | Real-time stock availability locks | `id`, `productId`, `quantity`, `expiresAt` |
+| `audit_logs` | Immutable admin audit trail | `id`, `actorId`, `action`, `entityType`, `entityId`, `payload`, `createdAt` |
 
-## Money rules
+## Money & Valuation Rules
 
-- Store MMK in integer kyat units, e.g. `7500`, never `7500.00` JavaScript floats.
-- Store USD supplier values in decimal-safe string/decimal fields, never native JavaScript floating-point numbers.
-- Copy effective customer price and supplier cost into order item snapshots at checkout.
+1. **Integer MMK:** All local currency amounts are stored strictly as integer Kyats (e.g. `3900`, `50000`), never JavaScript floating-point numbers.
+2. **Decimal USD:** Upstream USD supplier prices are stored as decimal strings (e.g. `"0.69"`).
+3. **Atomic Wallet Transactions:** Order purchases perform atomic balance checks and deductions (`balanceMmk >= totalMmk`) within database transactions to completely prevent double-spending or negative balances.
 
-## Stock rule
+## Stock Calculation Rule
 
 ```text
 customer_sellable_stock = min(
@@ -39,19 +36,4 @@ customer_sellable_stock = min(
   product_local_limit
 ) - active_reserved_units
 ```
-
-The implementation must clamp at zero and recalculate before supplier ordering.
-
-## Required indexes (later)
-
-- unique `users.telegram_id`
-- unique `products.upstream_product_id` where relevant
-- unique `orders.public_order_no`
-- unique `orders.external_order_id`
-- unique `order_items(order_id, product_id)` when one line per product is enforced
-- index active reservations by `(product_id, expires_at)`
-- index order list views by `(status, created_at)`
-
-## Required audit events
-
-Product price changes, local stock-limit changes, payment approval/rejection, wallet adjustments, order retries, delivery resend, role changes, and settings changes.
+Implementation clamps at `0` and verifies availability in real-time prior to order placement.

@@ -88,14 +88,14 @@ const navGroups: NavGroup[] = [
     items: [
       {
         to: '/orders',
-        label: 'All Orders',
+        label: 'Product Orders',
         icon: 'pi pi-shopping-bag',
         badge: null,
       },
       {
         to: '/payments',
-        label: 'Payment Slips',
-        icon: 'pi pi-receipt',
+        label: 'Deposit Slips',
+        icon: 'pi pi-wallet',
         badge: { type: 'pill', text: 'Review', color: 'amber' },
       },
     ],

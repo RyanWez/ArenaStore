@@ -151,54 +151,51 @@ Provide store operators with a modern, fast, and responsive management interface
 ## Phase 4: Customer Telegram Bot (grammY)
 
 ### Objective
-Deliver a localized, intuitive, and high-conversion storefront bot for Myanmar customers with real-time catalog navigation, Burmese instructions, and seamless slip submission.
+Deliver a localized, intuitive, and high-conversion storefront bot for Myanmar customers with real-time catalog navigation, Burmese instructions, Prepaid Wallet Architecture, and instant digital goods delivery.
 
 ### Target Locations
 - `apps/bot`
 
 ### Key Deliverables & Implementation Details
 1. **Interactive Navigation Structure:**
-   - `/start` menu:
-     - `🛍 ပစ္စည်းများဝယ်ယူရန်` (Browse Categories)
-     - `📦 ကျွန်ုပ်၏အော်ဒါများ` (My Orders)
-     - `💰 Wallet` (Customer Wallet balance & top-up)
-     - `👤 Profile` (User details & referral link)
-     - `🎧 Support` (Direct admin help link)
-     - `📢 Channel` (Store announcements channel)
+   - 2x2 Grid + Navigation Layout:
+     - Row 1: `[ 🛍 ပစ္စည်းများဝယ်ယူရန် ]` (Green Style) + `[ 👤 My Profile ]`
+     - Row 2: `[ 💰 Wallet ]` + `[ 📦 ကျွန်ုပ်၏အော်ဒါများ ]`
+     - Row 3: `[ 💬 Help & Support ]` + `[ 📢 Channel ]` (`@arenasellerstore`)
+   - Programmatically registered commands: `/start` and `/menu`.
+   - Testing/admin command: `/deposit <amount>`.
 
 2. **Catalog & Product Browsing Flow:**
-   - Dynamic inline keyboards for Categories (Gemini AI, Duolingo, Canva, Netflix, ChatGPT, etc.).
-   - Product list with availability indicators and MMK pricing.
-   - Product detail message:
-     - Parsed `<tg-emoji>` custom emojis.
-     - Clean Burmese description and account feature bullets.
-     - Stock availability and pricing in MMK.
-     - Interactive quantity picker: `[-] [1] [+]`, quick preset buttons (`1, 5, 10, 20`), and custom quantity option.
+   - Dynamic 2-column inline keyboard for Categories with custom animated icons.
+   - Products list with Option A MMK pricing format (`3,900 Ks`, `19,500 Ks`).
+   - Product detail card with blockquote header, clean description, MMK price, stock, and interactive quantity controller:
+     - Stepper: `[-] [Quantity] [+]`
+     - Quick Presets: `[✅ 1] [5] [10] [20] [30] [50]`
+     - Custom Quantity: `[🎉 Custom Quantity]` (parses natural numeric input).
 
-3. **Checkout & Payment Flow:**
-   - Order summary message with reservation countdown timer (15 minutes).
-   - QR code and phone number for KPay / WavePay / CB Pay transfer.
-   - Customer uploads screenshot receipt directly in chat.
-   - Bot validates image receipt, acknowledges receipt with unique Order Number (`ARN-XXXXX`), and enters pending verification state.
+3. **Prepaid Wallet Architecture (Recommendations A to D):**
+   - **Recommendation A (Smart Top-Up Shortcut):** Exact deficit calculation on Buy Now when wallet balance is insufficient (`totalMmk - balanceMmk`), with direct 1-click deficit invoice button.
+   - **Recommendation B (Wallet Dashboard & Quick Presets):** Displays live balance, total spent, and quick top-up preset buttons (`5,000`, `10,000`, `20,000`, `50,000 Ks`, and custom amount).
+   - **Recommendation C (Deposit Slip Verification):** Generates payment invoice with KPay & WavePay phone numbers and reference (`TOP-XXXXXX`). Customer uploads screenshot slip in chat; bot acknowledges receipt immediately.
+   - **Recommendation D (Instant 1-Click Purchase & Immediate Delivery):** When balance is sufficient, customer confirms purchase -> atomic wallet balance deduction -> **immediate delivery of digital credentials in chat within seconds (zero waiting time, no 15-minute stock hold).**
+   - **My Orders Viewer:** Customers can view past orders (`/orders`) and retrieve accounts/keys anytime.
 
-4. **Instant Automated Delivery:**
-   - On payment approval, bot receives webhook/event from `apps/api`.
-   - Sends formatted delivery message containing accounts/links with security reminders (e.g. "ကျေးဇူးတင်ပါသည်! သင့်အကောင့်အချက်အလက်များ...").
+4. **Premium Custom Animated Emojis:**
+   - Full set of 19 Telegram Premium animated custom emojis implemented across all message headers, bullet points, stats, warnings, and button labels. Raw Unicode emojis strictly disallowed.
 
 5. **Smooth Bot UX & Performance Optimization Standards:**
-   - **Zero-Wait Callback Acknowledgement:** Call `await ctx.answerCallbackQuery()` immediately on every button press to eliminate Telegram's circular loading spinner instantly.
-   - **In-Place Message Editing (No Chat Spam):** Update quantities, page numbers, and category menus via `editMessageText` / `editMessageReplyMarkup` rather than posting new messages to prevent chat stutter and scroll jumps.
-   - **Chat Action Feedback:** Dispatch `ctx.replyWithChatAction('typing' | 'upload_photo')` during any async backend operation exceeding 200ms so the user has immediate visual feedback.
-   - **Multi-Tap & Double-Submit Debouncing:** Session-level lock on order submission and payment receipt upload to prevent duplicate orders or race conditions on rapid taps.
-   - **In-Memory Catalog Cache:** Cache active category and product summaries in memory/Redis with a 5-minute TTL to ensure sub-100ms keyboard navigation for end users.
+   - **Zero-Wait Callback Acknowledgement:** Call `await ctx.answerCallbackQuery()` immediately on every button press to eliminate Telegram's circular loading spinner.
+   - **In-Place Message Editing (No Chat Spam):** Update quantities, page numbers, and menus via `editMessageText` / `editMessageReplyMarkup` rather than posting new messages.
+   - **Multi-Tap & Double-Submit Debouncing:** Session-level lock on order submission and payment receipt upload.
+   - **In-Memory Catalog Cache:** Cache active category and product summaries with 5-minute TTL for sub-100ms keyboard navigation.
 
 ### Verification Gate for Phase 4 (COMPLETED ✅)
-- Custom Telegram Emojis parsed from `{pe:<id>}` with `icon_custom_emoji_id` on inline keyboard buttons (matching Screenshots 1 & 2).
+- 19 Telegram Premium Animated Custom Emojis active with `icon_custom_emoji_id` and `tgEmoji()`.
 - Option A MMK retail pricing (`3,900 Ks`, `19,500 Ks`) implemented and verified.
-- Interactive quantity controller (`[-] [1] [+]`, presets `[✅ 1] [5] [10] [20] [30] [50]`, `[🎉 Custom Quantity]`) matching Screenshot 3.
-- Fastify backend integration for `POST /api/orders` and `POST /api/orders/:id/payments`.
-- Photo payment slip receipt submission handler with confirmation message.
-- Full unit test suite passing (20/20 bot tests, 54/54 total tests passing in 829ms).
+- Interactive quantity controller (`[-] [1] [+]`, presets `[✅ 1] [5] [10] [20] [30] [50]`, `[🎉 Custom Quantity]`).
+- Full Prepaid Wallet Architecture (Recommendations A to D) fully operational.
+- Admin Dashboard updated with dedicated `Product Orders` and `Deposit Slips` workflows.
+- Full unit test suite passing (62/62 tests passing in `pnpm test`).
 - Live Telegram Bot `@arenastoredev_bot` active and listening in dev background process.
 
 ---

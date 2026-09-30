@@ -27,7 +27,7 @@ const recentOrders = ref([
     productName: 'Gemini AI 18 MONTH',
     customer: '@ryanwez',
     amountMmk: 3900,
-    status: 'PAYMENT_SUBMITTED',
+    status: 'DELIVERED',
     createdAt: '10 mins ago',
   },
   {
@@ -93,8 +93,8 @@ async function handleSync() {
           to="/payments"
           class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 transition-all"
         >
-          <i class="pi pi-receipt"></i>
-          <span>Review Slips ({{ stats.pendingSlips }})</span>
+          <i class="pi pi-wallet"></i>
+          <span>Review Deposits ({{ stats.pendingSlips }})</span>
         </NuxtLink>
       </div>
     </div>

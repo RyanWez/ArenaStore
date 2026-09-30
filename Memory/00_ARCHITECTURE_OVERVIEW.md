@@ -2,62 +2,55 @@
 
 ## Purpose
 
-Arena Store is a Telegram-first storefront. Customers browse products and pay in MMK; the backend may fulfil eligible orders through a separately funded upstream partner API priced in USD.
+Arena Store is a Telegram-first storefront for digital products and AI software subscriptions in Myanmar. Customers browse products and pay in MMK; the backend fulfills orders through instant delivery using customer prepaid wallet funds and an upstream partner API priced in USD.
 
-## Planned system
+## System Architecture (Wallet-First Flow)
 
 ```text
 Telegram Customer
-      │
+      │ (1. Deposit KPay/WavePay Slip)
       ▼
-apps/bot ───────► apps/api ◄────── apps/admin
-                      │
-              ┌───────┼────────┐
-              ▼       ▼        ▼
-        PostgreSQL  Redis  Upstream Partner API
+┌──────────────┐      Approve Deposit (+MMK)     ┌──────────────┐
+│  apps/bot    │ ◄────────────────────────────── │  apps/admin  │
+│  (Storefront)│                                 │ (Admin Panel)│
+└──────┬───────┘                                 └──────┬───────┘
+       │ (2. Instant 1-Click Buy with Wallet)           │
+       ▼                                                ▼
+┌──────────────┐                                ┌──────────────┐
+│  apps/api    │ ─────────────────────────────► │ PostgreSQL   │
+│  (Backend)   │                                │ & Redis      │
+└──────┬───────┘                                └──────────────┘
+       │ (3. Upstream Fulfillment if needed)
+       ▼
+┌───────────────────────────┐
+│ Upstream Partner API (USD)│
+└───────────────────────────┘
 ```
 
-## Workspace boundaries
+## Workspace Boundaries
 
-| Area | Responsibility |
-|---|---|
-| `apps/bot` | Telegram menus, customer messages, order flow, support routing |
-| `apps/api` | business rules, authentication, orders, pricing, stock, payments, supplier client, jobs |
-| `apps/admin` | internal dashboard for products, pricing, orders, payments, customers, settings |
-| `packages/db` | schema, migrations, repositories, database types |
-| `packages/shared` | shared validation, enums, money helpers, Telegram custom-emoji renderer contracts |
-| `packages/ui` | shadcn/ui-based reusable dashboard components only |
-| `tests` | unit, integration, e2e, mocks, fixtures |
+| Area | Responsibility | Status |
+|---|---|:---:|
+| `apps/bot` | Telegram bot storefront, 2x2 grid menus, animated custom emojis, Prepaid Wallet (A to D), instant credentials delivery | **Completed (Phase 4)** ✅ |
+| `apps/admin` | Nuxt 3 dashboard, Product Orders fulfillment, Wallet Deposit Slips review, rates & margins | **Completed (Phase 3)** ✅ |
+| `apps/api` | Fastify backend, upstream XPro client, encryption, order & deposit processing | **Completed (Phase 2)** ✅ |
+| `packages/db` | Drizzle ORM schema, entities (users, products, orders, wallet, deposits) | **Completed (Phase 1)** ✅ |
+| `packages/shared` | Shared types, BOT_EMOJIS (19 custom animated IDs), MMK money & retail calculators | **Completed** ✅ |
+| `tests` | Vitest test suites (62/62 tests passing), unit & integration coverage | **Completed** ✅ |
 
-## Reality-check and research agreement
+## Core Architectural Decisions & Evolution
 
-Before a meaningful technical or product decision, agents must first inspect the local codebase, installed versions, configuration, existing Memory decisions, and tests. When a fact can change over time, agents must also research current information on the web, preferring official documentation and primary provider sources.
-
-Agents must compare viable options against the current project rather than relying only on remembered knowledge. The daily Memory log records the date, sources checked, verified result, decision, and unresolved questions. Assumptions must be labelled; conflicting evidence or material uncertainty must be raised with the user before implementation.
-
-## Core rules
-
-1. The client never accesses the upstream supplier API directly.
-2. Arena Store owns all display names, MMK prices, local sales limits, policies, and customer records.
-3. The upstream supplier owns upstream USD costs, live supplier stock, and fulfilment delivery data.
-4. All order fulfilment is idempotent through an internal order ID plus upstream `externalOrderId`.
-5. Initial payment flow should be manual verification before automated payment providers are added.
-6. Custom emoji placeholders from supplier text are preserved and transformed only at Telegram rendering time.
-
-## Initial stack decision
-
-- TypeScript / Node.js
-- Telegram bot: grammY (TypeScript)
-- Backend: Fastify (TypeScript)
-- Admin: Nuxt 3 + Tailwind CSS + PrimeVue (v4, Aura theme)
-- Database: PostgreSQL + Drizzle ORM
-- Jobs/cache: Redis + BullMQ
-- Tests: Vitest; Playwright for admin E2E
-
-## Transitional catalog adapter
-
-Until the Fastify-versus-Nest decision is made and `apps/api` is implemented, the Admin Next.js server owns a narrow read-only `GET /api/catalog` adapter. It is server-side only, has no supplier mutation capability, and must move behind Admin authentication before an internet-facing deployment. The eventual `apps/api` supplier client remains the long-term source of truth.
-
-## Not implemented
-
-No live payment, supplier order, persistent local-selling-rule storage, or standalone Arena Store API service has been implemented.
+1. **Prepaid Wallet Architecture (Recommendations A to D):**
+   - *Previous Approach:* Per-order payment slip with 15-minute stock hold.
+   - *Current Reality:* Customers maintain a prepaid MMK wallet. Product purchases are **Instant 1-Click Buy** with atomic balance deduction and immediate credentials delivery (zero waiting time).
+   - *Smart Deficit Shortcut:* If wallet balance is insufficient on Buy Now, bot calculates exact deficit (`deficitMmk = totalMmk - walletBalance`) and provides direct 1-click deficit invoice.
+2. **Decoupled Admin Verification:**
+   - Manual slip verification is strictly confined to **Wallet Top-Up / Deposits** (`TOP-XXXXXX`).
+   - Digital product orders are automatically delivered and recorded as `DELIVERED` without requiring manual per-order verification.
+3. **Telegram Premium Animated Custom Emojis:**
+   - Full set of 19 animated custom emojis (`tgEmoji(BOT_EMOJIS.<NAME>)` and `icon_custom_emoji_id`) across all messages and buttons. Raw Unicode emojis strictly disallowed.
+4. **Pricing Standard (Option A):**
+   - Retail prices displayed as `<amount> Ks` (e.g. `3,900 Ks`, `19,500 Ks`) using English numerals and comma separation.
+5. **Security & Privacy:**
+   - Upstream supplier API key and USD supplier costs are never exposed to clients or Telegram users.
+   - Delivery credentials (passwords, tokens, keys) are AES-256-GCM encrypted in database.

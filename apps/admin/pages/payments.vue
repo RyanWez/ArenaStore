@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useToast } from '~/composables/useToast'
 
 const toast = useToast()
@@ -11,51 +11,54 @@ onMounted(() => {
   }, 450)
 })
 
-interface PaymentItem {
+export interface DepositItem {
   id: number
-  orderId: string
-  publicOrderNo: string
-  productName: string
+  topUpId: string
+  reference: string
   customerName: string
   telegramUsername: string
+  telegramId: string
   paymentMethod: 'KPAY' | 'WAVEPAY' | 'UAB_PAY' | 'AYA_PAY'
-  submittedAmountMmk: number
+  depositAmountMmk: number
   transactionRef: string
   slipImageUrl: string
   submittedAt: string
-  status: 'SUBMITTED' | 'VERIFIED' | 'REJECTED'
+  status: 'SUBMITTED' | 'APPROVED' | 'REJECTED'
+  intendedProduct?: string
 }
 
 const isSlipModalOpen = ref(false)
 const isRejectModalOpen = ref(false)
-const selectedSlip = ref<PaymentItem | null>(null)
-const rejectReason = ref('Slip amount does not match order total.')
+const selectedSlip = ref<DepositItem | null>(null)
+const rejectReason = ref('Slip amount does not match requested top-up.')
 const isProcessing = ref(false)
+const activeTab = ref<'ALL' | 'SUBMITTED' | 'APPROVED' | 'REJECTED'>('ALL')
 
-const slips = ref<PaymentItem[]>([
+const slips = ref<DepositItem[]>([
   {
     id: 101,
-    orderId: 'c1234567-89ab-cdef-0123-456789abcdef',
-    publicOrderNo: 'ARN-2026-84920',
-    productName: 'Gemini AI 18 MONTH',
+    topUpId: 'TOP-2026-84920',
+    reference: 'TOP-84920',
     customerName: 'Ryan Wez',
     telegramUsername: '@ryanwez',
+    telegramId: '984729184',
     paymentMethod: 'KPAY',
-    submittedAmountMmk: 3900,
+    depositAmountMmk: 50000,
     transactionRef: '098472918471',
     slipImageUrl: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=800&q=80',
     submittedAt: '5 mins ago',
     status: 'SUBMITTED',
+    intendedProduct: 'Gemini AI 18 MONTH x 1',
   },
   {
     id: 102,
-    orderId: 'd9876543-21ba-fedc-3210-987654fedcba',
-    publicOrderNo: 'ARN-2026-84921',
-    productName: 'Canva Pro 1 Year Private',
+    topUpId: 'TOP-2026-84921',
+    reference: 'TOP-84921',
     customerName: 'Aung Kyaw',
     telegramUsername: '@aungkyaw_99',
+    telegramId: '872635194',
     paymentMethod: 'WAVEPAY',
-    submittedAmountMmk: 3200,
+    depositAmountMmk: 20000,
     transactionRef: 'WP-84920194',
     slipImageUrl: 'https://images.unsplash.com/photo-1554224154-26032ffc0d07?auto=format&fit=crop&w=800&q=80',
     submittedAt: '25 mins ago',
@@ -63,57 +66,89 @@ const slips = ref<PaymentItem[]>([
   },
   {
     id: 103,
-    orderId: 'e4567890-1234-5678-9012-345678901234',
-    publicOrderNo: 'ARN-2026-84919',
-    productName: 'Claude $100 API Key',
+    topUpId: 'TOP-2026-84919',
+    reference: 'TOP-84919',
     customerName: 'Ko Kyaw',
     telegramUsername: '@kyawkyaw_mm',
+    telegramId: '761234908',
     paymentMethod: 'KPAY',
-    submittedAmountMmk: 16500,
+    depositAmountMmk: 100000,
     transactionRef: '098192849182',
     slipImageUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=800&q=80',
     submittedAt: '1 hour ago',
-    status: 'VERIFIED',
+    status: 'APPROVED',
+  },
+  {
+    id: 104,
+    topUpId: 'TOP-2026-84915',
+    reference: 'TOP-84915',
+    customerName: 'Thant Zin',
+    telegramUsername: '@thant_zin',
+    telegramId: '654321987',
+    paymentMethod: 'KPAY',
+    depositAmountMmk: 10000,
+    transactionRef: '098112233445',
+    slipImageUrl: 'https://images.unsplash.com/photo-1554224155-1696413565d3?auto=format&fit=crop&w=800&q=80',
+    submittedAt: '3 hours ago',
+    status: 'APPROVED',
   },
 ])
 
-function openSlipPreview(slip: PaymentItem) {
+const filteredSlips = computed(() => {
+  if (activeTab.value === 'ALL') return slips.value
+  return slips.value.filter((s) => s.status === activeTab.value)
+})
+
+const pendingCount = computed(() => slips.value.filter((s) => s.status === 'SUBMITTED').length)
+const pendingTotalMmk = computed(() =>
+  slips.value
+    .filter((s) => s.status === 'SUBMITTED')
+    .reduce((sum, s) => sum + s.depositAmountMmk, 0)
+)
+const approvedTodayMmk = computed(() =>
+  slips.value
+    .filter((s) => s.status === 'APPROVED')
+    .reduce((sum, s) => sum + s.depositAmountMmk, 0)
+)
+
+function openSlipPreview(slip: DepositItem) {
   selectedSlip.value = slip
   isSlipModalOpen.value = true
 }
 
-async function approvePayment(slip: PaymentItem) {
+async function approveDeposit(slip: DepositItem) {
   if (isProcessing.value) return
   isProcessing.value = true
 
   try {
-    // In real backend, calls /api/admin/payments/review
+    // In real system, calls backend /api/admin/deposits/review or credits bot wallet
     await new Promise((r) => setTimeout(r, 600))
-    slip.status = 'VERIFIED'
+    slip.status = 'APPROVED'
     isSlipModalOpen.value = false
     toast.success(
-      `Order ${slip.publicOrderNo} approved! Upstream order fulfilled and credentials delivered to ${slip.telegramUsername}.`,
-      'Payment Approved'
+      `Top-Up ${slip.topUpId} approved! +${slip.depositAmountMmk.toLocaleString()} Ks credited to ${slip.customerName} (${slip.telegramUsername}). Instant Telegram Bot notification sent.`,
+      'Wallet Credited'
     )
   } finally {
     isProcessing.value = false
   }
 }
 
-function openRejectDialog(slip: PaymentItem) {
+function openRejectDialog(slip: DepositItem) {
   selectedSlip.value = slip
   isRejectModalOpen.value = true
 }
 
 function confirmReject() {
   if (!selectedSlip.value) return
-  const orderNo = selectedSlip.value.publicOrderNo
+  const topUpId = selectedSlip.value.topUpId
+  const user = selectedSlip.value.telegramUsername
   selectedSlip.value.status = 'REJECTED'
   isRejectModalOpen.value = false
   isSlipModalOpen.value = false
   toast.warn(
-    `Payment for ${orderNo} rejected. Stock reservation released.`,
-    'Payment Rejected'
+    `Top-Up ${topUpId} rejected for ${user}. Reason: ${rejectReason.value}`,
+    'Deposit Slip Rejected'
   )
 }
 </script>
@@ -123,21 +158,101 @@ function confirmReject() {
     <!-- Header -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
-        <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-          Payment Slips & Order Verification
+        <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+          <span>Wallet Deposit Slips & Verification</span>
+          <span class="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+            Prepaid Wallet System
+          </span>
         </h1>
         <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Review customer KPay & WavePay screenshot receipts. One-click approve triggers automatic upstream delivery.
+          Review customer KPay & WavePay screenshot receipts for Wallet Top-Ups. One-click approve credits the customer's wallet balance and triggers instant Telegram Bot notification.
         </p>
       </div>
 
       <!-- Quick Counter -->
       <div class="flex items-center gap-2">
-        <span class="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1.5">
-          <i class="pi pi-hourglass"></i>
-          <span>2 Pending Verification</span>
+        <span class="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-2 shadow-sm">
+          <i class="pi pi-hourglass animate-pulse text-sm"></i>
+          <span>{{ pendingCount }} Pending Review · {{ pendingTotalMmk.toLocaleString() }} Ks</span>
         </span>
       </div>
+    </div>
+
+    <!-- Stats Summary Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4">
+        <div class="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center text-xl">
+          <i class="pi pi-clock"></i>
+        </div>
+        <div>
+          <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Pending Deposits</div>
+          <div class="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
+            {{ pendingCount }} Slips <span class="text-xs font-normal text-slate-400">({{ pendingTotalMmk.toLocaleString() }} Ks)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4">
+        <div class="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center text-xl">
+          <i class="pi pi-check-circle"></i>
+        </div>
+        <div>
+          <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Approved Today</div>
+          <div class="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
+            {{ approvedTodayMmk.toLocaleString() }} Ks
+          </div>
+        </div>
+      </div>
+
+      <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4">
+        <div class="w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center text-xl">
+          <i class="pi pi-wallet"></i>
+        </div>
+        <div>
+          <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Auto Bot Crediting</div>
+          <div class="text-lg font-bold text-emerald-500 mt-0.5 flex items-center gap-1.5 text-sm">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Real-time Active</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab Filter -->
+    <div class="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 text-xs font-semibold">
+      <button
+        type="button"
+        @click="activeTab = 'ALL'"
+        :class="activeTab === 'ALL' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
+        class="px-3.5 py-1.5 rounded-lg transition-colors"
+      >
+        All Deposits ({{ slips.length }})
+      </button>
+      <button
+        type="button"
+        @click="activeTab = 'SUBMITTED'"
+        :class="activeTab === 'SUBMITTED' ? 'bg-amber-600 text-white' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
+        class="px-3.5 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+      >
+        <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+        <span>Pending Review ({{ pendingCount }})</span>
+      </button>
+      <button
+        type="button"
+        @click="activeTab = 'APPROVED'"
+        :class="activeTab === 'APPROVED' ? 'bg-emerald-600 text-white' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
+        class="px-3.5 py-1.5 rounded-lg transition-colors"
+      >
+        Approved
+      </button>
+      <button
+        type="button"
+        @click="activeTab = 'REJECTED'"
+        :class="activeTab === 'REJECTED' ? 'bg-rose-600 text-white' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
+        class="px-3.5 py-1.5 rounded-lg transition-colors"
+      >
+        Rejected
+      </button>
     </div>
 
     <!-- Slips Table -->
@@ -147,10 +262,10 @@ function confirmReject() {
           <thead>
             <tr class="border-b border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase bg-slate-50/50 dark:bg-slate-950/40">
               <th class="py-3 px-4">Receipt</th>
-              <th class="py-3 px-4">Order ID & Item</th>
+              <th class="py-3 px-4">Top-Up Ref</th>
               <th class="py-3 px-4">Customer</th>
               <th class="py-3 px-4">Method & Ref</th>
-              <th class="py-3 px-4">Amount</th>
+              <th class="py-3 px-4">Deposit Amount</th>
               <th class="py-3 px-4">Status</th>
               <th class="py-3 px-4 text-right">Actions</th>
             </tr>
@@ -170,7 +285,7 @@ function confirmReject() {
             </template>
             <template v-else>
               <tr
-                v-for="slip in slips"
+                v-for="slip in filteredSlips"
                 :key="slip.id"
                 class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
               >
@@ -179,7 +294,7 @@ function confirmReject() {
                 <button
                   type="button"
                   @click="openSlipPreview(slip)"
-                  class="relative group w-12 h-14 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 block shadow-sm"
+                  class="relative group w-12 h-14 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 block shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   title="Click to zoom slip image"
                 >
                   <img
@@ -193,16 +308,17 @@ function confirmReject() {
                 </button>
               </td>
 
-              <!-- Order & Item -->
+              <!-- Top-Up Ref & Time -->
               <td class="py-3.5 px-4">
-                <div class="font-mono font-semibold text-xs text-slate-900 dark:text-white">
-                  {{ slip.publicOrderNo }}
+                <div class="font-mono font-semibold text-xs text-indigo-600 dark:text-indigo-400">
+                  {{ slip.topUpId }}
                 </div>
-                <div class="text-sm font-medium text-slate-800 dark:text-slate-200 mt-0.5">
-                  {{ slip.productName }}
-                </div>
-                <div class="text-[11px] text-slate-400">
+                <div class="text-[11px] text-slate-400 mt-0.5">
                   {{ slip.submittedAt }}
+                </div>
+                <div v-if="slip.intendedProduct" class="mt-1 text-[11px] text-amber-500 flex items-center gap-1">
+                  <i class="pi pi-shopping-cart text-[10px]"></i>
+                  <span>For: {{ slip.intendedProduct }}</span>
                 </div>
               </td>
 
@@ -211,8 +327,8 @@ function confirmReject() {
                 <div class="font-medium text-slate-800 dark:text-slate-200">
                   {{ slip.customerName }}
                 </div>
-                <div class="text-xs text-indigo-600 dark:text-indigo-400 font-mono">
-                  {{ slip.telegramUsername }}
+                <div class="text-xs text-slate-400 font-mono">
+                  {{ slip.telegramUsername }} · <span class="text-[10px] text-slate-500">{{ slip.telegramId }}</span>
                 </div>
               </td>
 
@@ -229,30 +345,30 @@ function confirmReject() {
                 </div>
               </td>
 
-              <!-- Amount -->
-              <td class="py-3.5 px-4 font-bold text-slate-900 dark:text-white">
-                {{ slip.submittedAmountMmk.toLocaleString() }} Ks
+              <!-- Deposit Amount -->
+              <td class="py-3.5 px-4 font-bold text-slate-900 dark:text-white text-base">
+                +{{ slip.depositAmountMmk.toLocaleString() }} <span class="text-xs font-normal text-slate-400">Ks</span>
               </td>
 
               <!-- Status -->
               <td class="py-3.5 px-4">
                 <span
                   v-if="slip.status === 'SUBMITTED'"
-                  class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 animate-pulse"
+                  class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 animate-pulse"
                 >
                   <i class="pi pi-clock text-[10px]"></i>
                   <span>Review</span>
                 </span>
                 <span
-                  v-else-if="slip.status === 'VERIFIED'"
-                  class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                  v-else-if="slip.status === 'APPROVED'"
+                  class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
                 >
                   <i class="pi pi-check text-[10px]"></i>
-                  <span>Approved</span>
+                  <span>Credited</span>
                 </span>
                 <span
                   v-else
-                  class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20"
+                  class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
                 >
                   <i class="pi pi-times text-[10px]"></i>
                   <span>Rejected</span>
@@ -264,12 +380,12 @@ function confirmReject() {
                 <div v-if="slip.status === 'SUBMITTED'" class="flex items-center justify-end gap-2">
                   <button
                     type="button"
-                    @click="approvePayment(slip)"
+                    @click="approveDeposit(slip)"
                     :disabled="isProcessing"
-                    class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-md shadow-emerald-600/20 transition-all disabled:opacity-50"
+                    class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-md shadow-emerald-600/20 transition-all disabled:opacity-50"
                   >
                     <i class="pi pi-check text-[11px]"></i>
-                    <span>Approve</span>
+                    <span>Approve & Credit</span>
                   </button>
 
                   <button
@@ -302,10 +418,10 @@ function confirmReject() {
         <div class="modal-card w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4 p-5">
           <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
             <div>
-              <h3 class="font-bold text-base text-slate-900 dark:text-white">
-                Slip Verification — {{ selectedSlip.publicOrderNo }}
+              <h3 class="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
+                <span>Wallet Top-Up Verification — {{ selectedSlip.topUpId }}</span>
               </h3>
-              <p class="text-xs text-slate-400">
+              <p class="text-xs text-slate-400 mt-0.5">
                 Customer: {{ selectedSlip.customerName }} ({{ selectedSlip.telegramUsername }}) · {{ selectedSlip.paymentMethod }}
               </p>
             </div>
@@ -319,23 +435,23 @@ function confirmReject() {
           </div>
 
           <!-- High-res Image Preview Area -->
-          <div class="max-h-[60vh] overflow-auto rounded-xl bg-black/40 border border-slate-800 flex items-center justify-center p-2">
+          <div class="max-h-[58vh] overflow-auto rounded-xl bg-black/40 border border-slate-800 flex items-center justify-center p-2">
             <img
               :src="selectedSlip.slipImageUrl"
               alt="Full Receipt"
-              class="max-h-[55vh] object-contain rounded-lg shadow-md"
+              class="max-h-[52vh] object-contain rounded-lg shadow-md"
             />
           </div>
 
           <!-- Transaction Details Row -->
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
             <div>
-              <span class="text-slate-400 block">Item:</span>
-              <span class="font-medium text-slate-800 dark:text-slate-200">{{ selectedSlip.productName }}</span>
+              <span class="text-slate-400 block">Deposit Amount:</span>
+              <span class="font-bold text-emerald-500 text-sm">+{{ selectedSlip.depositAmountMmk.toLocaleString() }} Ks</span>
             </div>
             <div>
-              <span class="text-slate-400 block">Total Amount:</span>
-              <span class="font-bold text-slate-900 dark:text-white">{{ selectedSlip.submittedAmountMmk.toLocaleString() }} Ks</span>
+              <span class="text-slate-400 block">Payment Method:</span>
+              <span class="font-bold text-slate-900 dark:text-white">{{ selectedSlip.paymentMethod }}</span>
             </div>
             <div>
               <span class="text-slate-400 block">Transaction Ref:</span>
@@ -353,9 +469,9 @@ function confirmReject() {
               v-if="selectedSlip.status === 'SUBMITTED'"
               type="button"
               @click="openRejectDialog(selectedSlip)"
-              class="px-4 py-2 rounded-xl text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-500/10 transition-colors"
+              class="px-4 py-2 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors"
             >
-              Reject Payment
+              Reject Top-Up
             </button>
             <div v-else></div>
 
@@ -370,12 +486,12 @@ function confirmReject() {
               <button
                 v-if="selectedSlip.status === 'SUBMITTED'"
                 type="button"
-                @click="approvePayment(selectedSlip)"
+                @click="approveDeposit(selectedSlip)"
                 :disabled="isProcessing"
                 class="inline-flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 transition-all disabled:opacity-50"
               >
                 <i class="pi pi-check"></i>
-                <span>Approve & Deliver Now</span>
+                <span>Approve & Credit Wallet ({{ selectedSlip.depositAmountMmk.toLocaleString() }} Ks)</span>
               </button>
             </div>
           </div>
@@ -392,17 +508,17 @@ function confirmReject() {
       >
         <div class="modal-card w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
           <h3 class="text-base font-bold text-slate-900 dark:text-white">
-            Reject Payment Slip
+            Reject Deposit Slip
           </h3>
           <p class="text-xs text-slate-400">
-            State the reason why order <span class="font-mono text-white">{{ selectedSlip.publicOrderNo }}</span> was rejected. This reason will be sent to the customer on Telegram.
+            State the reason why top-up <span class="font-mono text-white">{{ selectedSlip.topUpId }}</span> was rejected. This explanation will be delivered directly to {{ selectedSlip.customerName }} on Telegram.
           </p>
 
           <textarea
             v-model="rejectReason"
             rows="3"
-            class="w-full p-3 rounded-xl text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500"
-            placeholder="e.g. Invalid transaction ID or wrong amount..."
+            class="w-full p-3 rounded-xl text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+            placeholder="e.g. Transaction reference not found on bank statement..."
           ></textarea>
 
           <div class="flex items-center justify-end gap-3 pt-2">
@@ -416,7 +532,7 @@ function confirmReject() {
             <button
               type="button"
               @click="confirmReject"
-              class="px-4 py-2 rounded-xl text-xs font-semibold bg-red-600 hover:bg-red-500 text-white shadow-md shadow-red-600/30"
+              class="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white shadow-md shadow-rose-600/30"
             >
               Confirm Rejection
             </button>
