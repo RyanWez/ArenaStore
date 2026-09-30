@@ -27,8 +27,25 @@ function handleNav() {
   }
 }
 
+type NavBadge =
+  | { type: 'pulse'; color: 'emerald' | 'amber' | 'indigo' }
+  | { type: 'pill'; text: string; color: 'emerald' | 'amber' | 'indigo' }
+
+interface NavItem {
+  to: string
+  label: string
+  icon: string
+  badge: NavBadge | null
+}
+
+interface NavGroup {
+  key: 'main' | 'store' | 'orders' | 'settings'
+  label: string
+  items: NavItem[]
+}
+
 // Nav items definition
-const navGroups = [
+const navGroups: NavGroup[] = [
   {
     key: 'main' as const,
     label: 'Main Menu',
@@ -100,15 +117,15 @@ const navGroups = [
 
 <template>
   <aside
-    class="h-full flex flex-col bg-[#0b1220] text-slate-200 border-r border-slate-800/80 select-none transition-all duration-300 ease-in-out overflow-hidden"
+    class="h-full flex flex-col bg-[#0b1220] text-slate-200 border-r border-slate-800/80 select-none transition-all duration-300 ease-in-out"
     :class="[
-      isCollapsed && !isMobile ? 'w-20' : 'w-64',
+      isCollapsed && !isMobile ? 'w-20 overflow-visible' : 'w-64 overflow-hidden',
     ]"
   >
     <!-- Brand Header -->
     <div
-      class="h-16 flex items-center border-b border-slate-800/80 transition-all duration-300"
-      :class="isCollapsed && !isMobile ? 'justify-center px-2' : 'justify-between px-4'"
+      class="h-16 flex items-center border-b border-slate-800/80 transition-all duration-300 shrink-0"
+      :class="isCollapsed && !isMobile ? 'justify-center px-2 overflow-visible' : 'justify-between px-4'"
     >
       <!-- Logo + Title (Expanded) -->
       <div
@@ -148,7 +165,7 @@ const navGroups = [
           title="Collapse Sidebar"
           aria-label="Collapse Sidebar"
         >
-          <!-- Panel sidebar collapse icon (similar to PrimeVue) -->
+          <!-- Panel sidebar collapse icon (matching PrimeVue) -->
           <svg class="w-4 h-4 text-slate-400 hover:text-slate-200 transition-transform duration-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect width="18" height="18" x="3" y="3" rx="2" />
             <path d="M9 3v18" />
@@ -160,13 +177,12 @@ const navGroups = [
       <!-- Collapsed Brand / Expand Icon (Collapsed Mode) -->
       <div
         v-else
-        class="flex flex-col items-center justify-center w-full"
+        class="relative flex flex-col items-center justify-center w-full"
       >
         <button
           type="button"
           @click="toggleCollapse"
           class="group relative w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20 text-white hover:scale-105 active:scale-95 transition-all duration-200"
-          title="Expand Sidebar"
           aria-label="Expand Sidebar"
         >
           <i class="pi pi-bolt text-lg group-hover:hidden transition-all"></i>
@@ -176,12 +192,25 @@ const navGroups = [
             <path d="M9 3v18" />
             <path d="m13 9 3 3-3 3" />
           </svg>
+
+          <!-- Floating Tooltip on Hover for Expand Button -->
+          <div
+            class="absolute left-full top-1/2 -translate-y-1/2 ml-3.5 px-3 py-1.5 bg-slate-900/95 backdrop-blur-sm text-white text-xs font-medium rounded-xl shadow-2xl border border-slate-700/80 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 flex items-center gap-1.5"
+          >
+            <span class="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-slate-900 border-l border-b border-slate-700/80 rotate-45"></span>
+            <span class="relative z-10">Expand Sidebar</span>
+          </div>
         </button>
       </div>
     </div>
 
     <!-- Navigation Area -->
-    <nav class="flex-1 overflow-y-auto overflow-x-hidden px-2.5 py-3 space-y-4">
+    <nav
+      class="flex-1 px-2.5 py-3 space-y-4"
+      :class="[
+        isCollapsed && !isMobile ? 'overflow-visible' : 'overflow-y-auto overflow-x-hidden',
+      ]"
+    >
       <div v-for="(group, gIdx) in navGroups" :key="group.key">
         <!-- Expanded Mode: Accordion Header with Label -->
         <button
@@ -213,7 +242,6 @@ const navGroups = [
             :key="item.to"
             :to="item.to"
             @click="handleNav"
-            :title="isCollapsed && !isMobile ? item.label : undefined"
             class="group relative flex items-center rounded-xl text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all duration-200"
             :class="[
               isCollapsed && !isMobile
@@ -251,25 +279,32 @@ const navGroups = [
                 class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"
               ></span>
               <span
-                v-else-if="item.badge.type === 'pill'"
+                v-else-if="item.badge.type === 'pill' && 'text' in item.badge"
                 class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0"
               >
                 {{ item.badge.text }}
               </span>
             </template>
 
-            <!-- Floating Tooltip on Hover for Collapsed Mode -->
+            <!-- Floating Tooltip on Hover for Collapsed Mode (Accurately Vertically Centered on the Right) -->
             <div
               v-if="isCollapsed && !isMobile"
-              class="absolute left-full ml-3 px-2.5 py-1 bg-slate-900 text-white text-xs font-medium rounded-lg shadow-xl border border-slate-700 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50 flex items-center gap-1.5"
+              class="absolute left-full top-1/2 -translate-y-1/2 ml-3.5 px-3 py-1.5 bg-slate-900/95 backdrop-blur-sm text-white text-xs font-medium rounded-xl shadow-2xl border border-slate-700/80 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 translate-x-1 group-hover:translate-x-0 z-50 flex items-center gap-2"
             >
-              <span>{{ item.label }}</span>
+              <!-- Left Caret/Arrow pointing to the icon center -->
+              <span class="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-slate-900 border-l border-b border-slate-700/80 rotate-45"></span>
+
+              <span class="relative z-10">{{ item.label }}</span>
               <span
-                v-if="item.badge?.type === 'pill'"
-                class="px-1 py-0.2 rounded text-[9px] bg-amber-500/20 text-amber-300"
+                v-if="item.badge?.type === 'pill' && 'text' in item.badge"
+                class="relative z-10 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30"
               >
                 {{ item.badge.text }}
               </span>
+              <span
+                v-else-if="item.badge?.type === 'pulse'"
+                class="relative z-10 w-2 h-2 rounded-full bg-emerald-400 animate-pulse"
+              ></span>
             </div>
           </NuxtLink>
         </div>
@@ -278,10 +313,10 @@ const navGroups = [
 
     <!-- User Profile Footer -->
     <div
-      class="border-t border-slate-800/80 bg-slate-950/40 transition-all duration-300"
-      :class="isCollapsed && !isMobile ? 'p-2 flex justify-center' : 'p-3'"
+      class="border-t border-slate-800/80 bg-slate-950/40 transition-all duration-300 shrink-0"
+      :class="isCollapsed && !isMobile ? 'p-2 flex justify-center overflow-visible' : 'p-3'"
     >
-      <!-- Collapsed Footer: Avatar Only -->
+      <!-- Collapsed Footer: Avatar Only with Vertically Centered Tooltip -->
       <div
         v-if="isCollapsed && !isMobile"
         class="group relative flex items-center justify-center"
@@ -292,9 +327,10 @@ const navGroups = [
         </div>
 
         <!-- Tooltip -->
-        <div class="absolute left-full ml-3 px-3 py-1.5 bg-slate-900 text-white text-xs rounded-lg shadow-xl border border-slate-700 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
-          <p class="font-medium text-white">Arena Admin</p>
-          <p class="text-[10px] text-slate-400">admin@arenastore.mm</p>
+        <div class="absolute left-full top-1/2 -translate-y-1/2 ml-3.5 px-3 py-2 bg-slate-900/95 backdrop-blur-sm text-white text-xs rounded-xl shadow-2xl border border-slate-700/80 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 translate-x-1 group-hover:translate-x-0 z-50">
+          <span class="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-slate-900 border-l border-b border-slate-700/80 rotate-45"></span>
+          <p class="font-medium text-white relative z-10">Arena Admin</p>
+          <p class="text-[10px] text-slate-400 relative z-10">admin@arenastore.mm</p>
         </div>
       </div>
 

@@ -11,7 +11,7 @@ const { isCollapsed, isMobileOpen, closeMobile } = useSidebar()
     <!-- Desktop Sidebar (Fixed Left with smooth width transition) -->
     <div
       class="hidden lg:block fixed inset-y-0 left-0 z-30 shadow-sm transition-all duration-300 ease-in-out"
-      :class="isCollapsed ? 'w-20' : 'w-64'"
+      :class="isCollapsed ? 'w-20 overflow-visible' : 'w-64 overflow-hidden'"
     >
       <Sidebar />
     </div>
