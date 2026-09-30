@@ -1,8 +1,15 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useToast } from '~/composables/useToast'
 
 const toast = useToast()
+const isLoading = ref(true)
+
+onMounted(() => {
+  setTimeout(() => {
+    isLoading.value = false
+  }, 450)
+})
 
 interface OrderRecord {
   id: string
@@ -269,7 +276,7 @@ function formatCurrency(amount: number): string {
       <div class="flex flex-wrap items-center gap-2">
         <div class="px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs font-medium text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
           <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-          <span>Pending Review: {{ pendingReviewCount }}</span>
+          <span>Review: {{ pendingReviewCount }}</span>
         </div>
         <div class="px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs font-medium text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
           <i class="pi pi-check text-[11px]"></i>
@@ -308,7 +315,7 @@ function formatCurrency(amount: number): string {
           class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap flex items-center gap-1.5"
           :class="selectedStatus === 'PAYMENT_SUBMITTED' ? 'bg-amber-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'"
         >
-          <span>Payment Submitted</span>
+          <span>Submitted</span>
           <span v-if="pendingReviewCount > 0" class="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-400/30 text-amber-100 font-bold">
             {{ pendingReviewCount }}
           </span>
@@ -350,11 +357,24 @@ function formatCurrency(amount: number): string {
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-200 dark:divide-slate-800 text-sm">
-            <tr
-              v-for="order in filteredOrders"
-              :key="order.id"
-              class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
-            >
+            <!-- Skeleton Loading State -->
+            <template v-if="isLoading">
+              <tr v-for="n in 5" :key="'order-skel-' + n">
+                <td class="py-4 px-4 sm:px-6"><Skeleton height="1.1rem" width="110px" border-radius="6px" /></td>
+                <td class="py-4 px-4"><Skeleton height="1.1rem" width="130px" border-radius="6px" /></td>
+                <td class="py-4 px-4"><Skeleton height="1.1rem" width="160px" border-radius="6px" /></td>
+                <td class="py-4 px-4"><Skeleton height="1.1rem" width="90px" border-radius="6px" /></td>
+                <td class="py-4 px-4"><Skeleton height="1.3rem" width="75px" border-radius="9999px" /></td>
+                <td class="py-4 px-4"><Skeleton height="1.1rem" width="90px" border-radius="6px" /></td>
+                <td class="py-4 px-4 sm:px-6 text-right"><Skeleton height="1.6rem" width="70px" class="ml-auto" border-radius="8px" /></td>
+              </tr>
+            </template>
+            <template v-else>
+              <tr
+                v-for="order in filteredOrders"
+                :key="order.id"
+                class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+              >
               <!-- Order ID with Copy -->
               <td class="py-4 px-4 sm:px-6 font-mono font-medium text-slate-900 dark:text-white">
                 <div class="flex items-center gap-2">
@@ -418,7 +438,7 @@ function formatCurrency(amount: number): string {
                   class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
                 >
                   <i class="pi pi-clock text-[10px]"></i>
-                  Slip Submitted
+                  Submitted
                 </span>
                 <span
                   v-else-if="order.status === 'PENDING_PAYMENT'"
@@ -459,14 +479,15 @@ function formatCurrency(amount: number): string {
                     class="px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-1 shadow-sm"
                   >
                     <i class="pi pi-receipt text-[11px]"></i>
-                    <span>Review Slip</span>
+                    <span>Review</span>
                   </NuxtLink>
                 </div>
               </td>
             </tr>
+          </template>
 
-            <!-- Empty State -->
-            <tr v-if="filteredOrders.length === 0">
+          <!-- Empty State -->
+          <tr v-if="filteredOrders.length === 0">
               <td colspan="7" class="py-12 text-center text-slate-500">
                 <i class="pi pi-inbox text-3xl mb-2 text-slate-400"></i>
                 <p>No orders found matching your filter criteria.</p>

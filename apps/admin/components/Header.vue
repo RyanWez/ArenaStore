@@ -1,13 +1,35 @@
 <script setup lang="ts">
+import { useRoute } from 'vue-router'
+import { computed } from 'vue'
 import { useSidebar } from '~/composables/useSidebar'
 import { useTheme } from '~/composables/useTheme'
 import { useSupplierStatus } from '~/composables/useSupplierStatus'
 import { useToast } from '~/composables/useToast'
 
+const route = useRoute()
 const { isCollapsed, toggleCollapse, toggleMobile } = useSidebar()
 const { isDark, toggleTheme } = useTheme()
 const { supplierBalanceUsd, isOnline, isSyncing, syncCatalog, fetchStatus } = useSupplierStatus()
 const toast = useToast()
+
+const pageTitle = computed(() => {
+  switch (route.path) {
+    case '/supplier':
+      return 'XPro Supplier'
+    case '/products':
+      return 'Products'
+    case '/categories':
+      return 'Categories'
+    case '/orders':
+      return 'All Orders'
+    case '/payments':
+      return 'Payment Slips'
+    case '/settings':
+      return 'Rates & Margins'
+    default:
+      return 'Overview'
+  }
+})
 
 onMounted(() => {
   fetchStatus()
@@ -41,8 +63,8 @@ async function handleQuickSync() {
       <button
         type="button"
         @click="toggleCollapse"
-        class="hidden lg:flex items-center justify-center p-2 rounded-xl text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-transparent hover:border-slate-200 dark:hover:border-slate-700/60 transition-all duration-200"
-        :title="isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'"
+        class="hidden lg:flex items-center justify-center p-2 rounded-xl text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-transparent hover:border-slate-200 dark:hover:border-slate-700/60 transition-all duration-200"
+        :title="isCollapsed ? 'Sidebar အကျဉ်းမှ အကျယ်သို့ ချဲ့ရန် (Expand)' : 'Sidebar ကို အကျဉ်းသို့ ခေါက်သိမ်းရန် (Collapse)'"
         aria-label="Toggle Sidebar"
       >
         <svg class="w-4 h-4 transition-transform duration-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -53,11 +75,14 @@ async function handleQuickSync() {
         </svg>
       </button>
 
-      <div class="hidden sm:flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-        <span>Store Admin</span>
-        <i class="pi pi-chevron-right text-[10px]"></i>
-        <span class="font-medium text-slate-800 dark:text-slate-200">Management Panel</span>
-      </div>
+      <!-- Breadcrumbs navigation -->
+      <nav class="hidden sm:flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400" aria-label="Breadcrumb">
+        <NuxtLink to="/" class="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors font-medium">
+          Store Admin
+        </NuxtLink>
+        <i class="pi pi-chevron-right text-[10px] text-slate-400"></i>
+        <span class="font-semibold text-slate-800 dark:text-slate-200">{{ pageTitle }}</span>
+      </nav>
     </div>
 
     <!-- Right: Status Widgets & Controls -->

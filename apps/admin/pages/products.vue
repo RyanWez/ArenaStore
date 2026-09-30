@@ -5,6 +5,13 @@ import { useToast } from '~/composables/useToast'
 
 const { isSyncing, syncCatalog } = useSupplierStatus()
 const toast = useToast()
+const isLoading = ref(true)
+
+onMounted(() => {
+  setTimeout(() => {
+    isLoading.value = false
+  }, 450)
+})
 
 interface ProductItem {
   id: number
@@ -254,11 +261,24 @@ function toggleProductStatus(product: ProductItem) {
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 dark:divide-slate-800/60">
-            <tr
-              v-for="p in filteredProducts"
-              :key="p.id"
-              class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
-            >
+            <!-- Skeleton Loading State -->
+            <template v-if="isLoading">
+              <tr v-for="n in 5" :key="'prod-skel-' + n">
+                <td class="py-3.5 px-4"><Skeleton height="1.1rem" width="160px" class="mb-1.5" border-radius="6px" /><Skeleton height="0.9rem" width="100px" border-radius="6px" /></td>
+                <td class="py-3.5 px-4"><Skeleton height="1.1rem" width="100px" border-radius="6px" /></td>
+                <td class="py-3.5 px-4"><Skeleton height="1.1rem" width="60px" border-radius="6px" /></td>
+                <td class="py-3.5 px-4"><Skeleton height="1.2rem" width="90px" border-radius="6px" /></td>
+                <td class="py-3.5 px-4"><Skeleton height="1.1rem" width="70px" border-radius="6px" /></td>
+                <td class="py-3.5 px-4"><Skeleton height="1.3rem" width="65px" border-radius="9999px" /></td>
+                <td class="py-3.5 px-4 text-right"><Skeleton height="1.6rem" width="65px" class="ml-auto" border-radius="8px" /></td>
+              </tr>
+            </template>
+            <template v-else>
+              <tr
+                v-for="p in filteredProducts"
+                :key="p.id"
+                class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+              >
               <!-- Product Name -->
               <td class="py-3.5 px-4">
                 <div class="font-medium text-slate-900 dark:text-white">
@@ -338,7 +358,8 @@ function toggleProductStatus(product: ProductItem) {
                 </button>
               </td>
             </tr>
-          </tbody>
+          </template>
+        </tbody>
         </table>
       </div>
     </div>

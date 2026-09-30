@@ -5,6 +5,13 @@ import { useToast } from '~/composables/useToast'
 
 const { supplierBalanceUsd, isSyncing, syncCatalog, lastSyncMessage } = useSupplierStatus()
 const toast = useToast()
+const isLoading = ref(true)
+
+onMounted(() => {
+  setTimeout(() => {
+    isLoading.value = false
+  }, 450)
+})
 
 const stats = ref({
   totalSalesMmk: 245000,
@@ -111,7 +118,8 @@ async function handleSync() {
             <i class="pi pi-wallet text-sm"></i>
           </div>
         </div>
-        <p class="text-2xl font-bold mt-2 text-slate-900 dark:text-white">
+        <Skeleton v-if="isLoading" height="2rem" width="65%" class="mt-2" border-radius="8px" />
+        <p v-else class="text-2xl font-bold mt-2 text-slate-900 dark:text-white">
           {{ stats.totalSalesMmk.toLocaleString() }} <span class="text-xs font-normal text-slate-400">MMK</span>
         </p>
         <p class="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1">
@@ -128,7 +136,8 @@ async function handleSync() {
             <i class="pi pi-shopping-bag text-sm"></i>
           </div>
         </div>
-        <p class="text-2xl font-bold mt-2 text-slate-900 dark:text-white">
+        <Skeleton v-if="isLoading" height="2rem" width="40%" class="mt-2" border-radius="8px" />
+        <p v-else class="text-2xl font-bold mt-2 text-slate-900 dark:text-white">
           {{ stats.ordersCount }}
         </p>
         <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
@@ -144,7 +153,8 @@ async function handleSync() {
             <i class="pi pi-hourglass text-sm"></i>
           </div>
         </div>
-        <p class="text-2xl font-bold mt-2 text-slate-900 dark:text-white">
+        <Skeleton v-if="isLoading" height="2rem" width="30%" class="mt-2" border-radius="8px" />
+        <p v-else class="text-2xl font-bold mt-2 text-slate-900 dark:text-white">
           {{ stats.pendingSlips }}
         </p>
         <NuxtLink to="/payments" class="text-[11px] text-amber-600 dark:text-amber-400 hover:underline mt-1 block">
@@ -160,7 +170,8 @@ async function handleSync() {
             <i class="pi pi-dollar text-sm"></i>
           </div>
         </div>
-        <p class="text-2xl font-bold mt-2 text-emerald-600 dark:text-emerald-400 font-mono">
+        <Skeleton v-if="isLoading" height="2rem" width="55%" class="mt-2" border-radius="8px" />
+        <p v-else class="text-2xl font-bold mt-2 text-emerald-600 dark:text-emerald-400 font-mono">
           ${{ supplierBalanceUsd }} <span class="text-xs font-normal text-slate-400">USD</span>
         </p>
         <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
@@ -198,11 +209,23 @@ async function handleSync() {
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 dark:divide-slate-800/60">
-            <tr
-              v-for="order in recentOrders"
-              :key="order.id"
-              class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
-            >
+            <!-- Skeleton Rows -->
+            <template v-if="isLoading">
+              <tr v-for="n in 4" :key="'skel-' + n">
+                <td class="py-3.5 px-4"><Skeleton height="1.1rem" width="95px" border-radius="6px" /></td>
+                <td class="py-3.5 px-4"><Skeleton height="1.1rem" width="150px" border-radius="6px" /></td>
+                <td class="py-3.5 px-4"><Skeleton height="1.1rem" width="80px" border-radius="6px" /></td>
+                <td class="py-3.5 px-4"><Skeleton height="1.1rem" width="85px" border-radius="6px" /></td>
+                <td class="py-3.5 px-4"><Skeleton height="1.3rem" width="70px" border-radius="9999px" /></td>
+                <td class="py-3.5 px-4"><Skeleton height="1.1rem" width="60px" border-radius="6px" /></td>
+              </tr>
+            </template>
+            <template v-else>
+              <tr
+                v-for="order in recentOrders"
+                :key="order.id"
+                class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+              >
               <td class="py-3.5 px-4 font-mono font-medium text-slate-900 dark:text-slate-200 text-xs">
                 {{ order.publicOrderNo }}
               </td>
@@ -220,7 +243,7 @@ async function handleSync() {
                   v-if="order.status === 'PAYMENT_SUBMITTED'"
                   class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
                 >
-                  Slip Submitted
+                  Submitted
                 </span>
                 <span
                   v-else-if="order.status === 'DELIVERED'"
@@ -239,7 +262,8 @@ async function handleSync() {
                 {{ order.createdAt }}
               </td>
             </tr>
-          </tbody>
+          </template>
+        </tbody>
         </table>
       </div>
     </div>

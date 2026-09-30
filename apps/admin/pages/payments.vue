@@ -1,8 +1,15 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useToast } from '~/composables/useToast'
 
 const toast = useToast()
+const isLoading = ref(true)
+
+onMounted(() => {
+  setTimeout(() => {
+    isLoading.value = false
+  }, 450)
+})
 
 interface PaymentItem {
   id: number
@@ -149,11 +156,24 @@ function confirmReject() {
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 dark:divide-slate-800/60">
-            <tr
-              v-for="slip in slips"
-              :key="slip.id"
-              class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
-            >
+            <!-- Skeleton Loading State -->
+            <template v-if="isLoading">
+              <tr v-for="n in 3" :key="'slip-skel-' + n">
+                <td class="py-3.5 px-4"><Skeleton height="3.5rem" width="3rem" border-radius="8px" /></td>
+                <td class="py-3.5 px-4"><Skeleton height="1.1rem" width="130px" class="mb-1.5" border-radius="6px" /><Skeleton height="0.9rem" width="90px" border-radius="6px" /></td>
+                <td class="py-3.5 px-4"><Skeleton height="1.1rem" width="100px" class="mb-1.5" border-radius="6px" /><Skeleton height="0.9rem" width="80px" border-radius="6px" /></td>
+                <td class="py-3.5 px-4"><Skeleton height="1.1rem" width="70px" class="mb-1.5" border-radius="6px" /><Skeleton height="0.9rem" width="110px" border-radius="6px" /></td>
+                <td class="py-3.5 px-4"><Skeleton height="1.2rem" width="80px" border-radius="6px" /></td>
+                <td class="py-3.5 px-4"><Skeleton height="1.3rem" width="65px" border-radius="9999px" /></td>
+                <td class="py-3.5 px-4 text-right"><Skeleton height="1.6rem" width="75px" class="ml-auto" border-radius="10px" /></td>
+              </tr>
+            </template>
+            <template v-else>
+              <tr
+                v-for="slip in slips"
+                :key="slip.id"
+                class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+              >
               <!-- Thumbnail -->
               <td class="py-3.5 px-4">
                 <button
@@ -221,14 +241,14 @@ function confirmReject() {
                   class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 animate-pulse"
                 >
                   <i class="pi pi-clock text-[10px]"></i>
-                  <span>Needs Review</span>
+                  <span>Review</span>
                 </span>
                 <span
                   v-else-if="slip.status === 'VERIFIED'"
                   class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
                 >
                   <i class="pi pi-check text-[10px]"></i>
-                  <span>Approved & Delivered</span>
+                  <span>Approved</span>
                 </span>
                 <span
                   v-else
@@ -249,7 +269,7 @@ function confirmReject() {
                     class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-md shadow-emerald-600/20 transition-all disabled:opacity-50"
                   >
                     <i class="pi pi-check text-[11px]"></i>
-                    <span>Approve & Deliver</span>
+                    <span>Approve</span>
                   </button>
 
                   <button
@@ -266,7 +286,8 @@ function confirmReject() {
                 </div>
               </td>
             </tr>
-          </tbody>
+          </template>
+        </tbody>
         </table>
       </div>
     </div>

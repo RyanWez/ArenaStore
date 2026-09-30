@@ -3,6 +3,7 @@ import {
   escapeHtml,
   formatTelegramCustomEmoji,
   stripCustomEmojiPlaceholders,
+  parseCustomEmoji,
 } from "@arena/shared";
 
 describe("Telegram Custom Emoji & HTML Formatting", () => {
@@ -40,5 +41,17 @@ describe("Telegram Custom Emoji & HTML Formatting", () => {
   it("handles empty or falsy strings gracefully", () => {
     expect(formatTelegramCustomEmoji("")).toBe("");
     expect(stripCustomEmojiPlaceholders("")).toBe("");
+  });
+
+  it("extracts emojiId and cleanText for inline keyboard buttons", () => {
+    const raw = "{pe:5069075201950483359}🤖 Gemini AI 18 MONTH";
+    const parsed = parseCustomEmoji(raw);
+    expect(parsed.emojiId).toBe("5069075201950483359");
+    expect(parsed.cleanText).toBe("🤖 Gemini AI 18 MONTH");
+
+    const plain = "Steam Wallet $5";
+    const plainParsed = parseCustomEmoji(plain);
+    expect(plainParsed.emojiId).toBeNull();
+    expect(plainParsed.cleanText).toBe("Steam Wallet $5");
   });
 });

@@ -54,3 +54,19 @@ export function stripCustomEmojiPlaceholders(rawText: string): string {
   if (!rawText) return "";
   return rawText.replace(/\{pe:\d+\}/g, "").trim();
 }
+
+export interface ParsedEmojiText {
+  emojiId: string | null;
+  cleanText: string;
+}
+
+/**
+ * Extracts custom emoji ID and clean label for Telegram inline keyboard buttons (icon_custom_emoji_id).
+ */
+export function parseCustomEmoji(rawText: string): ParsedEmojiText {
+  if (!rawText) return { emojiId: null, cleanText: "" };
+  const match = /\{pe:(\d+)\}/.exec(rawText);
+  const emojiId = match ? match[1] : null;
+  const cleanText = rawText.replace(/\{pe:\d+\}/g, "").trim();
+  return { emojiId, cleanText };
+}

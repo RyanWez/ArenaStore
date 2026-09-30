@@ -185,8 +185,16 @@ Deliver a localized, intuitive, and high-conversion storefront bot for Myanmar c
    - On payment approval, bot receives webhook/event from `apps/api`.
    - Sends formatted delivery message containing accounts/links with security reminders (e.g. "ကျေးဇူးတင်ပါသည်! သင့်အကောင့်အချက်အလက်များ...").
 
+5. **Smooth Bot UX & Performance Optimization Standards:**
+   - **Zero-Wait Callback Acknowledgement:** Call `await ctx.answerCallbackQuery()` immediately on every button press to eliminate Telegram's circular loading spinner instantly.
+   - **In-Place Message Editing (No Chat Spam):** Update quantities, page numbers, and category menus via `editMessageText` / `editMessageReplyMarkup` rather than posting new messages to prevent chat stutter and scroll jumps.
+   - **Chat Action Feedback:** Dispatch `ctx.replyWithChatAction('typing' | 'upload_photo')` during any async backend operation exceeding 200ms so the user has immediate visual feedback.
+   - **Multi-Tap & Double-Submit Debouncing:** Session-level lock on order submission and payment receipt upload to prevent duplicate orders or race conditions on rapid taps.
+   - **In-Memory Catalog Cache:** Cache active category and product summaries in memory/Redis with a 5-minute TTL to ensure sub-100ms keyboard navigation for end users.
+
 ### Verification Gate for Phase 4
 - Complete mock order flow in Telegram sandbox from `/start` to product selection, slip upload, and mock delivery.
+- Verified instantaneous inline button responsiveness (<100ms) with zero UI flickering or duplicate submissions.
 
 ---
 

@@ -28,7 +28,21 @@ const envSchema = z.object({
 export type AppConfig = z.infer<typeof envSchema>;
 
 export function loadConfig(): AppConfig {
-  const parsed = envSchema.safeParse(process.env);
+  const rawEnv = {
+    ...process.env,
+    UPSTREAM_BASE_URL:
+      process.env.UPSTREAM_BASE_URL ||
+      process.env.UPSTREAM_PARTNER_API_BASE_URL ||
+      process.env.UPSTREAM_API_URL ||
+      "http://paid2.daki.cc:4153/api/partner/v1",
+    UPSTREAM_API_KEY:
+      process.env.UPSTREAM_API_KEY ||
+      process.env.UPSTREAM_PARTNER_API_KEY ||
+      process.env.UPTREAM_API_KEY ||
+      "",
+  };
+
+  const parsed = envSchema.safeParse(rawEnv);
   if (!parsed.success) {
     console.error("Invalid configuration:", parsed.error.format());
     throw new Error("Configuration validation failed.");

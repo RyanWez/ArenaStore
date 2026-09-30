@@ -69,13 +69,38 @@ Tailwind CSS handles layout spacing, flex/grid systems, and custom typography ut
 
 ## Interaction, transitions, and honest controls
 
-The dashboard should feel polished and calm when it becomes functional:
+The dashboard and storefront must feel polished, calm, and responsive across all phases:
 
-- Sidebar collapse/expand, page navigation, sheets, dialogs, menu states, filters, and saved changes must transition smoothly rather than abruptly replacing the interface.
-- Keep transition timing consistent and purposeful. Respect `prefers-reduced-motion`.
-- Do not make a visible control appear usable if it has no behavior. Until a feature exists, disable it and explain the upcoming action where useful.
-- A completed interaction includes the click/tap behavior, responsive/mobile behavior, keyboard access, loading state, empty state, error state, and success feedback. Repeated taps must not stack duplicate state changes or toast messages.
-- Build and verify interactions incrementally instead of enabling a whole screen of unfinished controls at once.
+### Mandatory Smooth Transition Rules (Zero-Flicker Architecture)
+1. **Global Page-to-Page Navigation:**
+   - Nuxt 3 `pageTransition: { name: 'page', mode: 'out-in' }` must remain active for all future views.
+   - Timing: 180ms subtle translateY(6px) + opacity fade (`cubic-bezier(0.16, 1, 0.3, 1)`).
+2. **Collapsible Navigation & Panels (No Immediate DOM Unmounting):**
+   - When elements collapse (e.g. sidebar rail, accordion groups, drawers), text labels, titles, and badges must never be abruptly removed on frame 0 using naked `v-if`.
+   - Instead, animate concurrently with width/height using CSS `transition-all duration-300`, `max-w-0 opacity-0 -translate-x-2` to guarantee silky synchronized motion.
+3. **Modals, Dialogs & Drawers Standard:**
+   - Every overlay must be wrapped in Vue `<Transition name="modal">` (or `<Transition name="drawer">`).
+   - Backdrop: Smooth fade-in (`opacity-0` -> `opacity-100`) and fade-out over 200ms.
+   - Content: Zoom-in from `scale-96 translateY(8px)` to `scale-100` on open, and smooth scale-down on dismiss/close.
+   - Always support closing by clicking outside on the backdrop (`@click.self`) and pressing Escape.
+4. **Performance & Multi-Tap Debouncing:**
+   - Disable buttons immediately while actions are processing (`:disabled="isProcessing"`, loading spinners) to prevent duplicate transactions, orders, or API sync requests.
+   - Coalesce notifications; never spam stacking toast messages.
+5. **Customer Telegram Bot Smoothness (Phase 4):**
+   - Answer all inline button callback queries immediately (`ctx.answerCallbackQuery()`) to eliminate Telegram loading clocks.
+   - Smooth message editing for pagination and quantity updates rather than flooding chat history with new messages.
+   - Step-by-step guided conversation flows for checkout and payment slip upload with clear cancel options.
+6. **Skeleton Loading Standards (Zero Layout Shift):**
+   - Use PrimeVue `<Skeleton>` components during asynchronous data fetching across all dashboard tables, KPI summary cards, and detail modals.
+   - Skeletons must precisely mimic the shape and height of final elements (e.g. rounded badges, metric numbers, table columns) to eliminate layout jumps.
+7. **Concise Status & Action Terminology:**
+   - Maintain compact, clean, single-word status badges and buttons for optimal responsiveness on both mobile and desktop viewports:
+     - `Submitted` (replaces verbose `Slip Submitted` or `Payment Submitted`)
+     - `Review` (replaces `Review Slip` or `Needs Review`)
+     - `Approved` (replaces `Approved & Delivered` or `Approve & Deliver`)
+     - `Delivered`, `Cancelled`
+8. **Accessibility:**
+   - Keep `@media (prefers-reduced-motion: reduce)` active so users with motion sensitivities experience instant, accessible state changes.
 
 ## Custom emoji rendering
 

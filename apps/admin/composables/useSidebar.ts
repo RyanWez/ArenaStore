@@ -1,20 +1,9 @@
-import { ref } from 'vue'
-
-const isCollapsed = ref(false)
-const isMobileOpen = ref(false)
-
 export function useSidebar() {
-  // Initialize from localStorage on client side
-  if (import.meta.client) {
-    try {
-      const saved = localStorage.getItem('arena_sidebar_collapsed')
-      if (saved !== null) {
-        isCollapsed.value = saved === 'true'
-      }
-    } catch {
-      // Ignore localStorage read errors
-    }
-  }
+  // Use Nuxt useCookie for SSR-safe persistence across server and client
+  const isCollapsed = useCookie<boolean>('arena_sidebar_collapsed', {
+    default: () => false,
+  })
+  const isMobileOpen = useState<boolean>('arena_sidebar_mobile', () => false)
 
   function toggleCollapse() {
     isCollapsed.value = !isCollapsed.value
@@ -22,7 +11,7 @@ export function useSidebar() {
       try {
         localStorage.setItem('arena_sidebar_collapsed', String(isCollapsed.value))
       } catch {
-        // Ignore localStorage write errors
+        // Ignore storage errors
       }
     }
   }
@@ -33,7 +22,7 @@ export function useSidebar() {
       try {
         localStorage.setItem('arena_sidebar_collapsed', String(val))
       } catch {
-        // Ignore localStorage write errors
+        // Ignore storage errors
       }
     }
   }
