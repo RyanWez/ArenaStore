@@ -15,7 +15,7 @@ const envSchema = z.object({
   DEFAULT_EXCHANGE_RATE_MMK: z.coerce.number().default(4500),
   DEFAULT_MARGIN_PERCENTAGE: z.coerce.number().default(25),
   SUPPORT_USERNAME: z.string().default("ryanwez"),
-  CHANNEL_URL: z.string().default("https://t.me/arenastore_updates"),
+  CHANNEL_URL: z.string().default("https://t.me/arenasellerstore"),
   PAYMENT_KPAY_PHONE: z.string().default("09-8472918471"),
   PAYMENT_WAVEPAY_PHONE: z.string().default("09-8492019400"),
   PAYMENT_ACCOUNT_NAME: z.string().default("Ryan Wez (Arena Store)"),

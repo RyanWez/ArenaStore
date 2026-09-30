@@ -88,6 +88,9 @@ describe("Phase 4 Customer Telegram Bot", () => {
 
       const shopBtn = buttons.find((b) => b.text.includes("ပစ္စည်းများဝယ်ယူရန်"));
       expect((shopBtn as any).icon_custom_emoji_id).toBe("4958714256343171878");
+
+      const channelBtn = buttons.find((b) => b.text.includes("Channel"));
+      expect((channelBtn as any).url).toBe("https://t.me/arenasellerstore");
     });
 
     it("builds 2-column categories grid with icon_custom_emoji_id (matching Screenshot 1)", () => {
@@ -102,9 +105,10 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(rows[0][1].text).toBe("Duolingo");
       expect((rows[0][1] as any).icon_custom_emoji_id).toBe("4963072209334567688");
 
-      // Last row must be Back button
+      // Last row must be Back button with animated custom emoji
       const lastRow = rows[rows.length - 1];
-      expect(lastRow[0].text).toBe("⬅ Back");
+      expect(lastRow[0].text).toBe("Back");
+      expect((lastRow[0] as any).icon_custom_emoji_id).toBe("5456187398977247949");
       expect(lastRow[0].callback_data).toBe("menu_start");
     });
 
@@ -117,7 +121,8 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(rows[0][0].callback_data).toBe("prod_10");
 
       const backButton = rows[rows.length - 1][0];
-      expect(backButton.text).toBe("⬅ Back");
+      expect(backButton.text).toBe("Back");
+      expect((backButton as any).icon_custom_emoji_id).toBe("5456187398977247949");
       expect(backButton.callback_data).toBe("menu_categories");
     });
 
@@ -125,36 +130,44 @@ describe("Phase 4 Customer Telegram Bot", () => {
       const qty1Keyboard = buildProductDetailKeyboard(sampleProduct, 1);
       const rows = qty1Keyboard.inline_keyboard;
 
-      // Row 1: Stepper [-] [1] [+]
+      // Row 1: Stepper [-] [1] [+] with animated icons
       expect(rows[0][0].text).toBe("🚫"); // cannot decrease below 1
-      expect(rows[0][1].text).toBe("🔢 1");
-      expect(rows[0][2].text).toBe("➕");
+      expect((rows[0][0] as any).icon_custom_emoji_id).toBe("5210952531676504517");
+      expect(rows[0][1].text).toBe("1");
+      expect((rows[0][1] as any).icon_custom_emoji_id).toBe("5226929552319594190");
+      expect((rows[0][2] as any).icon_custom_emoji_id).toBe("5314382246176637382");
       expect(rows[0][2].callback_data).toBe("qty_step_10_2");
 
-      // Row 2: Presets (1 is selected with checkmark)
-      expect(rows[1][0].text).toBe("✅ 1");
+      // Row 2: Presets (1 is selected with animated checkmark)
+      expect(rows[1][0].text).toBe("1");
+      expect((rows[1][0] as any).icon_custom_emoji_id).toBe("5206607081334906820");
       expect(rows[1][1].text).toBe("5");
       expect(rows[1][2].text).toBe("10");
       expect(rows[1][3].text).toBe("20");
 
       // Row 4: Custom Quantity
-      expect(rows[3][0].text).toBe("🎉 Custom Quantity");
+      expect(rows[3][0].text).toBe("Custom Quantity");
+      expect((rows[3][0] as any).icon_custom_emoji_id).toBe("5420289585575904153");
 
-      // Row 5: Buy Now with dynamic total and green accent 🟢
-      expect(rows[4][0].text).toBe("🟢 Buy Now · 3,900 Ks");
+      // Row 5: Buy Now with dynamic total and animated icon
+      expect(rows[4][0].text).toBe("Buy Now · 3,900 Ks");
+      expect((rows[4][0] as any).icon_custom_emoji_id).toBe("5267300544094948794");
       expect(rows[4][0].callback_data).toBe("checkout_10_1");
 
       // Row 6: Back
-      expect(rows[5][0].text).toBe("🔄 Back");
+      expect(rows[5][0].text).toBe("Back");
+      expect((rows[5][0] as any).icon_custom_emoji_id).toBe("5456187398977247949");
       expect(rows[5][0].callback_data).toBe("cat_10");
 
       // Test with quantity = 5
       const qty5Keyboard = buildProductDetailKeyboard(sampleProduct, 5);
       const rowsQty5 = qty5Keyboard.inline_keyboard;
-      expect(rowsQty5[0][0].text).toBe("➖"); // can decrease from 5
+      expect((rowsQty5[0][0] as any).icon_custom_emoji_id).toBe("5255775038010829248"); // can decrease from 5
       expect(rowsQty5[0][0].callback_data).toBe("qty_step_10_4");
-      expect(rowsQty5[1][1].text).toBe("✅ 5"); // 5 is now selected
-      expect(rowsQty5[4][0].text).toBe("🟢 Buy Now · 19,500 Ks"); // 3900 * 5 = 19500
+      expect(rowsQty5[1][1].text).toBe("5");
+      expect((rowsQty5[1][1] as any).icon_custom_emoji_id).toBe("5206607081334906820"); // 5 is now selected
+      expect(rowsQty5[4][0].text).toBe("Buy Now · 19,500 Ks");
+      expect((rowsQty5[4][0] as any).icon_custom_emoji_id).toBe("5267300544094948794");
     });
   });
 
@@ -163,10 +176,9 @@ describe("Phase 4 Customer Telegram Bot", () => {
       const msg = formatStartMessage("Aung Aung");
       expect(msg).toContain("Aung Aung");
       expect(msg).toContain("Arena Store");
-      expect(msg).toContain("KPay / WavePay");
+      expect(msg).toContain("AI Tools များနှင့် Digital Products");
       expect(msg).toContain("5215248074498128418"); // 👋
       expect(msg).toContain("5325547803936572038"); // ✨
-      expect(msg).toContain("5226570145161302027"); // ⚡️
       expect(msg).toContain("5193062103103058714"); // 👇
     });
 
@@ -190,7 +202,7 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(checkoutMsg).toContain("ARN-2026-84920");
       expect(checkoutMsg).toContain("7,800 Ks");
       expect(checkoutMsg).toContain("15 မိနစ်အတွင်း");
-      expect(checkoutMsg).toContain("KPay:");
+      expect(checkoutMsg).toContain("KBZ Pay:");
       expect(checkoutMsg).toContain("WavePay:");
     });
 

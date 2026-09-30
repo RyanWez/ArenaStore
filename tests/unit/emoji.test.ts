@@ -68,6 +68,21 @@ describe("Telegram Custom Emoji & HTML Formatting", () => {
     expect(BOT_EMOJIS.CHAT).toBe("5443038326535759644");
     expect(BOT_EMOJIS.SPEAKER).toBe("5836698068061261980");
 
+    // Stepper & Controls
+    expect(BOT_EMOJIS.BUY_NOW).toBe("5267300544094948794");
+    expect(BOT_EMOJIS.MINUS).toBe("5255775038010829248");
+    expect(BOT_EMOJIS.PLUS).toBe("5314382246176637382");
+    expect(BOT_EMOJIS.COUNTER).toBe("5226929552319594190");
+    expect(BOT_EMOJIS.CHECK).toBe("5206607081334906820");
+    expect(BOT_EMOJIS.PARTY).toBe("5420289585575904153");
+    expect(BOT_EMOJIS.BACK).toBe("5456187398977247949");
+
+    // Payment Emojis
+    expect(BOT_EMOJIS.KBZPAY).toBe("6206487605421280759");
+    expect(BOT_EMOJIS.WAVEPAY).toBe("6057728063049830775");
+    expect(BOT_EMOJIS.UABPAY).toBe("5391349017898656371");
+    expect(BOT_EMOJIS.AYAPAY).toBe("5282730523343474638");
+
     const tag = tgEmoji(BOT_EMOJIS.WAVE, "👋");
     expect(tag).toBe('<tg-emoji emoji-id="5215248074498128418">👋</tg-emoji>');
   });
