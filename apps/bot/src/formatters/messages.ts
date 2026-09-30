@@ -140,10 +140,10 @@ export function formatProfileMessage(params: {
 <b>Joined:</b> ${joined}
 <b>Status:</b> <b>Active</b></blockquote>
 ────────────────────
-<b>Wallet Balance:</b> ${walletBalance} MMK
-<b>Total Deposits:</b> ${totalDeposits} MMK
-<b>Total Spent:</b> ${totalSpent} MMK
-<b>Orders:</b> ${orders}`;
+${tgEmoji(BOT_EMOJIS.BUY_NOW, "💳")} <b>Wallet Balance:</b> ${walletBalance} MMK
+${tgEmoji(BOT_EMOJIS.MONEY, "💰")} <b>Total Deposits:</b> ${totalDeposits} MMK
+${tgEmoji(BOT_EMOJIS.BAGS, "🛍")} <b>Total Spent:</b> ${totalSpent} MMK
+${tgEmoji(BOT_EMOJIS.BOX, "📦")} <b>Orders:</b> ${orders}`;
 }
 
 /**
@@ -157,9 +157,9 @@ export function formatWalletMessage(params: {
   return `<blockquote>${tgEmoji(BOT_EMOJIS.MONEY, "💰")} <b>Arena Store Wallet</b> ❞
 အကောင့်လက်ကျန်ငွေနှင့် ငွေဖြည့်သွင်းခြင်း</blockquote>
 
-👤 <b>Customer:</b> <b>${escapeHtml(params.fullName)}</b>
-💳 <b>Wallet Balance:</b> <b>${params.balanceMmk.toLocaleString("en-US")} MMK</b>
-🛍 <b>Total Spent:</b> ${params.totalSpentMmk.toLocaleString("en-US")} MMK
+${tgEmoji(BOT_EMOJIS.PROFILE, "👤")} <b>Customer:</b> <b>${escapeHtml(params.fullName)}</b>
+${tgEmoji(BOT_EMOJIS.BUY_NOW, "💳")} <b>Wallet Balance:</b> <b>${params.balanceMmk.toLocaleString("en-US")} MMK</b>
+${tgEmoji(BOT_EMOJIS.BAGS, "🛍")} <b>Total Spent:</b> ${params.totalSpentMmk.toLocaleString("en-US")} MMK
 
 ငွေဖြည့်သွင်းလိုသော ပမာဏကို အောက်တွင် ရွေးချယ်ပါ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}`;
 }
@@ -179,10 +179,10 @@ ${tgEmoji(BOT_EMOJIS.BUY_NOW, "💳")} <b>ငွေလွှဲလက်ခံ�
 • ${tgEmoji(BOT_EMOJIS.KBZPAY, "🏧")} <b>KBZ Pay:</b> <code>${botConfig.PAYMENT_KPAY_PHONE}</code> (${botConfig.PAYMENT_ACCOUNT_NAME})
 • ${tgEmoji(BOT_EMOJIS.WAVEPAY, "🆗")} <b>WavePay:</b> <code>${botConfig.PAYMENT_WAVEPAY_PHONE}</code> (${botConfig.PAYMENT_ACCOUNT_NAME})
 
-📲 <b>ငွေလွှဲပြီးပါက:</b>
+${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>ငွေလွှဲပြီးပါက:</b>
 ငွေလွှဲပြေစာ Screenshot ပုံကို <b>ဤ Chat ထဲသို့ ဓာတ်ပုံ (Photo) အဖြစ် တိုက်ရိုက် ပေးပို့ပေးပါရန်</b> ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}
 
-<i>Admin မှ စစ်ဆေးအတည်ပြုပြီးသည်နှင့် သင့် Wallet ထဲသို့ ငွေချက်ချင်း ရောက်ရှိမည်ဖြစ်ပြီး Bot မှ အကြောင်းကြားစာ ပေးပို့ပေးပါမည်ခင်ဗျာ ✨</i>`;
+<i>Admin မှ စစ်ဆေးအတည်ပြုပြီးသည်နှင့် သင့် Wallet ထဲသို့ ငွေချက်ချင်း ရောက်ရှိမည်ဖြစ်ပြီး Bot မှ အကြောင်းကြားစာ ပေးပို့ပေးပါမည်ခင်ဗျာ ${tgEmoji(BOT_EMOJIS.SPARKLES, "✨")}</i>`;
 }
 
 /**
@@ -228,10 +228,10 @@ export function formatInsufficientBalanceMessage(params: {
   return `<blockquote>${tgEmoji(BOT_EMOJIS.WARNING, "⚠️")} <b>လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ!</b> ❞
 အော်ဒါဝယ်ယူရန် Wallet ထဲသို့ ငွေဖြည့်သွင်းရန် လိုအပ်ပါသည်။</blockquote>
 
-• <b>ပစ္စည်း:</b> <b>${escapeHtml(params.productName)}</b> x ${params.quantity}
-• <b>ကျသင့်ငွေ:</b> <b>${params.totalMmk.toLocaleString("en-US")} MMK</b>
-• <b>လက်ရှိ Wallet Balance:</b> <b>${params.walletBalanceMmk.toLocaleString("en-US")} MMK</b>
-• <b>ထပ်မံလိုအပ်သောငွေ:</b> <b>${params.deficitMmk.toLocaleString("en-US")} MMK</b>
+${tgEmoji(BOT_EMOJIS.BOX, "📦")} <b>ပစ္စည်း:</b> <b>${escapeHtml(params.productName)}</b> x ${params.quantity}
+${tgEmoji(BOT_EMOJIS.PRICE, "💵")} <b>ကျသင့်ငွေ:</b> <b>${params.totalMmk.toLocaleString("en-US")} MMK</b>
+${tgEmoji(BOT_EMOJIS.BUY_NOW, "💳")} <b>လက်ရှိ Wallet Balance:</b> <b>${params.walletBalanceMmk.toLocaleString("en-US")} MMK</b>
+${tgEmoji(BOT_EMOJIS.ABACUS, "🧮")} <b>ထပ်မံလိုအပ်သောငွေ:</b> <b>${params.deficitMmk.toLocaleString("en-US")} MMK</b>
 
 အောက်ပါ ခလုတ်မှတစ်ဆင့် လိုအပ်သော ငွေပမာဏကို အတိအကျ တိုက်ရိုက် ငွေဖြည့်နိုင်ပါသည် ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}`;
 }
@@ -249,10 +249,10 @@ export function formatPurchaseConfirmMessage(params: {
   return `<blockquote>${tgEmoji(BOT_EMOJIS.BAGS, "🛍")} <b>ဝယ်ယူမှု အတည်ပြုခြင်း</b> ❞
 သင့် Wallet ထဲမှ ငွေနုတ်ယူပြီး အကောင့်ကို ချက်ချင်း ပေးပို့ပါမည်။</blockquote>
 
-• <b>ပစ္စည်း:</b> <b>${escapeHtml(params.productName)}</b> x ${params.quantity}
-• <b>ကျသင့်ငွေ:</b> <b>${params.totalMmk.toLocaleString("en-US")} MMK</b>
-• <b>လက်ရှိ Wallet Balance:</b> <b>${params.walletBalanceMmk.toLocaleString("en-US")} MMK</b>
-• <b>ဝယ်ယူပြီး လက်ကျန်ငွေ:</b> <b>${params.remainingBalanceMmk.toLocaleString("en-US")} MMK</b>
+${tgEmoji(BOT_EMOJIS.BOX, "📦")} <b>ပစ္စည်း:</b> <b>${escapeHtml(params.productName)}</b> x ${params.quantity}
+${tgEmoji(BOT_EMOJIS.PRICE, "💵")} <b>ကျသင့်ငွေ:</b> <b>${params.totalMmk.toLocaleString("en-US")} MMK</b>
+${tgEmoji(BOT_EMOJIS.BUY_NOW, "💳")} <b>လက်ရှိ Wallet Balance:</b> <b>${params.walletBalanceMmk.toLocaleString("en-US")} MMK</b>
+${tgEmoji(BOT_EMOJIS.MONEY, "💰")} <b>ဝယ်ယူပြီး လက်ကျန်ငွေ:</b> <b>${params.remainingBalanceMmk.toLocaleString("en-US")} MMK</b>
 
 ဝယ်ယူရန် သေချာပါက အောက်ပါ <b>'အတည်ပြု ဝယ်ယူမည်'</b> ခလုတ်ကို နှိပ်ပေးပါခင်ဗျာ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}`;
 }
@@ -330,6 +330,6 @@ export function formatOrderDetailMessage(order: {
 ရက်စွဲ: <b>${dateFormatted}</b>
 အခြေအနေ: ${statusLabel}</blockquote>
 
-• <b>ပစ္စည်း:</b> <b>${escapeHtml(order.productName)}</b> x ${order.quantity}
-• <b>ကျသင့်ငွေ:</b> <b>${order.totalMmk.toLocaleString("en-US")} MMK</b>${credentialsBlock}`;
+${tgEmoji(BOT_EMOJIS.BOX, "📦")} <b>ပစ္စည်း:</b> <b>${escapeHtml(order.productName)}</b> x ${order.quantity}
+${tgEmoji(BOT_EMOJIS.PRICE, "💵")} <b>ကျသင့်ငွေ:</b> <b>${order.totalMmk.toLocaleString("en-US")} MMK</b>${credentialsBlock}`;
 }
