@@ -1,46 +1,44 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { useSidebar } from '~/composables/useSidebar'
 import Sidebar from '~/components/Sidebar.vue'
 import Header from '~/components/Header.vue'
 
-const mobileSidebarOpen = ref(false)
-
-function toggleMobileSidebar() {
-  mobileSidebarOpen.value = !mobileSidebarOpen.value
-}
-
-function closeMobileSidebar() {
-  mobileSidebarOpen.value = false
-}
+const { isCollapsed, isMobileOpen, closeMobile } = useSidebar()
 </script>
 
 <template>
   <div class="min-h-screen flex bg-slate-50 dark:bg-[#0b1220] transition-colors">
-    <!-- Desktop Sidebar (Fixed Left) -->
-    <div class="hidden lg:block fixed inset-y-0 left-0 w-64 z-30 shadow-sm">
+    <!-- Desktop Sidebar (Fixed Left with smooth width transition) -->
+    <div
+      class="hidden lg:block fixed inset-y-0 left-0 z-30 shadow-sm transition-all duration-300 ease-in-out"
+      :class="isCollapsed ? 'w-20' : 'w-64'"
+    >
       <Sidebar />
     </div>
 
     <!-- Mobile Drawer Sidebar (Sliding Overlay) -->
     <div
-      v-if="mobileSidebarOpen"
+      v-if="isMobileOpen"
       class="lg:hidden fixed inset-0 z-50 flex"
     >
       <!-- Backdrop overlay -->
       <div
-        class="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-        @click="closeMobileSidebar"
+        class="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300"
+        @click="closeMobile"
       ></div>
 
       <!-- Drawer Content -->
-      <div class="relative w-72 max-w-[80vw] h-full shadow-2xl z-10">
-        <Sidebar :on-item-click="closeMobileSidebar" />
+      <div class="relative w-72 max-w-[85vw] h-full shadow-2xl z-10 transition-transform duration-300">
+        <Sidebar :is-mobile="true" :on-item-click="closeMobile" />
       </div>
     </div>
 
-    <!-- Main Content Layout -->
-    <div class="flex-1 lg:pl-64 flex flex-col min-w-0 min-h-screen">
-      <Header @toggle-mobile-sidebar="toggleMobileSidebar" />
+    <!-- Main Content Layout (smooth margin/padding transition matching sidebar width) -->
+    <div
+      class="flex-1 flex flex-col min-w-0 min-h-screen transition-all duration-300 ease-in-out"
+      :class="isCollapsed ? 'lg:pl-20' : 'lg:pl-64'"
+    >
+      <Header />
 
       <main class="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
         <slot />

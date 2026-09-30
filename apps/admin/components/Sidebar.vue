@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useSidebar } from '~/composables/useSidebar'
 
 const props = defineProps<{
+  isMobile?: boolean
   onItemClick?: () => void
 }>()
 
-// Group expansion states
+const { isCollapsed, toggleCollapse } = useSidebar()
+
+// Group expansion states for accordion in expanded mode
 const expandedGroups = ref({
   main: true,
   store: true,
@@ -17,193 +21,296 @@ function toggleGroup(key: keyof typeof expandedGroups.value) {
   expandedGroups.value[key] = !expandedGroups.value[key]
 }
 
-const emit = defineEmits(['close'])
-
 function handleNav() {
   if (props.onItemClick) {
     props.onItemClick()
   }
 }
+
+// Nav items definition
+const navGroups = [
+  {
+    key: 'main' as const,
+    label: 'Main Menu',
+    items: [
+      {
+        to: '/',
+        label: 'Overview',
+        icon: 'pi pi-th-large',
+        badge: null,
+      },
+      {
+        to: '/supplier',
+        label: 'XPro Supplier',
+        icon: 'pi pi-cloud',
+        badge: { type: 'pulse', color: 'emerald' },
+      },
+    ],
+  },
+  {
+    key: 'store' as const,
+    label: 'Store Management',
+    items: [
+      {
+        to: '/products',
+        label: 'Products',
+        icon: 'pi pi-box',
+        badge: null,
+      },
+      {
+        to: '/categories',
+        label: 'Categories',
+        icon: 'pi pi-tags',
+        badge: null,
+      },
+    ],
+  },
+  {
+    key: 'orders' as const,
+    label: 'Orders & Payments',
+    items: [
+      {
+        to: '/orders',
+        label: 'All Orders',
+        icon: 'pi pi-shopping-bag',
+        badge: null,
+      },
+      {
+        to: '/payments',
+        label: 'Payment Slips',
+        icon: 'pi pi-receipt',
+        badge: { type: 'pill', text: 'Review', color: 'amber' },
+      },
+    ],
+  },
+  {
+    key: 'settings' as const,
+    label: 'Configuration',
+    items: [
+      {
+        to: '/settings',
+        label: 'Rates & Margins',
+        icon: 'pi pi-sliders-h',
+        badge: null,
+      },
+    ],
+  },
+]
 </script>
 
 <template>
-  <aside class="h-full flex flex-col bg-[#0b1220] text-slate-200 border-r border-slate-800/80 select-none">
+  <aside
+    class="h-full flex flex-col bg-[#0b1220] text-slate-200 border-r border-slate-800/80 select-none transition-all duration-300 ease-in-out overflow-hidden"
+    :class="[
+      isCollapsed && !isMobile ? 'w-20' : 'w-64',
+    ]"
+  >
     <!-- Brand Header -->
-    <div class="h-16 flex items-center justify-between px-5 border-b border-slate-800/80">
-      <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20 text-white">
+    <div
+      class="h-16 flex items-center border-b border-slate-800/80 transition-all duration-300"
+      :class="isCollapsed && !isMobile ? 'justify-center px-2' : 'justify-between px-4'"
+    >
+      <!-- Logo + Title (Expanded) -->
+      <div
+        v-if="!isCollapsed || isMobile"
+        class="flex items-center gap-3 min-w-0 transition-opacity duration-200"
+      >
+        <div class="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/25 text-white">
           <i class="pi pi-bolt text-lg"></i>
         </div>
-        <div>
-          <span class="font-bold text-base tracking-tight text-white block">Arena Store</span>
-          <span class="text-[11px] text-slate-400 font-mono tracking-wider uppercase">Admin Portal</span>
+        <div class="truncate">
+          <span class="font-bold text-sm tracking-tight text-white block truncate">Arena Store</span>
+          <span class="text-[10px] text-slate-400 font-mono tracking-wider uppercase block">Admin Portal</span>
         </div>
       </div>
-      <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-        v1.0
-      </span>
+
+      <!-- Action Button (Expanded: Collapse Toggle / Mobile: Close X) -->
+      <div v-if="!isCollapsed || isMobile" class="flex items-center gap-1.5 shrink-0">
+        <span class="hidden sm:inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+          v1.0
+        </span>
+        <!-- Mobile close button -->
+        <button
+          v-if="isMobile"
+          type="button"
+          @click="onItemClick"
+          class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors"
+          title="Close drawer"
+        >
+          <i class="pi pi-times text-base"></i>
+        </button>
+        <!-- Desktop collapse button -->
+        <button
+          v-else
+          type="button"
+          @click="toggleCollapse"
+          class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/80 transition-all duration-150"
+          title="Collapse Sidebar"
+          aria-label="Collapse Sidebar"
+        >
+          <!-- Panel sidebar collapse icon (similar to PrimeVue) -->
+          <svg class="w-4 h-4 text-slate-400 hover:text-slate-200 transition-transform duration-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="18" height="18" x="3" y="3" rx="2" />
+            <path d="M9 3v18" />
+            <path d="m16 15-3-3 3-3" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Collapsed Brand / Expand Icon (Collapsed Mode) -->
+      <div
+        v-else
+        class="flex flex-col items-center justify-center w-full"
+      >
+        <button
+          type="button"
+          @click="toggleCollapse"
+          class="group relative w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20 text-white hover:scale-105 active:scale-95 transition-all duration-200"
+          title="Expand Sidebar"
+          aria-label="Expand Sidebar"
+        >
+          <i class="pi pi-bolt text-lg group-hover:hidden transition-all"></i>
+          <!-- Hover shows expand icon -->
+          <svg class="w-5 h-5 hidden group-hover:block transition-all" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="18" height="18" x="3" y="3" rx="2" />
+            <path d="M9 3v18" />
+            <path d="m13 9 3 3-3 3" />
+          </svg>
+        </button>
+      </div>
     </div>
 
-    <!-- Navigation Scroll Area -->
-    <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-5">
-      <!-- Group 1: MAIN -->
-      <div>
+    <!-- Navigation Area -->
+    <nav class="flex-1 overflow-y-auto overflow-x-hidden px-2.5 py-3 space-y-4">
+      <div v-for="(group, gIdx) in navGroups" :key="group.key">
+        <!-- Expanded Mode: Accordion Header with Label -->
         <button
+          v-if="!isCollapsed || isMobile"
           type="button"
-          @click="toggleGroup('main')"
-          class="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-slate-200 uppercase tracking-wider transition-colors"
+          @click="toggleGroup(group.key)"
+          class="w-full flex items-center justify-between px-2.5 py-1 text-[11px] font-semibold text-slate-400 hover:text-slate-200 uppercase tracking-wider transition-colors"
         >
-          <span>Main Menu</span>
+          <span class="truncate">{{ group.label }}</span>
           <i
-            class="pi pi-chevron-down text-[10px] transition-transform duration-200"
-            :class="{ '-rotate-90': !expandedGroups.main }"
+            class="pi pi-chevron-down text-[9px] transition-transform duration-200 shrink-0"
+            :class="{ '-rotate-90': !expandedGroups[group.key] }"
           ></i>
         </button>
 
-        <div v-show="expandedGroups.main" class="mt-1 space-y-1">
-          <NuxtLink
-            to="/"
-            @click="handleNav"
-            class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors"
-            active-class="bg-indigo-600/20 !text-indigo-400 font-medium border-l-2 border-indigo-500 rounded-l-none"
-          >
-            <i class="pi pi-th-large text-base"></i>
-            <span>Overview</span>
-          </NuxtLink>
+        <!-- Collapsed Mode: Subtle divider between groups -->
+        <div
+          v-else-if="gIdx > 0"
+          class="h-px bg-slate-800/80 mx-2 my-2.5"
+        ></div>
 
+        <!-- Links List -->
+        <div
+          v-show="isCollapsed && !isMobile ? true : expandedGroups[group.key]"
+          class="mt-1 space-y-1"
+        >
           <NuxtLink
-            to="/supplier"
+            v-for="item in group.items"
+            :key="item.to"
+            :to="item.to"
             @click="handleNav"
-            class="flex items-center justify-between px-3 py-2 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors"
+            :title="isCollapsed && !isMobile ? item.label : undefined"
+            class="group relative flex items-center rounded-xl text-slate-300 hover:text-white hover:bg-slate-800/60 transition-all duration-200"
+            :class="[
+              isCollapsed && !isMobile
+                ? 'justify-center p-2.5 mx-auto w-11 h-11'
+                : 'gap-3 px-3 py-2 text-sm',
+            ]"
             active-class="bg-indigo-600/20 !text-indigo-400 font-medium border-l-2 border-indigo-500 rounded-l-none"
           >
-            <div class="flex items-center gap-3">
-              <i class="pi pi-cloud text-base"></i>
-              <span>XPro Supplier</span>
+            <!-- Icon -->
+            <div class="relative shrink-0 flex items-center justify-center">
+              <i :class="[item.icon, isCollapsed && !isMobile ? 'text-lg' : 'text-base']"></i>
+
+              <!-- Small badge dot in Collapsed Mode -->
+              <span
+                v-if="isCollapsed && !isMobile && item.badge"
+                class="absolute -top-1 -right-1 w-2 h-2 rounded-full ring-2 ring-[#0b1220]"
+                :class="[
+                  item.badge.color === 'emerald' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400',
+                ]"
+              ></span>
             </div>
-            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          </NuxtLink>
-        </div>
-      </div>
 
-      <!-- Group 2: STORE MANAGEMENT -->
-      <div>
-        <button
-          type="button"
-          @click="toggleGroup('store')"
-          class="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-slate-200 uppercase tracking-wider transition-colors"
-        >
-          <span>Store Management</span>
-          <i
-            class="pi pi-chevron-down text-[10px] transition-transform duration-200"
-            :class="{ '-rotate-90': !expandedGroups.store }"
-          ></i>
-        </button>
-
-        <div v-show="expandedGroups.store" class="mt-1 space-y-1">
-          <NuxtLink
-            to="/products"
-            @click="handleNav"
-            class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors"
-            active-class="bg-indigo-600/20 !text-indigo-400 font-medium border-l-2 border-indigo-500 rounded-l-none"
-          >
-            <i class="pi pi-box text-base"></i>
-            <span>Products</span>
-          </NuxtLink>
-
-          <NuxtLink
-            to="/categories"
-            @click="handleNav"
-            class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors"
-            active-class="bg-indigo-600/20 !text-indigo-400 font-medium border-l-2 border-indigo-500 rounded-l-none"
-          >
-            <i class="pi pi-tags text-base"></i>
-            <span>Categories</span>
-          </NuxtLink>
-        </div>
-      </div>
-
-      <!-- Group 3: ORDERS & PAYMENTS -->
-      <div>
-        <button
-          type="button"
-          @click="toggleGroup('orders')"
-          class="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-slate-200 uppercase tracking-wider transition-colors"
-        >
-          <span>Orders & Payments</span>
-          <i
-            class="pi pi-chevron-down text-[10px] transition-transform duration-200"
-            :class="{ '-rotate-90': !expandedGroups.orders }"
-          ></i>
-        </button>
-
-        <div v-show="expandedGroups.orders" class="mt-1 space-y-1">
-          <NuxtLink
-            to="/orders"
-            @click="handleNav"
-            class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors"
-            active-class="bg-indigo-600/20 !text-indigo-400 font-medium border-l-2 border-indigo-500 rounded-l-none"
-          >
-            <i class="pi pi-shopping-bag text-base"></i>
-            <span>All Orders</span>
-          </NuxtLink>
-
-          <NuxtLink
-            to="/payments"
-            @click="handleNav"
-            class="flex items-center justify-between px-3 py-2 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors"
-            active-class="bg-indigo-600/20 !text-indigo-400 font-medium border-l-2 border-indigo-500 rounded-l-none"
-          >
-            <div class="flex items-center gap-3">
-              <i class="pi pi-receipt text-base"></i>
-              <span>Payment Slips</span>
-            </div>
-            <span class="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-              Review
+            <!-- Label in Expanded Mode -->
+            <span
+              v-if="!isCollapsed || isMobile"
+              class="flex-1 truncate text-sm transition-opacity duration-200"
+            >
+              {{ item.label }}
             </span>
-          </NuxtLink>
-        </div>
-      </div>
 
-      <!-- Group 4: SETTINGS -->
-      <div>
-        <button
-          type="button"
-          @click="toggleGroup('settings')"
-          class="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-slate-200 uppercase tracking-wider transition-colors"
-        >
-          <span>Configuration</span>
-          <i
-            class="pi pi-chevron-down text-[10px] transition-transform duration-200"
-            :class="{ '-rotate-90': !expandedGroups.settings }"
-          ></i>
-        </button>
+            <!-- Badges in Expanded Mode -->
+            <template v-if="(!isCollapsed || isMobile) && item.badge">
+              <span
+                v-if="item.badge.type === 'pulse'"
+                class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"
+              ></span>
+              <span
+                v-else-if="item.badge.type === 'pill'"
+                class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0"
+              >
+                {{ item.badge.text }}
+              </span>
+            </template>
 
-        <div v-show="expandedGroups.settings" class="mt-1 space-y-1">
-          <NuxtLink
-            to="/settings"
-            @click="handleNav"
-            class="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors"
-            active-class="bg-indigo-600/20 !text-indigo-400 font-medium border-l-2 border-indigo-500 rounded-l-none"
-          >
-            <i class="pi pi-sliders-h text-base"></i>
-            <span>Rates & Margins</span>
+            <!-- Floating Tooltip on Hover for Collapsed Mode -->
+            <div
+              v-if="isCollapsed && !isMobile"
+              class="absolute left-full ml-3 px-2.5 py-1 bg-slate-900 text-white text-xs font-medium rounded-lg shadow-xl border border-slate-700 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50 flex items-center gap-1.5"
+            >
+              <span>{{ item.label }}</span>
+              <span
+                v-if="item.badge?.type === 'pill'"
+                class="px-1 py-0.2 rounded text-[9px] bg-amber-500/20 text-amber-300"
+              >
+                {{ item.badge.text }}
+              </span>
+            </div>
           </NuxtLink>
         </div>
       </div>
     </nav>
 
     <!-- User Profile Footer -->
-    <div class="p-3 border-t border-slate-800/80 bg-slate-950/40">
-      <div class="flex items-center gap-3 p-2 rounded-xl bg-slate-900/60 border border-slate-800/60">
-        <div class="w-8 h-8 rounded-full bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-semibold text-xs">
+    <div
+      class="border-t border-slate-800/80 bg-slate-950/40 transition-all duration-300"
+      :class="isCollapsed && !isMobile ? 'p-2 flex justify-center' : 'p-3'"
+    >
+      <!-- Collapsed Footer: Avatar Only -->
+      <div
+        v-if="isCollapsed && !isMobile"
+        class="group relative flex items-center justify-center"
+      >
+        <div class="relative w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-semibold text-xs cursor-pointer hover:bg-indigo-600/30 transition-colors">
+          OP
+          <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-[#0b1220]"></span>
+        </div>
+
+        <!-- Tooltip -->
+        <div class="absolute left-full ml-3 px-3 py-1.5 bg-slate-900 text-white text-xs rounded-lg shadow-xl border border-slate-700 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-150 z-50">
+          <p class="font-medium text-white">Arena Admin</p>
+          <p class="text-[10px] text-slate-400">admin@arenastore.mm</p>
+        </div>
+      </div>
+
+      <!-- Expanded Footer: Full Profile Card -->
+      <div
+        v-else
+        class="flex items-center gap-3 p-2 rounded-xl bg-slate-900/60 border border-slate-800/60"
+      >
+        <div class="w-8 h-8 shrink-0 rounded-full bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-semibold text-xs">
           OP
         </div>
         <div class="flex-1 min-w-0">
           <p class="text-xs font-medium text-white truncate">Arena Admin</p>
           <p class="text-[11px] text-slate-400 truncate">admin@arenastore.mm</p>
         </div>
-        <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+        <div class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></div>
       </div>
     </div>
   </aside>

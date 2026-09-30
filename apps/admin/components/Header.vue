@@ -1,10 +1,10 @@
 <script setup lang="ts">
+import { useSidebar } from '~/composables/useSidebar'
 import { useTheme } from '~/composables/useTheme'
 import { useSupplierStatus } from '~/composables/useSupplierStatus'
 import { useToast } from '~/composables/useToast'
 
-const emit = defineEmits(['toggleMobileSidebar'])
-
+const { isCollapsed, toggleCollapse, toggleMobile } = useSidebar()
 const { isDark, toggleTheme } = useTheme()
 const { supplierBalanceUsd, isOnline, isSyncing, syncCatalog, fetchStatus } = useSupplierStatus()
 const toast = useToast()
@@ -25,15 +25,32 @@ async function handleQuickSync() {
 
 <template>
   <header class="h-16 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-[#0b1220]/80 backdrop-blur-md sticky top-0 z-20 px-4 lg:px-6 flex items-center justify-between transition-colors">
-    <!-- Left: Mobile Hamburger & Page Title / Breadcrumb -->
-    <div class="flex items-center gap-3">
+    <!-- Left: Mobile Toggle, Desktop Collapse Toggle & Breadcrumb -->
+    <div class="flex items-center gap-2 sm:gap-3">
+      <!-- Mobile hamburger toggle -->
       <button
         type="button"
-        @click="emit('toggleMobileSidebar')"
+        @click="toggleMobile"
         class="lg:hidden p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
         aria-label="Toggle Navigation"
       >
         <i class="pi pi-bars text-lg"></i>
+      </button>
+
+      <!-- Desktop collapse/expand toggle button in Header -->
+      <button
+        type="button"
+        @click="toggleCollapse"
+        class="hidden lg:flex items-center justify-center p-2 rounded-xl text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-transparent hover:border-slate-200 dark:hover:border-slate-700/60 transition-all duration-200"
+        :title="isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'"
+        aria-label="Toggle Sidebar"
+      >
+        <svg class="w-4 h-4 transition-transform duration-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="18" height="18" x="3" y="3" rx="2" />
+          <path d="M9 3v18" />
+          <path v-if="isCollapsed" d="m13 9 3 3-3 3" />
+          <path v-else d="m16 15-3-3 3-3" />
+        </svg>
       </button>
 
       <div class="hidden sm:flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
