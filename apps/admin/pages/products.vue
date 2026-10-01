@@ -86,6 +86,7 @@ const categoriesList = computed(() => {
 const activeCount = computed(() => productsList.value.filter((p) => p.isActive).length)
 const pausedCount = computed(() => productsList.value.filter((p) => !p.isActive).length)
 const inStockCount = computed(() => productsList.value.filter((p) => getProductSellableStock(p) > 0).length)
+const outOfStockCount = computed(() => productsList.value.filter((p) => getProductSellableStock(p) === 0).length)
 
 async function fetchProducts(isSilent = false) {
   if (!isSilent) {
@@ -545,10 +546,21 @@ async function executeConfirmAction() {
               type="button"
               @click="stockFilter = stockFilter === 'IN_STOCK' ? 'ALL' : 'IN_STOCK'"
               :class="stockFilter === 'IN_STOCK' ? 'bg-slate-800 dark:bg-slate-700 text-white' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
-              class="px-3 py-1.5 rounded-xl transition-colors shrink-0 text-xs flex items-center gap-1"
+              class="px-3 py-1.5 rounded-xl transition-colors shrink-0 text-xs flex items-center gap-1 font-medium"
             >
               <i class="pi pi-check text-[10px]"></i>
               <span>In Stock ({{ inStockCount }})</span>
+            </button>
+
+            <!-- Out of Stock -->
+            <button
+              type="button"
+              @click="stockFilter = stockFilter === 'OUT_OF_STOCK' ? 'ALL' : 'OUT_OF_STOCK'"
+              :class="stockFilter === 'OUT_OF_STOCK' ? 'bg-rose-600/90 text-white shadow-sm shadow-rose-600/20' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+              class="px-3 py-1.5 rounded-xl transition-colors shrink-0 text-xs flex items-center gap-1 font-medium"
+            >
+              <i class="pi pi-times-circle text-[10px]"></i>
+              <span>Out of Stock ({{ outOfStockCount }})</span>
             </button>
           </div>
 
@@ -705,7 +717,7 @@ async function executeConfirmAction() {
                   <div class="flex items-center gap-2">
                     <span
                       class="font-semibold truncate max-w-xs group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors"
-                      :class="p.isActive ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 line-through'"
+                      :class="p.isActive ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-500'"
                       :title="cleanProductName(p.nameMmk)"
                     >
                       {{ cleanProductName(p.nameMmk) }}
@@ -999,7 +1011,7 @@ async function executeConfirmAction() {
                 <input
                   v-model.number="editForm.localStockLimit"
                   type="number"
-                  placeholder="Leave empty for full supplier stock ({{ selectedProduct.supplierStock }} available)"
+                  :placeholder="`Leave empty for full supplier stock (${selectedProduct.supplierStock} available)`"
                   class="w-full px-3.5 py-2.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
                   style="outline: none !important; box-shadow: none !important;"
                 />
