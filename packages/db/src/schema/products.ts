@@ -28,6 +28,7 @@ export const productSupplierSnapshots = pgTable(
     id: serial("id").primaryKey(),
     productId: integer("product_id")
       .notNull()
+      .unique()
       .references(() => products.id, { onDelete: "cascade" }),
     upstreamProductId: integer("upstream_product_id").notNull(),
     rawName: varchar("raw_name", { length: 255 }).notNull(),

@@ -2,16 +2,14 @@
 import { ref, computed, onMounted } from 'vue'
 import { useSupplierStatus } from '~/composables/useSupplierStatus'
 import { useToast } from '~/composables/useToast'
+import { useAuth } from '~/composables/useAuth'
+import { useStoreSettings } from '~/composables/useStoreSettings'
 
-const { isSyncing, syncCatalog } = useSupplierStatus()
+const { isSyncing, syncCatalog: runSync } = useSupplierStatus()
+const { getAuthHeaders } = useAuth()
+const { settings: storeSettings, fetchSettings: fetchStoreSettings } = useStoreSettings()
 const toast = useToast()
 const isLoading = ref(true)
-
-onMounted(() => {
-  setTimeout(() => {
-    isLoading.value = false
-  }, 450)
-})
 
 interface ProductItem {
   id: number
@@ -34,6 +32,7 @@ const selectedCategory = ref('ALL')
 const stockFilter = ref('ALL')
 const isDrawerOpen = ref(false)
 const selectedProduct = ref<ProductItem | null>(null)
+const isSaving = ref(false)
 
 // Edit form state
 const editForm = ref({
@@ -43,84 +42,62 @@ const editForm = ref({
   isActive: true,
 })
 
-// Sample/Live products list
-const productsList = ref<ProductItem[]>([
-  {
-    id: 1,
-    upstreamProductId: 50,
-    nameMmk: 'Claude $100 API Key 1 Month',
-    rawName: '{pe:6174520215376763867}🤶 Claude $100 API Key 1 Month',
-    categoryName: 'AI & Developer',
-    supplierPriceUsd: '3.00',
-    retailPriceMmk: 16500,
-    sellableStock: 0, // Wallet only has $1.00, so cannot afford $3.00 product!
-    supplierStock: 1,
-    localStockLimit: null,
-    isActive: true,
-    isWalletConstrained: true,
-    deliveryType: 'CREDENTIALS',
-  },
-  {
-    id: 2,
-    upstreamProductId: 10,
-    nameMmk: 'Gemini AI 18 MONTH',
-    rawName: '{pe:5069075201950483359}🤖 Gemini AI 18 MONTH',
-    categoryName: 'AI & Developer',
-    supplierPriceUsd: '0.69',
-    retailPriceMmk: 3900,
-    sellableStock: 1, // $1.00 can afford 1 unit
-    supplierStock: 60,
-    localStockLimit: 100,
-    isActive: true,
-    isWalletConstrained: true,
-    deliveryType: 'LINK',
-  },
-  {
-    id: 3,
-    upstreamProductId: 12,
-    nameMmk: 'ChatGPT Plus 1 Month Private',
-    rawName: '{pe:5187452912445982711} CHAT GPT Plus',
-    categoryName: 'AI & Developer',
-    supplierPriceUsd: '4.50',
-    retailPriceMmk: 24500,
-    sellableStock: 0,
-    supplierStock: 37,
-    localStockLimit: null,
-    isActive: true,
-    isWalletConstrained: true,
-    deliveryType: 'CREDENTIALS',
-  },
-  {
-    id: 4,
-    upstreamProductId: 22,
-    nameMmk: 'Canva Pro 1 Year Private',
-    rawName: '{pe:5194028394019283748} Canva Pro 1 Year',
-    categoryName: 'Design & Creative',
-    supplierPriceUsd: '0.50',
-    retailPriceMmk: 3200,
-    sellableStock: 2, // $1.00 can afford 2 units
-    supplierStock: 15,
-    localStockLimit: 50,
-    isActive: true,
-    isWalletConstrained: false,
-    deliveryType: 'LINK',
-  },
-  {
-    id: 5,
-    upstreamProductId: 18,
-    nameMmk: 'Steam Wallet $5 USD Global',
-    rawName: '{pe:4956506857901392912} steam Global $5',
-    categoryName: 'Gaming',
-    supplierPriceUsd: '4.80',
-    retailPriceMmk: 25000,
-    sellableStock: 0,
-    supplierStock: 8,
-    localStockLimit: null,
-    isActive: false, // Paused
-    isWalletConstrained: true,
-    deliveryType: 'LICENSE',
-  },
-])
+const productsList = ref<ProductItem[]>([])
+
+async function fetchProducts() {
+  isLoading.value = true
+  try {
+    const res: any = await $fetch('/api/admin/products', {
+      headers: getAuthHeaders(),
+    })
+
+    if (res.ok && Array.isArray(res.products)) {
+      productsList.value = res.products.map((p: any) => {
+        const usdCost = parseFloat(p.supplierPriceUsd) || 0
+        const isConstrained = usdCost > 1.0 // If supplier balance < cost
+        return {
+          id: p.id,
+          upstreamProductId: p.supplierProductId || p.upstreamProductId || p.id,
+          nameMmk: p.nameMmk || p.name,
+          rawName: p.name || p.nameMmk,
+          categoryName: p.categoryName || 'General',
+          supplierPriceUsd: p.supplierPriceUsd || '0.00',
+          retailPriceMmk: p.retailPriceMmk || 0,
+          sellableStock: p.localStockLimit !== null ? p.localStockLimit : (p.supplierStock || 999),
+          supplierStock: p.supplierStock || 999,
+          localStockLimit: p.localStockLimit,
+          isActive: p.isActive !== false,
+          isWalletConstrained: isConstrained,
+          deliveryType: p.deliveryType || 'CREDENTIALS',
+        }
+      })
+    }
+  } catch (err: any) {
+    toast.error('Failed to load products: ' + (err.message || 'Network error'))
+  } finally {
+    isLoading.value = false
+  }
+}
+
+async function handleSyncCatalog() {
+  try {
+    await runSync()
+    toast.success('Catalog synced successfully from upstream!', 'Sync Complete')
+    await fetchProducts()
+  } catch (err: any) {
+    toast.error('Sync failed: ' + (err.message || 'Unknown error'))
+  }
+}
+
+onMounted(() => {
+  fetchProducts()
+  fetchStoreSettings()
+})
+
+const categoriesList = computed(() => {
+  const cats = new Set(productsList.value.map((p) => p.categoryName).filter(Boolean))
+  return ['ALL', ...Array.from(cats)]
+})
 
 const filteredProducts = computed(() => {
   return productsList.value.filter((p) => {
@@ -147,7 +124,8 @@ function openEditDrawer(product: ProductItem) {
   editForm.value.isActive = product.isActive
 
   // Calculate margin % from base cost
-  const baseCostMmk = parseFloat(product.supplierPriceUsd) * 4500
+  const rate = storeSettings.value.usdToMmkRate || 4500
+  const baseCostMmk = parseFloat(product.supplierPriceUsd) * rate
   if (baseCostMmk > 0) {
     editForm.value.marginPct = Math.round(
       ((product.retailPriceMmk - baseCostMmk) / baseCostMmk) * 100
@@ -160,7 +138,7 @@ function openEditDrawer(product: ProductItem) {
 function recalculatePrice() {
   if (!selectedProduct.value) return
   const usdCost = parseFloat(selectedProduct.value.supplierPriceUsd)
-  const exchangeRate = 4500
+  const exchangeRate = storeSettings.value.usdToMmkRate || 4500
   const costMmk = usdCost * exchangeRate
   const marginMultiplier = 1 + editForm.value.marginPct / 100
   const rawPrice = costMmk * marginMultiplier
@@ -168,20 +146,55 @@ function recalculatePrice() {
   editForm.value.retailPriceMmk = Math.ceil(rawPrice / 50) * 50
 }
 
-function saveProductChanges() {
+async function saveProductChanges() {
   if (!selectedProduct.value) return
 
-  selectedProduct.value.retailPriceMmk = editForm.value.retailPriceMmk
-  selectedProduct.value.localStockLimit = editForm.value.localStockLimit
-  selectedProduct.value.isActive = editForm.value.isActive
+  isSaving.value = true
+  try {
+    const res: any = await $fetch(`/api/admin/products/${selectedProduct.value.id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: {
+        retailPriceMmk: editForm.value.retailPriceMmk,
+        localStockLimit: editForm.value.localStockLimit,
+        isActive: editForm.value.isActive,
+      },
+    })
 
-  const productName = selectedProduct.value.nameMmk
-  isDrawerOpen.value = false
-  toast.success(`Pricing and stock limits updated for "${productName}"!`, 'Product Updated')
+    if (res.ok) {
+      selectedProduct.value.retailPriceMmk = editForm.value.retailPriceMmk
+      selectedProduct.value.localStockLimit = editForm.value.localStockLimit
+      selectedProduct.value.isActive = editForm.value.isActive
+
+      const productName = selectedProduct.value.nameMmk
+      isDrawerOpen.value = false
+      toast.success(`Pricing and stock limits saved to database for "${productName}"!`, 'Product Saved')
+    } else {
+      toast.error('Failed to update product: ' + (res.error || 'Server error'))
+    }
+  } catch (err: any) {
+    toast.error('Update failed: ' + (err.message || 'Network error'))
+  } finally {
+    isSaving.value = false
+  }
 }
 
-function toggleProductStatus(product: ProductItem) {
-  product.isActive = !product.isActive
+async function toggleProductStatus(product: ProductItem) {
+  const newStatus = !product.isActive
+  try {
+    await $fetch(`/api/admin/products/${product.id}`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: {
+        retailPriceMmk: product.retailPriceMmk,
+        isActive: newStatus,
+      },
+    })
+    product.isActive = newStatus
+    toast.info(`Product status updated to ${newStatus ? 'Active' : 'Paused'}.`)
+  } catch (err: any) {
+    toast.error('Status update failed: ' + err.message)
+  }
 }
 </script>
 
@@ -200,7 +213,7 @@ function toggleProductStatus(product: ProductItem) {
 
       <button
         type="button"
-        @click="syncCatalog"
+        @click="handleSyncCatalog"
         :disabled="isSyncing"
         class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20 active:scale-95 transition-all"
       >
@@ -305,7 +318,7 @@ function toggleProductStatus(product: ProductItem) {
                   {{ p.retailPriceMmk.toLocaleString() }} Ks
                 </div>
                 <div class="text-[11px] text-emerald-600 dark:text-emerald-400">
-                  Margin: ~{{ Math.round(((p.retailPriceMmk - (parseFloat(p.supplierPriceUsd) * 4500)) / (parseFloat(p.supplierPriceUsd) * 4500)) * 100) }}%
+                  Margin: ~{{ Math.round(((p.retailPriceMmk - (parseFloat(p.supplierPriceUsd) * (storeSettings.usdToMmkRate || 5000))) / (parseFloat(p.supplierPriceUsd) * (storeSettings.usdToMmkRate || 5000))) * 100) }}%
                 </div>
               </td>
 

@@ -1,15 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useToast } from '~/composables/useToast'
+import { useAuth } from '~/composables/useAuth'
 
 const toast = useToast()
+const { getAuthHeaders } = useAuth()
 const isLoading = ref(true)
-
-onMounted(() => {
-  setTimeout(() => {
-    isLoading.value = false
-  }, 450)
-})
 
 interface OrderRecord {
   id: string
@@ -48,153 +44,59 @@ const selectedOrder = ref<OrderRecord | null>(null)
 const copiedId = ref<string | null>(null)
 const isRefunding = ref(false)
 
-// Sample live/mock orders data in Wallet-First architecture
-const ordersList = ref<OrderRecord[]>([
-  {
-    id: 'c1234567-89ab-cdef-0123-456789abcdef',
-    publicOrderNo: 'ARN-2026-84920',
-    externalOrderId: 'XPRO-ARN-2026-84920',
-    status: 'DELIVERED',
-    paymentSource: 'WALLET',
-    totalAmountMmk: 3900,
-    totalCostUsd: '0.69',
-    createdAt: '2026-10-01 02:15',
-    customer: {
-      id: 1,
-      telegramId: '984729184',
-      firstName: 'Ryan Wez',
-      username: 'ryanwez',
-    },
-    items: [
-      {
-        id: 1,
-        productName: 'Gemini AI 18 MONTH',
-        quantity: 1,
-        unitPriceMmk: 3900,
-        subtotalMmk: 3900,
-        deliveryType: 'LINK',
-      },
-    ],
-    delivery: {
-      deliveredAt: '2026-10-01 02:15:02 (Instant)',
-      deliveryType: 'LINK',
-      credentialsText: 'user: ryan.buyer84920@arena-gemini.com\npass: Sec#Gemini84920\nplan: 18 Months Pro Active',
-    },
-  },
-  {
-    id: 'd9876543-21ba-fedc-3210-987654fedcba',
-    publicOrderNo: 'ARN-2026-84921',
-    externalOrderId: 'XPRO-ARN-2026-84921',
-    status: 'DELIVERED',
-    paymentSource: 'WALLET',
-    totalAmountMmk: 3200,
-    totalCostUsd: '0.50',
-    createdAt: '2026-10-01 01:45',
-    customer: {
-      id: 2,
-      telegramId: '872635194',
-      firstName: 'Aung Kyaw',
-      username: 'aungkyaw_99',
-    },
-    items: [
-      {
-        id: 2,
-        productName: 'Canva Pro 1 Year Private',
-        quantity: 1,
-        unitPriceMmk: 3200,
-        subtotalMmk: 3200,
-        deliveryType: 'LINK',
-      },
-    ],
-    delivery: {
-      deliveredAt: '2026-10-01 01:45:01 (Instant)',
-      deliveryType: 'LINK',
-      credentialsText: 'invite_link: https://canva.com/brand/join?token=arn_canva_84921\nexpires: 1 Year Unlimited Access',
-    },
-  },
-  {
-    id: 'e4567890-1234-5678-9012-345678901234',
-    publicOrderNo: 'ARN-2026-84919',
-    externalOrderId: 'XPRO-ARN-2026-84919',
-    status: 'DELIVERED',
-    paymentSource: 'WALLET',
-    totalAmountMmk: 16500,
-    totalCostUsd: '3.00',
-    createdAt: '2026-09-30 23:30',
-    customer: {
-      id: 3,
-      telegramId: '761234908',
-      firstName: 'Ko Kyaw',
-      username: 'kyawkyaw_mm',
-    },
-    items: [
-      {
-        id: 3,
-        productName: 'Claude $100 API Key 1 Month',
-        quantity: 1,
-        unitPriceMmk: 16500,
-        subtotalMmk: 16500,
-        deliveryType: 'CREDENTIALS',
-      },
-    ],
-    delivery: {
-      deliveredAt: '2026-09-30 23:30:03 (Instant)',
-      deliveryType: 'CREDENTIALS',
-      credentialsText: 'Key: sk-ant-api03-arena994829184719284-A9F3\nExpires: 30 Days\nRate: Tier 4 Enabled',
-    },
-  },
-  {
-    id: 'f5678901-2345-6789-0123-456789012345',
-    publicOrderNo: 'ARN-2026-84918',
-    externalOrderId: 'XPRO-ARN-2026-84918',
-    status: 'PROCESSING_SUPPLIER',
-    paymentSource: 'WALLET',
-    totalAmountMmk: 24500,
-    totalCostUsd: '4.50',
-    createdAt: '2026-09-30 22:18',
-    customer: {
-      id: 4,
-      telegramId: '654987321',
-      firstName: 'Su Su',
-      username: 'susu_linn',
-    },
-    items: [
-      {
-        id: 4,
-        productName: 'ChatGPT Plus 1 Month Private',
-        quantity: 1,
-        unitPriceMmk: 24500,
-        subtotalMmk: 24500,
-        deliveryType: 'CREDENTIALS',
-      },
-    ],
-  },
-  {
-    id: 'a1234567-3456-7890-1234-567890abcdef',
-    publicOrderNo: 'ARN-2026-84915',
-    externalOrderId: 'XPRO-ARN-2026-84915',
-    status: 'CANCELLED',
-    paymentSource: 'WALLET',
-    totalAmountMmk: 3900,
-    totalCostUsd: '0.69',
-    createdAt: '2026-09-30 14:00',
-    customer: {
-      id: 5,
-      telegramId: '543216789',
-      firstName: 'Hlaing Bwar',
-    },
-    items: [
-      {
-        id: 5,
-        productName: 'Gemini AI 18 MONTH',
-        quantity: 1,
-        unitPriceMmk: 3900,
-        subtotalMmk: 3900,
-        deliveryType: 'LINK',
-      },
-    ],
-  },
-])
+const ordersList = ref<OrderRecord[]>([])
+
+async function fetchOrders() {
+  isLoading.value = true
+  try {
+    const res: any = await $fetch('/api/admin/orders', {
+      headers: getAuthHeaders(),
+    })
+
+    if (res.ok && Array.isArray(res.orders)) {
+      ordersList.value = res.orders.map((o: any) => ({
+        id: o.orderId || o.id,
+        publicOrderNo: o.id || o.publicOrderNo,
+        externalOrderId: `XPRO-${o.id}`,
+        status: o.status === 'DELIVERED' ? 'DELIVERED' : o.status === 'REFUNDED' ? 'REFUNDED' : 'PROCESSING_SUPPLIER',
+        paymentSource: 'WALLET',
+        totalAmountMmk: o.totalMmk || 0,
+        totalCostUsd: '0.00',
+        createdAt: o.date ? new Date(o.date).toLocaleDateString() : 'Today',
+        customer: {
+          id: o.telegramId ? parseInt(o.telegramId, 10) : 1,
+          telegramId: o.telegramId || '',
+          firstName: o.user || 'Customer',
+          username: o.user?.startsWith('@') ? o.user.replace('@', '') : o.user,
+        },
+        items: [
+          {
+            id: 1,
+            productName: o.product || 'Digital Product',
+            quantity: o.qty || 1,
+            unitPriceMmk: o.totalMmk || 0,
+            subtotalMmk: o.totalMmk || 0,
+            deliveryType: 'CREDENTIALS',
+          },
+        ],
+        delivery: {
+          deliveredAt: o.date || 'Instant',
+          deliveryType: 'CREDENTIALS',
+          credentialsText: typeof o.delivery === 'string' ? o.delivery : JSON.stringify(o.delivery, null, 2),
+        },
+      }))
+    }
+  } catch (err: any) {
+    toast.error('Failed to load orders: ' + (err.message || 'Network error'))
+  } finally {
+    isLoading.value = false
+  }
+}
+
+onMounted(() => {
+  fetchOrders()
+})
+
 
 // Computed statistics
 const totalOrdersCount = computed(() => ordersList.value.length)

@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { useAuth } from './useAuth'
 
 const supplierBalanceUsd = ref<string>('1.00')
 const isOnline = ref<boolean>(true)
@@ -6,6 +7,8 @@ const isSyncing = ref<boolean>(false)
 const lastSyncMessage = ref<string>('')
 
 export function useSupplierStatus() {
+  const { getAuthHeaders } = useAuth()
+
   async function fetchStatus() {
     try {
       const res = await $fetch<{
@@ -16,7 +19,9 @@ export function useSupplierStatus() {
           health: string
           version: string
         }
-      }>('/api/admin/supplier/status')
+      }>('/api/admin/supplier/status', {
+        headers: getAuthHeaders(),
+      })
 
       if (res.ok && res.supplier) {
         supplierBalanceUsd.value = String(res.supplier.balanceUsd)
@@ -35,6 +40,7 @@ export function useSupplierStatus() {
         synced: { categories: number; products: number }
       }>('/api/admin/supplier/sync', {
         method: 'POST',
+        headers: getAuthHeaders(),
       })
       if (res.ok) {
         lastSyncMessage.value = `Synced ${res.synced.categories} categories & ${res.synced.products} products.`

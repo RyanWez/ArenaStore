@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useSidebar } from '~/composables/useSidebar'
+import { useAuth } from '~/composables/useAuth'
+
+const { user, logout } = useAuth()
 
 const props = defineProps<{
   isMobile?: boolean
@@ -311,8 +314,8 @@ const navGroups: NavGroup[] = [
     >
       <div class="group relative flex items-center w-full p-2 rounded-xl bg-slate-900/60 border border-slate-800/60 transition-all duration-300">
         <!-- Avatar -->
-        <div class="relative w-8 h-8 shrink-0 rounded-full bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-semibold text-xs">
-          OP
+        <div class="relative w-8 h-8 shrink-0 rounded-full bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 font-semibold text-xs">
+          {{ user?.firstName ? user.firstName.slice(0, 2).toUpperCase() : 'AD' }}
           <span
             v-if="isCollapsed && !isMobile"
             class="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-[#0b1220]"
@@ -322,27 +325,44 @@ const navGroups: NavGroup[] = [
         <!-- Details (Smooth slide & fade) -->
         <div
           class="transition-all duration-300 ease-in-out overflow-hidden whitespace-nowrap min-w-0 flex-1"
-          :class="isCollapsed && !isMobile ? 'max-w-0 opacity-0 pointer-events-none ml-0' : 'max-w-[150px] opacity-100 ml-3'"
+          :class="isCollapsed && !isMobile ? 'max-w-0 opacity-0 pointer-events-none ml-0' : 'max-w-[130px] opacity-100 ml-3'"
         >
-          <p class="text-xs font-medium text-white truncate">Arena Admin</p>
-          <p class="text-[11px] text-slate-400 truncate">admin@arenastore.mm</p>
+          <p class="text-xs font-medium text-white truncate">{{ user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Arena Admin' }}</p>
+          <p class="text-[10px] text-slate-400 truncate">{{ user?.email || 'admin@arenastore.mm' }}</p>
         </div>
 
+        <!-- Logout Button -->
         <div
           class="transition-all duration-300 ease-in-out shrink-0"
-          :class="isCollapsed && !isMobile ? 'max-w-0 opacity-0 pointer-events-none' : 'max-w-[16px] opacity-100 ml-auto'"
+          :class="isCollapsed && !isMobile ? 'max-w-0 opacity-0 pointer-events-none' : 'max-w-[28px] opacity-100 ml-auto'"
         >
-          <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+          <button
+            type="button"
+            @click="logout()"
+            title="Sign out of Admin Portal"
+            class="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+          >
+            <i class="pi pi-sign-out text-xs"></i>
+          </button>
         </div>
 
         <!-- Tooltip for collapsed mode -->
         <div
           v-if="isCollapsed && !isMobile"
-          class="absolute left-full top-1/2 -translate-y-1/2 ml-3.5 px-3 py-2 bg-slate-900/95 backdrop-blur-sm text-white text-xs rounded-xl shadow-2xl border border-slate-700/80 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 translate-x-1 group-hover:translate-x-0 z-50"
+          class="absolute left-full top-1/2 -translate-y-1/2 ml-3.5 px-3 py-2 bg-slate-900/95 backdrop-blur-sm text-white text-xs rounded-xl shadow-2xl border border-slate-700/80 whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 translate-x-1 group-hover:translate-x-0 z-50 flex items-center gap-3"
         >
           <span class="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-slate-900 border-l border-b border-slate-700/80 rotate-45"></span>
-          <p class="font-medium text-white relative z-10">Arena Admin</p>
-          <p class="text-[10px] text-slate-400 relative z-10">admin@arenastore.mm</p>
+          <div>
+            <p class="font-medium text-white relative z-10">{{ user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Arena Admin' }}</p>
+            <p class="text-[10px] text-slate-400 relative z-10">{{ user?.email || 'admin@arenastore.mm' }}</p>
+          </div>
+          <button
+            type="button"
+            @click="logout()"
+            class="pointer-events-auto p-1.5 rounded-lg bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 text-[11px] font-semibold"
+          >
+            Logout
+          </button>
         </div>
       </div>
     </div>

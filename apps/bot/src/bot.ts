@@ -3,6 +3,7 @@ import { botConfig } from "./config";
 import { BotContext, createInitialSessionData } from "./types";
 import { botCatalog } from "./services/catalog.service";
 import { botOrderService } from "./services/order.service";
+import { botSettingsService } from "./services/settings.service";
 import {
   buildMainMenuKeyboard,
   buildCategoriesKeyboard,
@@ -392,9 +393,10 @@ export function createBot(): Bot<BotContext> {
       reference: topUp.reference,
     };
     ctx.session.awaitingCustomTopUp = false;
+    const settings = await botSettingsService.getSettings();
 
     await ctx.editMessageText(
-      formatTopUpInvoiceMessage({ amountMmk: amount, reference: topUp.reference }),
+      formatTopUpInvoiceMessage({ amountMmk: amount, reference: topUp.reference, paymentInfo: settings }),
       {
         parse_mode: "HTML",
         reply_markup: buildTopUpInvoiceKeyboard(),
@@ -417,9 +419,10 @@ export function createBot(): Bot<BotContext> {
       reference: topUp.reference,
     };
     ctx.session.awaitingCustomTopUp = false;
+    const settings = await botSettingsService.getSettings();
 
     await ctx.editMessageText(
-      formatTopUpInvoiceMessage({ amountMmk: deficit, reference: topUp.reference }),
+      formatTopUpInvoiceMessage({ amountMmk: deficit, reference: topUp.reference, paymentInfo: settings }),
       {
         parse_mode: "HTML",
         reply_markup: buildTopUpInvoiceKeyboard(),
@@ -628,8 +631,9 @@ export function createBot(): Bot<BotContext> {
         reference: topUp.reference,
       };
 
+      const settings = await botSettingsService.getSettings();
       await ctx.reply(
-        formatTopUpInvoiceMessage({ amountMmk: amount, reference: topUp.reference }),
+        formatTopUpInvoiceMessage({ amountMmk: amount, reference: topUp.reference, paymentInfo: settings }),
         {
           parse_mode: "HTML",
           reply_markup: buildTopUpInvoiceKeyboard(),

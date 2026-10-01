@@ -10,6 +10,6 @@ export default defineConfig({
   dbCredentials: {
     url: process.env.DATABASE_URL || "postgres://postgres:postgres@localhost:5432/arena_store",
   },
-  strict: true,
+  strict: false,
   verbose: true,
 });

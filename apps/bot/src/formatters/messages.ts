@@ -54,6 +54,13 @@ ${tgEmoji(BOT_EMOJIS.ABACUS, "🧮")} <b>Selected ·</b> ${quantity}   ${tgEmoji
 <i>Pick a quantity below, then tap Buy Now.</i>`;
 }
 
+export interface DynamicPaymentInfo {
+  kpayPhone?: string;
+  kpayAccountName?: string;
+  wavepayPhone?: string;
+  wavepayAccountName?: string;
+}
+
 /**
  * Formats Checkout Order Reservation message with payment instructions.
  */
@@ -62,15 +69,21 @@ export function formatCheckoutMessage(params: {
   productName: string;
   quantity: number;
   totalMmk: number;
+  paymentInfo?: DynamicPaymentInfo;
 }): string {
+  const kpayPhone = params.paymentInfo?.kpayPhone || botConfig.PAYMENT_KPAY_PHONE;
+  const kpayAccount = params.paymentInfo?.kpayAccountName || botConfig.PAYMENT_ACCOUNT_NAME;
+  const wavepayPhone = params.paymentInfo?.wavepayPhone || botConfig.PAYMENT_WAVEPAY_PHONE;
+  const wavepayAccount = params.paymentInfo?.wavepayAccountName || botConfig.PAYMENT_ACCOUNT_NAME;
+
   return `<blockquote>${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>Order Created · ${params.publicOrderNo}</b> ❞
 <b>Item:</b> ${escapeHtml(params.productName)} x ${params.quantity}
 <b>Total Amount:</b> ${params.totalMmk.toLocaleString("en-US")} Ks
 <b>Reservation Timer:</b> ${tgEmoji(BOT_EMOJIS.HOURGLASS, "⏳")} 15 မိနစ်အတွင်း ငွေလွှဲပေးပါရန်</blockquote>
 
 ${tgEmoji(BOT_EMOJIS.BUY_NOW, "💳")} <b>ငွေလွှဲလက်ခံမည့် အကောင့်များ:</b>
-• ${tgEmoji(BOT_EMOJIS.KBZPAY, "🏧")} <b>KBZ Pay:</b> <code>${botConfig.PAYMENT_KPAY_PHONE}</code> (${botConfig.PAYMENT_ACCOUNT_NAME})
-• ${tgEmoji(BOT_EMOJIS.WAVEPAY, "🆗")} <b>WavePay:</b> <code>${botConfig.PAYMENT_WAVEPAY_PHONE}</code> (${botConfig.PAYMENT_ACCOUNT_NAME})
+• ${tgEmoji(BOT_EMOJIS.KBZPAY, "🏧")} <b>KBZ Pay:</b> <code>${kpayPhone}</code> (${kpayAccount})
+• ${tgEmoji(BOT_EMOJIS.WAVEPAY, "🆗")} <b>WavePay:</b> <code>${wavepayPhone}</code> (${wavepayAccount})
 
 📲 <b>ငွေလွှဲပြီးပါက:</b>
 ငွေလွှဲပြီးကြောင်း ပြေစာ Screenshot ပုံကို <b>ဤ Chat ထဲသို့ ဓာတ်ပုံ (Photo) အဖြစ် တိုက်ရိုက် ပေးပို့ပေးပါရန်</b> ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}
@@ -170,14 +183,20 @@ ${tgEmoji(BOT_EMOJIS.BAGS, "🛍")} <b>Total Spent:</b> ${params.totalSpentMmk.t
 export function formatTopUpInvoiceMessage(params: {
   amountMmk: number;
   reference: string;
+  paymentInfo?: DynamicPaymentInfo;
 }): string {
+  const kpayPhone = params.paymentInfo?.kpayPhone || botConfig.PAYMENT_KPAY_PHONE;
+  const kpayAccount = params.paymentInfo?.kpayAccountName || botConfig.PAYMENT_ACCOUNT_NAME;
+  const wavepayPhone = params.paymentInfo?.wavepayPhone || botConfig.PAYMENT_WAVEPAY_PHONE;
+  const wavepayAccount = params.paymentInfo?.wavepayAccountName || botConfig.PAYMENT_ACCOUNT_NAME;
+
   return `<blockquote>${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>Wallet ငွေဖြည့်သွင်းရန် အချက်အလက်များ</b> ❞
 ဖြည့်သွင်းမည့် ပမာဏ: <b>${params.amountMmk.toLocaleString("en-US")} MMK</b>
 ကိုးကားနံပါတ်: <code>${params.reference}</code></blockquote>
 
 ${tgEmoji(BOT_EMOJIS.BUY_NOW, "💳")} <b>ငွေလွှဲလက်ခံမည့် အကောင့်များ:</b>
-• ${tgEmoji(BOT_EMOJIS.KBZPAY, "🏧")} <b>KBZ Pay:</b> <code>${botConfig.PAYMENT_KPAY_PHONE}</code> (${botConfig.PAYMENT_ACCOUNT_NAME})
-• ${tgEmoji(BOT_EMOJIS.WAVEPAY, "🆗")} <b>WavePay:</b> <code>${botConfig.PAYMENT_WAVEPAY_PHONE}</code> (${botConfig.PAYMENT_ACCOUNT_NAME})
+• ${tgEmoji(BOT_EMOJIS.KBZPAY, "🏧")} <b>KBZ Pay:</b> <code>${kpayPhone}</code> (${kpayAccount})
+• ${tgEmoji(BOT_EMOJIS.WAVEPAY, "🆗")} <b>WavePay:</b> <code>${wavepayPhone}</code> (${wavepayAccount})
 
 ${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>ငွေလွှဲပြီးပါက:</b>
 ငွေလွှဲပြေစာ Screenshot ပုံကို <b>ဤ Chat ထဲသို့ ဓာတ်ပုံ (Photo) အဖြစ် တိုက်ရိုက် ပေးပို့ပေးပါရန်</b> ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}

@@ -1,4 +1,6 @@
 import { botConfig } from "../config";
+import { getDb, products, categories, productSupplierSnapshots } from "@arena/db";
+import { eq } from "drizzle-orm";
 import {
   calculateRetailMmk,
   calculateSellableStock,
@@ -37,7 +39,7 @@ class BotCatalogService {
   private categoriesCache: BotCategory[] | null = null;
   private productsCache: BotProduct[] | null = null;
   private lastFetchedAt: number = 0;
-  private readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache
+  private readonly CACHE_TTL_MS = 15 * 1000; // 15 seconds cache
 
   /**
    * Formats MMK amount according to Option A requested by user: "<amount> Ks"
@@ -150,6 +152,82 @@ class BotCatalogService {
   }
 
   /**
+   * Fetches catalog directly from PostgreSQL database where admin price overrides live.
+   */
+  private async fetchDatabaseCatalog(): Promise<{ categories: BotCategory[]; products: BotProduct[] } | null> {
+    try {
+      const db = getDb();
+      const catRows = await db
+        .select()
+        .from(categories)
+        .where(eq(categories.isActive, true))
+        .orderBy(categories.sortOrder);
+
+      const prodRows = await db
+        .select({
+          id: products.upstreamProductId,
+          categoryId: products.categoryId,
+          nameMmk: products.nameMmk,
+          descriptionMmk: products.descriptionMmk,
+          retailPriceMmk: products.retailPriceMmk,
+          localStockLimit: products.localStockLimit,
+          isActive: products.isActive,
+          rawName: productSupplierSnapshots.rawName,
+          supplierPriceUsd: productSupplierSnapshots.supplierPriceUsd,
+          supplierStock: productSupplierSnapshots.supplierStock,
+          deliveryType: productSupplierSnapshots.deliveryType,
+          inStock: productSupplierSnapshots.inStock,
+        })
+        .from(products)
+        .leftJoin(productSupplierSnapshots, eq(products.id, productSupplierSnapshots.productId))
+        .where(eq(products.isActive, true));
+
+      if (prodRows.length === 0) return null;
+
+      const catList: BotCategory[] = catRows.map((c) => {
+        const parsed = parseCustomEmoji(c.name || `Category ${c.id}`);
+        return {
+          id: c.id,
+          name: c.name,
+          cleanName: parsed.cleanText,
+          emojiId: parsed.emojiId,
+        };
+      });
+
+      const prodList: BotProduct[] = prodRows.map((p) => {
+        const displayName = p.rawName || p.nameMmk;
+        const parsed = parseCustomEmoji(displayName);
+        const formattedDesc = p.descriptionMmk
+          ? formatTelegramCustomEmoji(p.descriptionMmk, "✨")
+          : "";
+        const stock = p.localStockLimit !== null ? p.localStockLimit : (p.supplierStock || 999);
+
+        return {
+          id: p.id,
+          categoryId: p.categoryId || 1,
+          name: displayName,
+          cleanName: parsed.cleanText,
+          emojiId: parsed.emojiId,
+          description: p.descriptionMmk || "",
+          formattedDescription: formattedDesc,
+          supplierPriceUsd: p.supplierPriceUsd || "0.00",
+          retailPriceMmk: p.retailPriceMmk,
+          formattedPriceMmk: this.formatPrice(p.retailPriceMmk),
+          stock,
+          supplierStock: p.supplierStock || 999,
+          deliveryType: p.deliveryType || "CREDENTIALS",
+          inStock: stock > 0,
+        };
+      });
+
+      return { categories: catList, products: prodList };
+    } catch (err: any) {
+      console.warn("[BotCatalogService] Database query skipped, falling back to upstream API:", err.message);
+      return null;
+    }
+  }
+
+  /**
    * Refreshes in-memory cache if expired.
    */
   private async ensureFreshCache(): Promise<void> {
@@ -159,6 +237,18 @@ class BotCatalogService {
     }
 
     try {
+      // 1. Prioritize PostgreSQL Database in dev/prod (reflects real-time admin pricing changes instantly)
+      if (process.env.NODE_ENV !== "test" && !process.env.VITEST) {
+        const dbCatalog = await this.fetchDatabaseCatalog();
+        if (dbCatalog && dbCatalog.products.length > 0) {
+          this.categoriesCache = dbCatalog.categories;
+          this.productsCache = dbCatalog.products;
+          this.lastFetchedAt = now;
+          return;
+        }
+      }
+
+      // 2. Fallback to direct Upstream Partner API
       const { categories, products } = await this.fetchUpstreamCatalog();
       this.categoriesCache = categories;
       this.productsCache = products;

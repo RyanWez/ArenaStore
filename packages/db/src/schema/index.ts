@@ -5,5 +5,7 @@ export * from "./orders";
 export * from "./payments";
 export * from "./deliveries";
 export * from "./reservations";
+export * from "./wallets";
+export * from "./topups";
 export * from "./audit";
 export * from "./settings";

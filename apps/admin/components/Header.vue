@@ -4,13 +4,19 @@ import { computed } from 'vue'
 import { useSidebar } from '~/composables/useSidebar'
 import { useTheme } from '~/composables/useTheme'
 import { useSupplierStatus } from '~/composables/useSupplierStatus'
+import { useStoreSettings } from '~/composables/useStoreSettings'
 import { useToast } from '~/composables/useToast'
 
 const route = useRoute()
 const { isCollapsed, toggleCollapse, toggleMobile } = useSidebar()
 const { isDark, toggleTheme } = useTheme()
 const { supplierBalanceUsd, isOnline, isSyncing, syncCatalog, fetchStatus } = useSupplierStatus()
+const { settings: storeSettings, fetchSettings: fetchStoreSettings } = useStoreSettings()
 const toast = useToast()
+
+const formattedExchangeRate = computed(() => {
+  return new Intl.NumberFormat('en-US').format(storeSettings.value.usdToMmkRate || 4500)
+})
 
 const pageTitle = computed(() => {
   switch (route.path) {
@@ -33,6 +39,7 @@ const pageTitle = computed(() => {
 
 onMounted(() => {
   fetchStatus()
+  fetchStoreSettings()
 })
 
 async function handleQuickSync() {
@@ -90,7 +97,7 @@ async function handleQuickSync() {
       <!-- Exchange Rate Tag -->
       <div class="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700/60">
         <i class="pi pi-dollar text-[11px] text-amber-500"></i>
-        <span>1 USD = 4,500 MMK</span>
+        <span>1 USD = {{ formattedExchangeRate }} MMK</span>
       </div>
 
       <!-- Upstream XPro Balance Widget -->

@@ -5,6 +5,8 @@ import { healthRoutes } from "./routes/health";
 import { catalogRoutes } from "./routes/catalog";
 import { orderRoutes } from "./routes/orders";
 import { adminRoutes } from "./routes/admin";
+import { authRoutes } from "./routes/auth";
+import { authService } from "./services/auth.service";
 
 export async function buildServer(): Promise<FastifyInstance> {
   const server = Fastify({
@@ -21,10 +23,36 @@ export async function buildServer(): Promise<FastifyInstance> {
   });
   await server.register(sensible);
 
+  // Authentication preHandler hook for /api/admin/* (excluding /api/admin/auth/login)
+  server.addHook("preHandler", async (request, reply) => {
+    const url = request.url.split("?")[0];
+    if (url.startsWith("/api/admin/") && url !== "/api/admin/auth/login") {
+      const authHeader = request.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return reply.status(401).send({
+          ok: false,
+          error: "Unauthorized. Please log in to access admin functions.",
+        });
+      }
+
+      const token = authHeader.replace("Bearer ", "").trim();
+      const session = await authService.getSession(token);
+      if (!session) {
+        return reply.status(401).send({
+          ok: false,
+          error: "Session expired or invalid. Please log in again.",
+        });
+      }
+
+      (request as any).adminUser = session;
+    }
+  });
+
   // Register Routes
   await server.register(healthRoutes);
   await server.register(catalogRoutes);
   await server.register(orderRoutes);
+  await server.register(authRoutes);
   await server.register(adminRoutes);
 
   // Custom global error handler
@@ -35,6 +63,11 @@ export async function buildServer(): Promise<FastifyInstance> {
       ok: false,
       error: error.message || "Internal Server Error",
     });
+  });
+
+  // Seed default admin in database if not present
+  await authService.seedDefaultAdmin().catch((err) => {
+    server.log.warn(`Admin seed deferred: ${err.message}`);
   });
 
   return server;

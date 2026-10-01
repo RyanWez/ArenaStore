@@ -91,6 +91,9 @@ importers:
 
   apps/bot:
     dependencies:
+      '@arena/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@arena/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -103,6 +106,9 @@ importers:
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
+      drizzle-orm:
+        specifier: ^0.39.3
+        version: 0.39.3(@types/pg@8.23.1)(pg@8.23.0)
       grammy:
         specifier: ^1.35.0
         version: 1.46.0(supports-color@10.2.2)

@@ -2,67 +2,70 @@
 import { ref, onMounted } from 'vue'
 import { useSupplierStatus } from '~/composables/useSupplierStatus'
 import { useToast } from '~/composables/useToast'
+import { useAuth } from '~/composables/useAuth'
 
-const { supplierBalanceUsd, isSyncing, syncCatalog, lastSyncMessage } = useSupplierStatus()
+const { supplierBalanceUsd, isSyncing, syncCatalog, lastSyncMessage, fetchStatus } = useSupplierStatus()
+const { getAuthHeaders } = useAuth()
 const toast = useToast()
 const isLoading = ref(true)
 
-onMounted(() => {
-  setTimeout(() => {
-    isLoading.value = false
-  }, 450)
-})
-
 const stats = ref({
-  totalSalesMmk: 245000,
-  ordersCount: 14,
-  pendingSlips: 2,
-  activeProducts: 24,
+  totalSalesMmk: 0,
+  ordersCount: 0,
+  fulfilledOrders: 0,
+  pendingOrders: 0,
+  pendingSlips: 0,
+  activeProducts: 0,
 })
 
-const recentOrders = ref([
-  {
-    id: 'ord-101',
-    publicOrderNo: 'ARN-2026-84920',
-    productName: 'Gemini AI 18 MONTH',
-    customer: '@ryanwez',
-    amountMmk: 3900,
-    status: 'DELIVERED',
-    createdAt: '10 mins ago',
-  },
-  {
-    id: 'ord-102',
-    publicOrderNo: 'ARN-2026-84919',
-    productName: 'Claude $100 API Key',
-    customer: '@kyawkyaw_mm',
-    amountMmk: 16500,
-    status: 'DELIVERED',
-    createdAt: '1 hour ago',
-  },
-  {
-    id: 'ord-103',
-    publicOrderNo: 'ARN-2026-84918',
-    productName: 'Canva Pro 1 Year',
-    customer: '@aungsan_99',
-    amountMmk: 8500,
-    status: 'DELIVERED',
-    createdAt: '3 hours ago',
-  },
-  {
-    id: 'ord-104',
-    publicOrderNo: 'ARN-2026-84917',
-    productName: 'ChatGPT Plus 1 Month',
-    customer: '@thant_zin',
-    amountMmk: 22000,
-    status: 'CANCELLED',
-    createdAt: 'Yesterday',
-  },
-])
+const recentOrders = ref<any[]>([])
+
+async function fetchDashboardData() {
+  isLoading.value = true
+  try {
+    const headers = getAuthHeaders()
+    const [statsRes, ordersRes]: [any, any] = await Promise.all([
+      $fetch('/api/admin/stats', { headers }).catch(() => null),
+      $fetch('/api/admin/orders', { headers }).catch(() => null),
+      fetchStatus().catch(() => {}),
+    ])
+
+    if (statsRes?.ok && statsRes.stats) {
+      stats.value.totalSalesMmk = statsRes.stats.totalSalesMmk || 0
+      stats.value.ordersCount = statsRes.stats.totalOrders || 0
+      stats.value.fulfilledOrders = statsRes.stats.fulfilledOrders || 0
+      stats.value.pendingOrders = statsRes.stats.pendingOrders || 0
+      stats.value.pendingSlips = statsRes.stats.pendingDepositsCount || 0
+      stats.value.activeProducts = statsRes.stats.activeProductsCount || 0
+    }
+
+    if (ordersRes?.ok && Array.isArray(ordersRes.orders)) {
+      recentOrders.value = ordersRes.orders.slice(0, 5).map((o: any) => ({
+        id: o.orderId || o.id,
+        publicOrderNo: o.id || o.publicOrderNo,
+        productName: o.product || 'Digital Item',
+        customer: o.user || '@customer',
+        amountMmk: o.totalMmk || 0,
+        status: o.status,
+        createdAt: o.date ? new Date(o.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Today',
+      }))
+    }
+  } catch (err: any) {
+    console.error('Dashboard data fetch error:', err)
+  } finally {
+    isLoading.value = false
+  }
+}
+
+onMounted(() => {
+  fetchDashboardData()
+})
 
 async function handleSync() {
   try {
     await syncCatalog()
     toast.success('XPro Supplier catalog synced successfully!', 'Sync Complete')
+    await fetchDashboardData()
   } catch (err: any) {
     toast.error(`Sync error: ${err.message}`, 'Sync Failed')
   }
@@ -123,8 +126,8 @@ async function handleSync() {
           {{ stats.totalSalesMmk.toLocaleString() }} <span class="text-xs font-normal text-slate-400">MMK</span>
         </p>
         <p class="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1">
-          <i class="pi pi-arrow-up text-[10px]"></i>
-          <span>+18% from last week</span>
+          <i class="pi pi-check-circle text-[10px]"></i>
+          <span>From {{ stats.fulfilledOrders }} completed orders</span>
         </p>
       </div>
 
@@ -141,7 +144,7 @@ async function handleSync() {
           {{ stats.ordersCount }}
         </p>
         <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-          12 fulfilled · 2 pending
+          {{ stats.fulfilledOrders }} fulfilled · {{ stats.pendingOrders }} pending
         </p>
       </div>
 

@@ -1,8 +1,12 @@
 import * as dotenv from "dotenv";
 import { z } from "zod";
 
+import path from "node:path";
+
 // Load .env from root or apps/api
-dotenv.config({ path: "../../.env" });
+dotenv.config({ path: path.resolve(process.cwd(), "../../.env") });
+dotenv.config({ path: path.resolve(process.cwd(), "../.env") });
+dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 dotenv.config();
 
 const envSchema = z.object({
@@ -11,6 +15,10 @@ const envSchema = z.object({
   HOST: z.string().default("0.0.0.0"),
   DATABASE_URL: z.string().default("postgres://postgres:postgres@localhost:5432/arena_store"),
   REDIS_URL: z.string().default("redis://localhost:6379"),
+  ADMIN_SESSION_SECRET: z.string().default("VxyyoXyS9@Mg1c4POHuXjoUVrhhP"),
+  ADMIN_EMAIL: z.string().email().default("admin@arenastore.mm"),
+  ADMIN_INITIAL_PASSWORD: z.string().min(6).default("ArenaAdmin2026!"),
+  TELEGRAM_BOT_TOKEN: z.string().default(""),
   UPSTREAM_BASE_URL: z
     .string()
     .url()
@@ -30,6 +38,11 @@ export type AppConfig = z.infer<typeof envSchema>;
 export function loadConfig(): AppConfig {
   const rawEnv = {
     ...process.env,
+    ADMIN_EMAIL: process.env.ADMIN_EMAIL || "admin@arenastore.mm",
+    ADMIN_INITIAL_PASSWORD:
+      process.env.ADMIN_INITIAL_PASSWORD ||
+      process.env.ADMIN_PASSWORD ||
+      "ArenaAdmin2026!",
     UPSTREAM_BASE_URL:
       process.env.UPSTREAM_BASE_URL ||
       process.env.UPSTREAM_PARTNER_API_BASE_URL ||

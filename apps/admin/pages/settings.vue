@@ -1,33 +1,36 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useToast } from '~/composables/useToast'
+import { useAuth } from '~/composables/useAuth'
+import { useStoreSettings } from '~/composables/useStoreSettings'
 
 const toast = useToast()
-const isSaving = ref(false)
-const showSuccessBanner = ref(false)
+const { getAuthHeaders } = useAuth()
+const { settings, fetchSettings, saveSettings, isSaving, isLoading } = useStoreSettings()
 
-const settings = ref({
-  usdToMmkRate: 4500,
-  defaultMarginPct: 25,
-  orderTimeoutMinutes: 15,
-  supportTelegramHandle: '@ArenaStoreSupport',
-  isMaintenanceMode: false,
-  kpayAccountName: 'Arena Digital Services',
-  kpayPhone: '09 987 654 321',
-  wavepayAccountName: 'Arena Store',
-  wavepayPhone: '09 789 123 456',
-  ayapayAccountName: 'Arena Store',
-  ayapayPhone: '09 987 654 321',
-  uabpayAccountName: 'Arena Store',
-  uabpayPhone: '09 789 123 456',
+const showSuccessBanner = ref(false)
+const isRecalculating = ref(false)
+
+// Password Change State
+const currentPassword = ref('')
+const newPassword = ref('')
+const confirmPassword = ref('')
+const showCurrentPw = ref(false)
+const showNewPw = ref(false)
+const isChangingPassword = ref(false)
+const passwordError = ref('')
+const passwordSuccess = ref('')
+
+onMounted(async () => {
+  await fetchSettings(true)
 })
 
 // Sample live calculation preview
 const sampleCostUsd = ref(1.00)
-const calculatedBaseMmk = computed(() => Math.round(sampleCostUsd.value * settings.value.usdToMmkRate))
+const calculatedBaseMmk = computed(() => Math.round(sampleCostUsd.value * (settings.value.usdToMmkRate || 4500)))
 const calculatedRetailMmk = computed(() => {
   const base = calculatedBaseMmk.value
-  const withMargin = base * (1 + settings.value.defaultMarginPct / 100)
+  const withMargin = base * (1 + (settings.value.defaultMarginPct || 25) / 100)
   return Math.ceil(withMargin / 50) * 50 // Rounded to nearest 50 MMK
 })
 const calculatedProfitMmk = computed(() => calculatedRetailMmk.value - calculatedBaseMmk.value)
@@ -37,23 +40,114 @@ function formatNumber(num: number): string {
 }
 
 async function handleSave() {
-  isSaving.value = true
+  const result = await saveSettings(settings.value)
+  if (!result.success) {
+    toast.error('Failed to save settings: ' + (result.error || 'Unknown error'))
+    return
+  }
+
+  // Automatically recalculate catalog products pricing with the newly saved exchange rate & margin
   try {
-    // In live system, calls PUT /api/admin/settings
-    await new Promise((r) => setTimeout(r, 600))
+    const repriceRes: any = await $fetch('/api/admin/settings/recalculate-prices', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    })
+
     showSuccessBanner.value = true
-    toast.success('Store rates and payment accounts saved successfully!', 'Settings Saved')
-    setTimeout(() => {
-      showSuccessBanner.value = false
-    }, 4000)
+    const count = repriceRes?.updatedCount || 0
+    toast.success(
+      `Settings saved & ${count} products updated to ${formatNumber(settings.value.usdToMmkRate)} MMK (+${settings.value.defaultMarginPct}% margin)!`,
+      'Catalog Updated'
+    )
+  } catch (err: any) {
+    showSuccessBanner.value = true
+    toast.success('Store rates and payment accounts saved to database!', 'Settings Saved')
+  }
+
+  setTimeout(() => {
+    showSuccessBanner.value = false
+  }, 4500)
+}
+
+async function handleRecalculatePrices() {
+  if (!confirm(`Are you sure you want to recalculate all product retail prices using 1 USD = ${formatNumber(settings.value.usdToMmkRate)} MMK and ${settings.value.defaultMarginPct}% default margin?`)) {
+    return
+  }
+
+  isRecalculating.value = true
+  try {
+    // First ensure settings are saved
+    await saveSettings(settings.value)
+
+    const res: any = await $fetch('/api/admin/settings/recalculate-prices', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    })
+
+    if (res.ok) {
+      toast.success(res.message, 'Catalog Repriced')
+    } else {
+      toast.error('Recalculation failed: ' + (res.error || 'Unknown error'))
+    }
+  } catch (err: any) {
+    toast.error('Recalculation error: ' + (err.message || 'Network error'))
   } finally {
-    isSaving.value = false
+    isRecalculating.value = false
+  }
+}
+
+async function handleChangePassword() {
+  passwordError.value = ''
+  passwordSuccess.value = ''
+
+  if (!currentPassword.value || !newPassword.value || !confirmPassword.value) {
+    passwordError.value = 'Please fill in all password fields.'
+    return
+  }
+
+  if (newPassword.value.length < 8) {
+    passwordError.value = 'New password must be at least 8 characters long.'
+    return
+  }
+
+  if (newPassword.value !== confirmPassword.value) {
+    passwordError.value = 'New password and confirmation do not match.'
+    return
+  }
+
+  isChangingPassword.value = true
+  try {
+    const res: any = await $fetch('/api/admin/auth/change-password', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: {
+        currentPassword: currentPassword.value,
+        newPassword: newPassword.value,
+      },
+    })
+
+    if (res.ok) {
+      passwordSuccess.value = 'Password changed successfully! Keep your new password secure.'
+      toast.success('Admin password updated successfully!', 'Security Updated')
+      currentPassword.value = ''
+      newPassword.value = ''
+      confirmPassword.value = ''
+    } else {
+      passwordError.value = res.error || 'Failed to update password.'
+      toast.error(passwordError.value)
+    }
+  } catch (err: any) {
+    const msg = err.data?.error || err.message || 'Error changing password'
+    passwordError.value = msg
+    toast.error(msg)
+  } finally {
+    isChangingPassword.value = false
   }
 }
 </script>
 
 <template>
-  <div class="space-y-6 max-w-5xl mx-auto">
+  <div class="space-y-6 max-w-5xl mx-auto pb-12">
     <!-- Header -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
@@ -62,19 +156,33 @@ async function handleSave() {
           Rates & Store Settings (စနစ်ပြင်ဆင်မှုများ)
         </h1>
         <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Configure USD to MMK exchange rate, automated profit margins, Myanmar payment accounts, and bot parameters
+          Configure live USD to MMK exchange rate, automated profit margins, Myanmar payment accounts, bot parameters, and admin security
         </p>
       </div>
 
-      <button
-        type="button"
-        @click="handleSave"
-        :disabled="isSaving"
-        class="px-5 py-2.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-all shadow-md shadow-indigo-600/20 flex items-center gap-2 disabled:opacity-50 shrink-0"
-      >
-        <i class="pi pi-check text-xs"></i>
-        <span>{{ isSaving ? 'Saving...' : 'Save Configuration' }}</span>
-      </button>
+      <div class="flex items-center gap-2.5 shrink-0">
+        <button
+          type="button"
+          @click="fetchSettings(true)"
+          :disabled="isLoading"
+          title="Reload latest settings from database"
+          class="px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all flex items-center gap-1.5"
+        >
+          <i class="pi pi-sync text-xs" :class="{ 'animate-spin': isLoading }"></i>
+          <span class="hidden sm:inline">Refresh</span>
+        </button>
+
+        <button
+          type="button"
+          @click="handleSave"
+          :disabled="isSaving"
+          class="px-5 py-2.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-all shadow-md shadow-indigo-600/20 flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+        >
+          <i v-if="isSaving" class="pi pi-spin pi-spinner text-xs"></i>
+          <i v-else class="pi pi-check text-xs"></i>
+          <span>{{ isSaving ? 'Saving...' : 'Save Configuration' }}</span>
+        </button>
+      </div>
     </div>
 
     <!-- Success Toast Banner -->
@@ -84,7 +192,7 @@ async function handleSave() {
     >
       <div class="flex items-center gap-2">
         <i class="pi pi-check-circle text-base text-emerald-500"></i>
-        <span>Settings successfully updated across API and Telegram Bot!</span>
+        <span>Settings successfully saved to Neon PostgreSQL & synced across Telegram Bot!</span>
       </div>
       <button type="button" @click="showSuccessBanner = false" class="hover:opacity-75">
         <i class="pi pi-times text-xs"></i>
@@ -104,8 +212,8 @@ async function handleSave() {
               <p class="text-xs text-slate-500">Determines how upstream USD wholesale costs are converted to customer MMK prices</p>
             </div>
           </div>
-          <span class="px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-amber-500/10 text-amber-500 border border-amber-500/20">
-            Real-time Sync
+          <span class="px-2.5 py-1 rounded-lg text-[11px] font-mono font-semibold bg-amber-500/10 text-amber-500 border border-amber-500/20">
+            Real-time DB Sync
           </span>
         </div>
 
@@ -120,6 +228,8 @@ async function handleSave() {
                 v-model.number="settings.usdToMmkRate"
                 type="number"
                 step="50"
+                min="1000"
+                max="20000"
                 required
                 class="w-full pl-4 pr-16 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
               />
@@ -127,7 +237,7 @@ async function handleSave() {
                 MMK
               </span>
             </div>
-            <p class="text-[11px] text-slate-400">Current market reference: ~4,500 MMK / 1 USD</p>
+            <p class="text-[11px] text-slate-400">Current market reference: ~4,500 – 4,800 MMK / 1 USD</p>
           </div>
 
           <!-- Default Margin % -->
@@ -141,7 +251,7 @@ async function handleSave() {
                 type="number"
                 step="1"
                 min="0"
-                max="200"
+                max="300"
                 required
                 class="w-full pl-4 pr-12 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
               />
@@ -149,7 +259,7 @@ async function handleSave() {
                 %
               </span>
             </div>
-            <p class="text-[11px] text-slate-400">Can be overridden on individual products in Products page</p>
+            <p class="text-[11px] text-slate-400">Applies as base profit margin when syncing catalog from XPro supplier</p>
           </div>
         </div>
 
@@ -188,6 +298,23 @@ async function handleSave() {
             </div>
           </div>
         </div>
+
+        <!-- Catalog Reprice Action -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-slate-100 dark:border-slate-800/80">
+          <div>
+            <span class="text-xs font-bold text-slate-800 dark:text-slate-200 block">Apply Rate to All Products</span>
+            <span class="text-[11px] text-slate-400">Recalculates retail MMK prices for all 42+ active products using this rate & margin</span>
+          </div>
+          <button
+            type="button"
+            @click="handleRecalculatePrices"
+            :disabled="isRecalculating"
+            class="px-4 py-2 rounded-xl text-xs font-semibold bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+          >
+            <i class="pi pi-refresh text-xs" :class="{ 'animate-spin': isRecalculating }"></i>
+            <span>{{ isRecalculating ? 'Recalculating Catalog...' : 'Recalculate All Product Prices' }}</span>
+          </button>
+        </div>
       </div>
 
       <!-- Section 2: Myanmar Payment Accounts -->
@@ -199,7 +326,7 @@ async function handleSave() {
             </div>
             <div>
               <h2 class="text-base font-bold text-slate-900 dark:text-white">Payment Accounts (ငွေလက်ခံမည့် အကောင့်များ)</h2>
-              <p class="text-xs text-slate-500">Displayed to customers on Telegram during checkout for payment slip submissions</p>
+              <p class="text-xs text-slate-500">Displayed dynamically to customers in Telegram Bot during wallet top-ups and checkouts</p>
             </div>
           </div>
         </div>
@@ -217,7 +344,9 @@ async function handleSave() {
                 <input
                   v-model="settings.kpayAccountName"
                   type="text"
-                  class="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-900 rounded-lg text-xs font-medium text-slate-800 dark:text-slate-200"
+                  required
+                  placeholder="e.g. Arena Digital Services"
+                  class="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-900 rounded-lg text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
               <div>
@@ -225,7 +354,9 @@ async function handleSave() {
                 <input
                   v-model="settings.kpayPhone"
                   type="text"
-                  class="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-900 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200"
+                  required
+                  placeholder="09 987 654 321"
+                  class="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-900 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -243,7 +374,9 @@ async function handleSave() {
                 <input
                   v-model="settings.wavepayAccountName"
                   type="text"
-                  class="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-900 rounded-lg text-xs font-medium text-slate-800 dark:text-slate-200"
+                  required
+                  placeholder="e.g. Arena Store"
+                  class="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-900 rounded-lg text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
                 />
               </div>
               <div>
@@ -251,7 +384,9 @@ async function handleSave() {
                 <input
                   v-model="settings.wavepayPhone"
                   type="text"
-                  class="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-900 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200"
+                  required
+                  placeholder="09 789 123 456"
+                  class="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-900 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
                 />
               </div>
             </div>
@@ -269,7 +404,8 @@ async function handleSave() {
                 <input
                   v-model="settings.ayapayAccountName"
                   type="text"
-                  class="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-red-200 dark:border-red-900 rounded-lg text-xs font-medium text-slate-800 dark:text-slate-200"
+                  placeholder="e.g. Arena Store"
+                  class="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-red-200 dark:border-red-900 rounded-lg text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-red-500"
                 />
               </div>
               <div>
@@ -277,7 +413,8 @@ async function handleSave() {
                 <input
                   v-model="settings.ayapayPhone"
                   type="text"
-                  class="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-red-200 dark:border-red-900 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200"
+                  placeholder="09 987 654 321"
+                  class="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-red-200 dark:border-red-900 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-red-500"
                 />
               </div>
             </div>
@@ -295,7 +432,8 @@ async function handleSave() {
                 <input
                   v-model="settings.uabpayAccountName"
                   type="text"
-                  class="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-900 rounded-lg text-xs font-medium text-slate-800 dark:text-slate-200"
+                  placeholder="e.g. Arena Store"
+                  class="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-900 rounded-lg text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-purple-500"
                 />
               </div>
               <div>
@@ -303,7 +441,8 @@ async function handleSave() {
                 <input
                   v-model="settings.uabpayPhone"
                   type="text"
-                  class="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-900 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200"
+                  placeholder="09 789 123 456"
+                  class="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-900 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-purple-500"
                 />
               </div>
             </div>
@@ -334,9 +473,11 @@ async function handleSave() {
             <input
               v-model="settings.supportTelegramHandle"
               type="text"
+              required
+              placeholder="@ArenaStoreSupport"
               class="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
             />
-            <p class="text-[11px] text-slate-400">Provided in order confirmation and help commands</p>
+            <p class="text-[11px] text-slate-400">Attached to order confirmations and /help messages in Telegram Bot</p>
           </div>
 
           <!-- Order Reservation Timeout -->
@@ -350,16 +491,150 @@ async function handleSave() {
                 type="number"
                 min="5"
                 max="60"
+                required
                 class="w-full pl-4 pr-16 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
               />
               <span class="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">
                 mins
               </span>
             </div>
-            <p class="text-[11px] text-slate-400">Stock reservation expires if payment slip is not uploaded within this window</p>
+            <p class="text-[11px] text-slate-400">Time window allowed for customers to upload payment slip receipts</p>
           </div>
         </div>
       </div>
+
+      <!-- Save Button Row -->
+      <div class="flex justify-end pt-2">
+        <button
+          type="submit"
+          :disabled="isSaving"
+          class="px-6 py-3 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-all shadow-lg shadow-indigo-600/25 flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+        >
+          <i v-if="isSaving" class="pi pi-spin pi-spinner text-xs"></i>
+          <i v-else class="pi pi-check text-xs"></i>
+          <span>{{ isSaving ? 'Saving Changes...' : 'Save All Settings' }}</span>
+        </button>
+      </div>
     </form>
+
+    <!-- Section 4: Admin Security & Password Change (NEW) -->
+    <div class="rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-6">
+      <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center font-bold text-sm">
+            <i class="pi pi-lock"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-slate-900 dark:text-white">Admin Security & Password (လျှို့ဝှက်နံပါတ် ပြောင်းလဲခြင်း)</h2>
+            <p class="text-xs text-slate-500">Update your administrator password securely. Must be at least 8 characters long.</p>
+          </div>
+        </div>
+        <span class="px-2.5 py-1 rounded-lg text-[11px] font-mono font-semibold bg-rose-500/10 text-rose-500 border border-rose-500/20">
+          scrypt Encrypted
+        </span>
+      </div>
+
+      <!-- Password Error Alert -->
+      <div
+        v-if="passwordError"
+        class="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2.5"
+      >
+        <i class="pi pi-exclamation-circle text-rose-400"></i>
+        <span>{{ passwordError }}</span>
+      </div>
+
+      <!-- Password Success Alert -->
+      <div
+        v-if="passwordSuccess"
+        class="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2.5"
+      >
+        <i class="pi pi-check-circle text-emerald-400"></i>
+        <span>{{ passwordSuccess }}</span>
+      </div>
+
+      <form @submit.prevent="handleChangePassword" class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <!-- Current Password -->
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Current Password (လက်ရှိ လျှို့ဝှက်နံပါတ်)
+            </label>
+            <div class="relative">
+              <input
+                v-model="currentPassword"
+                :type="showCurrentPw ? 'text' : 'password'"
+                required
+                autocomplete="current-password"
+                placeholder="••••••••••••"
+                class="w-full pl-3 pr-10 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+              />
+              <button
+                type="button"
+                @click="showCurrentPw = !showCurrentPw"
+                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+              >
+                <i :class="showCurrentPw ? 'pi pi-eye-slash' : 'pi pi-eye'" class="text-xs"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- New Password -->
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+              New Password (အသစ်ထားမည့် လျှို့ဝှက်နံပါတ်)
+            </label>
+            <div class="relative">
+              <input
+                v-model="newPassword"
+                :type="showNewPw ? 'text' : 'password'"
+                required
+                autocomplete="new-password"
+                placeholder="Min 8 characters"
+                class="w-full pl-3 pr-10 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+              />
+              <button
+                type="button"
+                @click="showNewPw = !showNewPw"
+                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+              >
+                <i :class="showNewPw ? 'pi pi-eye-slash' : 'pi pi-eye'" class="text-xs"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Confirm New Password -->
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Confirm New Password (အတည်ပြုရန် ထပ်ရိုက်ပါ)
+            </label>
+            <div class="relative">
+              <input
+                v-model="confirmPassword"
+                :type="showNewPw ? 'text' : 'password'"
+                required
+                autocomplete="new-password"
+                placeholder="Repeat new password"
+                class="w-full pl-3 pr-3 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between pt-2">
+          <p class="text-[11px] text-slate-400">
+            Note: Changing the admin password takes effect immediately and updates securely in Neon DB.
+          </p>
+          <button
+            type="submit"
+            :disabled="isChangingPassword"
+            class="px-5 py-2.5 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white transition-all shadow-md shadow-rose-600/20 flex items-center gap-2 disabled:opacity-50 cursor-pointer shrink-0"
+          >
+            <i v-if="isChangingPassword" class="pi pi-spin pi-spinner text-xs"></i>
+            <i v-else class="pi pi-key text-xs"></i>
+            <span>{{ isChangingPassword ? 'Updating Password...' : 'Update Admin Password' }}</span>
+          </button>
+        </div>
+      </form>
+    </div>
   </div>
 </template>

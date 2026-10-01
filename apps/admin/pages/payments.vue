@@ -1,15 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useToast } from '~/composables/useToast'
+import { useAuth } from '~/composables/useAuth'
 
 const toast = useToast()
+const { getAuthHeaders } = useAuth()
 const isLoading = ref(true)
-
-onMounted(() => {
-  setTimeout(() => {
-    isLoading.value = false
-  }, 450)
-})
 
 export interface DepositItem {
   id: number
@@ -34,65 +30,42 @@ const rejectReason = ref('Slip amount does not match requested top-up.')
 const isProcessing = ref(false)
 const activeTab = ref<'ALL' | 'SUBMITTED' | 'APPROVED' | 'REJECTED'>('ALL')
 
-const slips = ref<DepositItem[]>([
-  {
-    id: 101,
-    topUpId: 'TOP-2026-84920',
-    reference: 'TOP-84920',
-    customerName: 'Ryan Wez',
-    telegramUsername: '@ryanwez',
-    telegramId: '984729184',
-    paymentMethod: 'KPAY',
-    depositAmountMmk: 50000,
-    transactionRef: '098472918471',
-    slipImageUrl: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=800&q=80',
-    submittedAt: '5 mins ago',
-    status: 'SUBMITTED',
-    intendedProduct: 'Gemini AI 18 MONTH x 1',
-  },
-  {
-    id: 102,
-    topUpId: 'TOP-2026-84921',
-    reference: 'TOP-84921',
-    customerName: 'Aung Kyaw',
-    telegramUsername: '@aungkyaw_99',
-    telegramId: '872635194',
-    paymentMethod: 'WAVEPAY',
-    depositAmountMmk: 20000,
-    transactionRef: 'WP-84920194',
-    slipImageUrl: 'https://images.unsplash.com/photo-1554224154-26032ffc0d07?auto=format&fit=crop&w=800&q=80',
-    submittedAt: '25 mins ago',
-    status: 'SUBMITTED',
-  },
-  {
-    id: 103,
-    topUpId: 'TOP-2026-84919',
-    reference: 'TOP-84919',
-    customerName: 'Ko Kyaw',
-    telegramUsername: '@kyawkyaw_mm',
-    telegramId: '761234908',
-    paymentMethod: 'KPAY',
-    depositAmountMmk: 100000,
-    transactionRef: '098192849182',
-    slipImageUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=800&q=80',
-    submittedAt: '1 hour ago',
-    status: 'APPROVED',
-  },
-  {
-    id: 104,
-    topUpId: 'TOP-2026-84915',
-    reference: 'TOP-84915',
-    customerName: 'Thant Zin',
-    telegramUsername: '@thant_zin',
-    telegramId: '654321987',
-    paymentMethod: 'KPAY',
-    depositAmountMmk: 10000,
-    transactionRef: '098112233445',
-    slipImageUrl: 'https://images.unsplash.com/photo-1554224155-1696413565d3?auto=format&fit=crop&w=800&q=80',
-    submittedAt: '3 hours ago',
-    status: 'APPROVED',
-  },
-])
+const slips = ref<DepositItem[]>([])
+
+async function fetchSlips() {
+  isLoading.value = true
+  try {
+    const res: any = await $fetch('/api/admin/deposits', {
+      headers: getAuthHeaders(),
+    })
+
+    if (res.ok && Array.isArray(res.slips)) {
+      slips.value = res.slips.map((s: any) => ({
+        id: s.id,
+        topUpId: s.reference || `TOP-${s.id}`,
+        reference: s.reference,
+        customerName: s.user || 'Customer',
+        telegramUsername: s.user?.startsWith('@') ? s.user : (s.user || '@customer'),
+        telegramId: s.telegramId || '',
+        paymentMethod: s.method || 'KPAY',
+        depositAmountMmk: s.amount || 0,
+        transactionRef: s.txnRef || '-',
+        slipImageUrl: s.slipUrl || 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=800&q=80',
+        submittedAt: s.date ? new Date(s.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
+        status: s.status === 'COMPLETED' ? 'APPROVED' : (s.status as any),
+        intendedProduct: s.intendedProduct || 'General Wallet Topup',
+      }))
+    }
+  } catch (err: any) {
+    toast.error('Failed to load deposit slips: ' + (err.message || 'Network error'))
+  } finally {
+    isLoading.value = false
+  }
+}
+
+onMounted(() => {
+  fetchSlips()
+})
 
 const filteredSlips = computed(() => {
   if (activeTab.value === 'ALL') return slips.value
@@ -121,14 +94,27 @@ async function approveDeposit(slip: DepositItem) {
   isProcessing.value = true
 
   try {
-    // In real system, calls backend /api/admin/deposits/review or credits bot wallet
-    await new Promise((r) => setTimeout(r, 600))
-    slip.status = 'APPROVED'
-    isSlipModalOpen.value = false
-    toast.success(
-      `Top-Up ${slip.topUpId} approved! +${slip.depositAmountMmk.toLocaleString()} Ks credited to ${slip.customerName} (${slip.telegramUsername}). Instant Telegram Bot notification sent.`,
-      'Wallet Credited'
-    )
+    const res: any = await $fetch(`/api/admin/deposits/${slip.id}/review`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: {
+        action: 'APPROVE',
+      },
+    })
+
+    if (res.ok) {
+      slip.status = 'APPROVED'
+      isSlipModalOpen.value = false
+      toast.success(
+        `Top-Up ${slip.topUpId} approved! +${slip.depositAmountMmk.toLocaleString()} Ks credited to ${slip.customerName}. Customer received instant Telegram celebration message.`,
+        'Wallet Credited'
+      )
+      await fetchSlips()
+    } else {
+      toast.error('Approval failed: ' + (res.error || 'Server error'))
+    }
+  } catch (err: any) {
+    toast.error('Approval failed: ' + (err.message || 'Network error'))
   } finally {
     isProcessing.value = false
   }
@@ -139,17 +125,40 @@ function openRejectDialog(slip: DepositItem) {
   isRejectModalOpen.value = true
 }
 
-function confirmReject() {
-  if (!selectedSlip.value) return
+async function confirmReject() {
+  if (!selectedSlip.value || isProcessing.value) return
+  isProcessing.value = true
+
   const topUpId = selectedSlip.value.topUpId
   const user = selectedSlip.value.telegramUsername
-  selectedSlip.value.status = 'REJECTED'
-  isRejectModalOpen.value = false
-  isSlipModalOpen.value = false
-  toast.warn(
-    `Top-Up ${topUpId} rejected for ${user}. Reason: ${rejectReason.value}`,
-    'Deposit Slip Rejected'
-  )
+
+  try {
+    const res: any = await $fetch(`/api/admin/deposits/${selectedSlip.value.id}/review`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: {
+        action: 'REJECT',
+        rejectReason: rejectReason.value,
+      },
+    })
+
+    if (res.ok) {
+      selectedSlip.value.status = 'REJECTED'
+      isRejectModalOpen.value = false
+      isSlipModalOpen.value = false
+      toast.warn(
+        `Top-Up ${topUpId} rejected for ${user}. Reason: ${rejectReason.value}. Customer was notified on Telegram.`,
+        'Deposit Slip Rejected'
+      )
+      await fetchSlips()
+    } else {
+      toast.error('Rejection failed: ' + (res.error || 'Server error'))
+    }
+  } catch (err: any) {
+    toast.error('Rejection failed: ' + (err.message || 'Network error'))
+  } finally {
+    isProcessing.value = false
+  }
 }
 </script>
 
