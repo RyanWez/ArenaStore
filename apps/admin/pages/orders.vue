@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
 
 const toast = useToast()
 const { getAuthHeaders } = useAuth()
 const isLoading = ref(true)
+const isRefreshing = ref(false)
 
 interface OrderRecord {
   id: string
@@ -16,6 +17,7 @@ interface OrderRecord {
   totalAmountMmk: number
   totalCostUsd: string
   createdAt: string
+  rawDate: string
   customer: {
     id: number
     telegramId: string
@@ -64,6 +66,7 @@ async function fetchOrders(isSilent = false) {
         totalAmountMmk: o.totalMmk || 0,
         totalCostUsd: '0.00',
         createdAt: o.date ? new Date(o.date).toLocaleDateString() : 'Today',
+        rawDate: o.date || new Date().toISOString(),
         customer: {
           id: o.telegramId ? parseInt(o.telegramId, 10) : 1,
           telegramId: o.telegramId || '',
@@ -93,7 +96,13 @@ async function fetchOrders(isSilent = false) {
     }
   } finally {
     if (!isSilent) isLoading.value = false
+    isRefreshing.value = false
   }
+}
+
+async function refreshOrders(isSilent = false) {
+  isRefreshing.value = true
+  await fetchOrders(isSilent)
 }
 
 onMounted(() => {
@@ -107,38 +116,102 @@ onUnmounted(() => {
   if (ordersPollInterval) clearInterval(ordersPollInterval)
 })
 
-
 // Computed statistics
 const totalOrdersCount = computed(() => ordersList.value.length)
 const deliveredCount = computed(() => ordersList.value.filter((o) => o.status === 'DELIVERED').length)
 const processingCount = computed(() => ordersList.value.filter((o) => o.status === 'PROCESSING_SUPPLIER').length)
+const refundedCount = computed(() => ordersList.value.filter((o) => o.status === 'REFUNDED').length)
 const totalRevenueMmk = computed(() =>
   ordersList.value
     .filter((o) => o.status === 'DELIVERED')
     .reduce((sum, o) => sum + o.totalAmountMmk, 0)
 )
 
-// Filtered orders list
+// Filtered orders list sorted newest first
 const filteredOrders = computed(() => {
-  return ordersList.value.filter((order) => {
-    // Status filter
-    if (selectedStatus.value !== 'ALL' && order.status !== selectedStatus.value) {
-      return false
-    }
+  let list = ordersList.value
 
-    // Search query
-    if (searchQuery.value.trim()) {
-      const q = searchQuery.value.toLowerCase().trim()
+  // Status filter
+  if (selectedStatus.value !== 'ALL') {
+    list = list.filter((order) => order.status === selectedStatus.value)
+  }
+
+  // Search query
+  if (searchQuery.value.trim()) {
+    const q = searchQuery.value.toLowerCase().trim()
+    list = list.filter((order) => {
       const matchNo = order.publicOrderNo.toLowerCase().includes(q)
       const matchName = order.customer.firstName.toLowerCase().includes(q)
       const matchUser = order.customer.username?.toLowerCase().includes(q)
       const matchItem = order.items.some((i) => i.productName.toLowerCase().includes(q))
       return matchNo || matchName || matchUser || matchItem
-    }
+    })
+  }
 
-    return true
+  // Newest first sorting
+  return [...list].sort((a, b) => {
+    const timeA = a.rawDate ? new Date(a.rawDate).getTime() : 0
+    const timeB = b.rawDate ? new Date(b.rawDate).getTime() : 0
+    if (timeB !== timeA) return timeB - timeA
+    return (b.id || '').localeCompare(a.id || '')
   })
 })
+
+// Pagination state
+const currentPage = ref(1)
+const pageSize = ref(10)
+
+watch([searchQuery, selectedStatus, pageSize], () => {
+  currentPage.value = 1
+})
+
+const totalFilteredCount = computed(() => filteredOrders.value.length)
+const totalPages = computed(() => Math.max(1, Math.ceil(totalFilteredCount.value / pageSize.value)))
+
+const paginatedOrders = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredOrders.value.slice(start, start + pageSize.value)
+})
+
+const showingRange = computed(() => {
+  if (totalFilteredCount.value === 0) return 'Showing 0-0 of 0'
+  const start = (currentPage.value - 1) * pageSize.value + 1
+  const end = Math.min(start + pageSize.value - 1, totalFilteredCount.value)
+  return `Showing ${start}-${end} of ${totalFilteredCount.value}`
+})
+
+const displayedPages = computed(() => {
+  const total = totalPages.value
+  const current = currentPage.value
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1)
+  }
+  const pages: number[] = []
+  if (current <= 4) {
+    for (let i = 1; i <= 5; i++) pages.push(i)
+    pages.push(-1)
+    pages.push(total)
+  } else if (current >= total - 3) {
+    pages.push(1)
+    pages.push(-1)
+    for (let i = total - 4; i <= total; i++) pages.push(i)
+  } else {
+    pages.push(1)
+    pages.push(-1)
+    pages.push(current - 1)
+    pages.push(current)
+    pages.push(current + 1)
+    pages.push(-1)
+    pages.push(total)
+  }
+  return pages
+})
+
+function goToPage(p: number) {
+  if (p >= 1 && p <= totalPages.value) {
+    currentPage.value = p
+  }
+}
 
 function openDetailModal(order: OrderRecord) {
   selectedOrder.value = order
@@ -200,7 +273,15 @@ async function refundToWallet(order: OrderRecord) {
       </div>
 
       <!-- Quick Status Badges -->
-      <div class="flex flex-wrap items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2.5">
+        <div class="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shadow-sm">
+          <span class="relative flex h-2 w-2">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span>Real-time Sync</span>
+        </div>
+
         <div class="px-3.5 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-2 shadow-sm">
           <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
           <span>Instant Delivery Rate: 100%</span>
@@ -248,26 +329,15 @@ async function refundToWallet(order: OrderRecord) {
       </div>
     </div>
 
-    <!-- Filter & Search Controls -->
-    <div class="p-4 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-      <!-- Search Input -->
-      <div class="relative w-full md:w-80">
-        <i class="pi pi-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-        <input
-          v-model="searchQuery"
-          type="text"
-          placeholder="Search Order #, Customer, Product..."
-          class="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 rounded-xl text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-        />
-      </div>
-
+    <!-- Sticky Tab Filter & Search Controls (Sticks under Navbar: top-16) -->
+    <div class="sticky top-16 z-20 p-3 rounded-2xl bg-white/95 dark:bg-[#0b1220]/95 backdrop-blur-md border border-slate-200 dark:border-slate-800/80 shadow-md flex flex-col md:flex-row items-center justify-between gap-3 transition-all">
       <!-- Status Tabs -->
-      <div class="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
+      <div class="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto text-xs font-semibold scrollbar-none">
         <button
           type="button"
           @click="selectedStatus = 'ALL'"
-          class="px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap"
-          :class="selectedStatus === 'ALL' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'"
+          :class="selectedStatus === 'ALL' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/20' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+          class="px-3.5 py-1.5 rounded-xl transition-all shrink-0"
         >
           All Orders ({{ totalOrdersCount }})
         </button>
@@ -275,8 +345,8 @@ async function refundToWallet(order: OrderRecord) {
         <button
           type="button"
           @click="selectedStatus = 'DELIVERED'"
-          class="px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap flex items-center gap-1.5"
-          :class="selectedStatus === 'DELIVERED' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'"
+          :class="selectedStatus === 'DELIVERED' ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+          class="px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shrink-0"
         >
           <i class="pi pi-check text-[10px]"></i>
           <span>Delivered ({{ deliveredCount }})</span>
@@ -285,62 +355,95 @@ async function refundToWallet(order: OrderRecord) {
         <button
           type="button"
           @click="selectedStatus = 'PROCESSING_SUPPLIER'"
-          class="px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap flex items-center gap-1.5"
-          :class="selectedStatus === 'PROCESSING_SUPPLIER' ? 'bg-amber-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'"
+          :class="selectedStatus === 'PROCESSING_SUPPLIER' ? 'bg-amber-600 text-white shadow-sm shadow-amber-600/20' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+          class="px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shrink-0"
         >
-          <i class="pi pi-clock text-[10px]"></i>
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
           <span>Processing ({{ processingCount }})</span>
         </button>
 
         <button
           type="button"
           @click="selectedStatus = 'REFUNDED'"
-          class="px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap"
-          :class="selectedStatus === 'REFUNDED' ? 'bg-rose-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'"
+          :class="selectedStatus === 'REFUNDED' ? 'bg-rose-600 text-white shadow-sm shadow-rose-600/20' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+          class="px-3.5 py-1.5 rounded-xl transition-all shrink-0"
         >
-          Refunded
+          Refunded ({{ refundedCount }})
+        </button>
+      </div>
+
+      <!-- Search Input + Manual Refresh -->
+      <div class="flex items-center gap-2.5 w-full md:w-auto">
+        <div class="relative flex-1 md:w-64">
+          <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Search Order #, customer, item..."
+            class="w-full pl-8 pr-3 py-1.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+          />
+        </div>
+
+        <button
+          type="button"
+          @click="refreshOrders(false)"
+          :disabled="isRefreshing"
+          class="p-2 rounded-xl text-xs border border-slate-200 dark:border-slate-700/60 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-all shrink-0"
+          title="Refresh orders manually"
+        >
+          <i class="pi pi-sync text-xs" :class="{ 'animate-spin': isRefreshing }"></i>
         </button>
       </div>
     </div>
 
-    <!-- Orders Table Card -->
-    <div class="rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-      <div class="overflow-x-auto">
-        <table class="w-full text-left border-collapse">
-          <thead>
-            <tr class="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/40 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              <th class="py-3.5 px-4 sm:px-6">Order ID</th>
-              <th class="py-3.5 px-4">Customer</th>
-              <th class="py-3.5 px-4">Items / Product</th>
-              <th class="py-3.5 px-4">Payment Method</th>
-              <th class="py-3.5 px-4">Total Amount</th>
-              <th class="py-3.5 px-4">Delivery Status</th>
-              <th class="py-3.5 px-4">Date</th>
-              <th class="py-3.5 px-4 sm:px-6 text-right">Actions</th>
+    <!-- Orders Table & Pagination Container -->
+    <div class="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm flex flex-col overflow-hidden">
+      <!-- Fixed Max-Height Scrollable Table Viewport -->
+      <div class="overflow-x-auto overflow-y-auto max-h-[calc(100vh-270px)] min-h-[380px] relative scrollbar-thin">
+        <table class="w-full text-left border-collapse text-sm">
+          <thead class="sticky top-0 z-10 bg-slate-50 dark:bg-[#0e172a] shadow-sm border-b border-slate-200 dark:border-slate-800">
+            <tr class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a]">Order ID</th>
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a]">Customer</th>
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a]">Items / Product</th>
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a]">Payment Method</th>
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a]">Total Amount</th>
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a]">Delivery Status</th>
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a]">Date</th>
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a] text-right">Actions</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-slate-200 dark:divide-slate-800 text-sm">
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-800/60 text-sm">
             <!-- Skeleton Loading State -->
             <template v-if="isLoading">
-              <tr v-for="n in 5" :key="'order-skel-' + n">
-                <td class="py-4 px-4 sm:px-6"><Skeleton height="1.1rem" width="110px" border-radius="6px" /></td>
+              <tr v-for="n in 3" :key="'order-skel-' + n">
+                <td class="py-4 px-4"><Skeleton height="1.1rem" width="110px" border-radius="6px" /></td>
                 <td class="py-4 px-4"><Skeleton height="1.1rem" width="130px" border-radius="6px" /></td>
                 <td class="py-4 px-4"><Skeleton height="1.1rem" width="160px" border-radius="6px" /></td>
                 <td class="py-4 px-4"><Skeleton height="1.1rem" width="100px" border-radius="6px" /></td>
                 <td class="py-4 px-4"><Skeleton height="1.1rem" width="90px" border-radius="6px" /></td>
                 <td class="py-4 px-4"><Skeleton height="1.3rem" width="75px" border-radius="9999px" /></td>
                 <td class="py-4 px-4"><Skeleton height="1.1rem" width="90px" border-radius="6px" /></td>
-                <td class="py-4 px-4 sm:px-6 text-right"><Skeleton height="1.6rem" width="70px" class="ml-auto" border-radius="8px" /></td>
+                <td class="py-4 px-4 text-right"><Skeleton height="1.6rem" width="70px" class="ml-auto" border-radius="8px" /></td>
+              </tr>
+            </template>
+            <!-- Empty State -->
+            <template v-else-if="paginatedOrders.length === 0">
+              <tr>
+                <td colspan="8" class="py-12 text-center text-slate-500">
+                  <i class="pi pi-inbox text-3xl mb-2 text-slate-400"></i>
+                  <p>No orders found matching your filter criteria.</p>
+                </td>
               </tr>
             </template>
             <template v-else>
               <tr
-                v-for="order in filteredOrders"
+                v-for="order in paginatedOrders"
                 :key="order.id"
                 class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
               >
               <!-- Order ID with Copy -->
-              <td class="py-4 px-4 sm:px-6 font-mono font-medium text-slate-900 dark:text-white">
+              <td class="py-4 px-4 font-mono font-medium text-slate-900 dark:text-white">
                 <div class="flex items-center gap-2">
                   <span>{{ order.publicOrderNo }}</span>
                   <button
@@ -434,7 +537,7 @@ async function refundToWallet(order: OrderRecord) {
               </td>
 
               <!-- Action Buttons -->
-              <td class="py-4 px-4 sm:px-6 text-right">
+              <td class="py-4 px-4 text-right">
                 <button
                   type="button"
                   @click="openDetailModal(order)"
@@ -446,16 +549,63 @@ async function refundToWallet(order: OrderRecord) {
               </td>
             </tr>
           </template>
-
-          <!-- Empty State -->
-          <tr v-if="filteredOrders.length === 0">
-              <td colspan="8" class="py-12 text-center text-slate-500">
-                <i class="pi pi-inbox text-3xl mb-2 text-slate-400"></i>
-                <p>No orders found matching your filter criteria.</p>
-              </td>
-            </tr>
-          </tbody>
+        </tbody>
         </table>
+      </div>
+
+      <!-- Pagination Footer matching Screenshot 2 -->
+      <div class="p-3.5 px-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
+        <!-- Left: Showing X-Y of Z -->
+        <div class="font-medium text-slate-600 dark:text-slate-400">
+          {{ showingRange }}
+        </div>
+
+        <!-- Right: Pagination Buttons and Page Size Selector -->
+        <div class="flex items-center gap-1.5 sm:gap-2">
+          <!-- Previous Button -->
+          <button
+            type="button"
+            @click="goToPage(currentPage - 1)"
+            :disabled="currentPage === 1"
+            class="w-7 h-7 rounded-lg border border-slate-200 dark:border-slate-700/80 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors text-slate-700 dark:text-slate-300"
+          >
+            <i class="pi pi-chevron-left text-[10px]"></i>
+          </button>
+
+          <!-- Page Numbers -->
+          <template v-for="(page, idx) in displayedPages" :key="'order-page-' + idx">
+            <span v-if="page === -1" class="px-1 text-slate-400">...</span>
+            <button
+              v-else
+              type="button"
+              @click="goToPage(page)"
+              class="min-w-7 h-7 px-1.5 rounded-lg text-xs font-semibold flex items-center justify-center transition-colors"
+              :class="currentPage === page ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/80'"
+            >
+              {{ page }}
+            </button>
+          </template>
+
+          <!-- Next Button -->
+          <button
+            type="button"
+            @click="goToPage(currentPage + 1)"
+            :disabled="currentPage === totalPages"
+            class="w-7 h-7 rounded-lg border border-slate-200 dark:border-slate-700/80 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors text-slate-700 dark:text-slate-300"
+          >
+            <i class="pi pi-chevron-right text-[10px]"></i>
+          </button>
+
+          <!-- Page Size Selector -->
+          <select
+            v-model="pageSize"
+            class="ml-2 px-2.5 py-1 rounded-lg text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          >
+            <option :value="10">10 / page</option>
+            <option :value="20">20 / page</option>
+            <option :value="50">50 / page</option>
+          </select>
+        </div>
       </div>
     </div>
 
