@@ -13,6 +13,7 @@ export interface SessionData {
 
   // Wallet Top-up & Instant Purchase state
   awaitingCustomTopUp?: boolean;
+  unmatchedPhotoFileId?: string;
   awaitingTopUpSlip?: {
     topUpId: string;
     amountMmk: number;

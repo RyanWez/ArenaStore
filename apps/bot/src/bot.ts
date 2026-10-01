@@ -17,6 +17,7 @@ import {
   buildInsufficientBalanceKeyboard,
   buildPurchaseConfirmKeyboard,
   buildOrderDetailKeyboard,
+  buildUnmatchedPhotoKeyboard,
 } from "./keyboards/store.keyboards";
 import {
   formatStartMessage,
@@ -62,6 +63,7 @@ export function createBot(): Bot<BotContext> {
     ctx.session.awaitingCustomQuantity = false;
     ctx.session.awaitingCustomTopUp = false;
     ctx.session.awaitingTopUpSlip = undefined;
+    ctx.session.unmatchedPhotoFileId = undefined;
     const firstName = ctx.from?.first_name || "Customer";
 
     await ctx.reply(formatStartMessage(firstName), {
@@ -387,6 +389,32 @@ export function createBot(): Bot<BotContext> {
     const telegramId = String(ctx.from?.id || "");
 
     const topUp = await botOrderService.createTopUpRequest({ telegramId, amountMmk: amount });
+    const unmatchedPhoto = ctx.session.unmatchedPhotoFileId;
+
+    if (unmatchedPhoto) {
+      ctx.session.unmatchedPhotoFileId = undefined;
+      ctx.session.awaitingTopUpSlip = undefined;
+      ctx.session.awaitingCustomTopUp = false;
+
+      await botOrderService.submitTopUpSlip({
+        topUpId: topUp.reference,
+        telegramId,
+        fileId: unmatchedPhoto,
+        amountMmk: amount,
+        paymentMethod: "KPAY",
+      });
+
+      await ctx.answerCallbackQuery({ text: "ပြေစာပုံကို အလိုအလျောက် ပူးတွဲတင်ပြပြီးပါပြီ!" });
+      await ctx.editMessageText(
+        formatTopUpSlipReceivedMessage({ amountMmk: amount, reference: topUp.reference }),
+        {
+          parse_mode: "HTML",
+          reply_markup: buildMainMenuKeyboard(),
+        }
+      );
+      return;
+    }
+
     ctx.session.awaitingTopUpSlip = {
       topUpId: topUp.reference,
       amountMmk: amount,
@@ -413,6 +441,32 @@ export function createBot(): Bot<BotContext> {
 
     ctx.session.intendedOrderAfterTopUp = { productId, quantity };
     const topUp = await botOrderService.createTopUpRequest({ telegramId, amountMmk: deficit });
+    const unmatchedPhoto = ctx.session.unmatchedPhotoFileId;
+
+    if (unmatchedPhoto) {
+      ctx.session.unmatchedPhotoFileId = undefined;
+      ctx.session.awaitingTopUpSlip = undefined;
+      ctx.session.awaitingCustomTopUp = false;
+
+      await botOrderService.submitTopUpSlip({
+        topUpId: topUp.reference,
+        telegramId,
+        fileId: unmatchedPhoto,
+        amountMmk: deficit,
+        paymentMethod: "KPAY",
+      });
+
+      await ctx.answerCallbackQuery({ text: "ပြေစာပုံကို အလိုအလျောက် ပူးတွဲတင်ပြပြီးပါပြီ!" });
+      await ctx.editMessageText(
+        formatTopUpSlipReceivedMessage({ amountMmk: deficit, reference: topUp.reference }),
+        {
+          parse_mode: "HTML",
+          reply_markup: buildMainMenuKeyboard(),
+        }
+      );
+      return;
+    }
+
     ctx.session.awaitingTopUpSlip = {
       topUpId: topUp.reference,
       amountMmk: deficit,
@@ -449,6 +503,7 @@ export function createBot(): Bot<BotContext> {
     ctx.session.awaitingTopUpSlip = undefined;
     ctx.session.awaitingCustomTopUp = false;
     ctx.session.intendedOrderAfterTopUp = undefined;
+    ctx.session.unmatchedPhotoFileId = undefined;
 
     const telegramId = String(ctx.from?.id || "");
     const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || "Customer";
@@ -579,6 +634,7 @@ export function createBot(): Bot<BotContext> {
 
       ctx.session.awaitingTopUpSlip = undefined;
       ctx.session.awaitingCustomTopUp = false;
+      ctx.session.unmatchedPhotoFileId = undefined;
 
       await ctx.reply(formatTopUpSlipReceivedMessage({ amountMmk, reference }), {
         parse_mode: "HTML",
@@ -588,11 +644,22 @@ export function createBot(): Bot<BotContext> {
       return;
     }
 
-    // Default friendly photo guidance
+    // Unmatched photo: user sent photo before selecting top-up amount
+    const photo = ctx.message.photo;
+    const highestRes = photo[photo.length - 1];
+    const fileId = highestRes?.file_id;
+    if (fileId) {
+      ctx.session.unmatchedPhotoFileId = fileId;
+    }
+
+    // Friendly photo guidance with parse_mode: "HTML" and quick preset options
     await ctx.reply(
-      `${tgEmoji(BOT_EMOJIS.WAVE, "👋")} မင်္ဂလာပါခင်ဗျာ! Wallet ထဲသို့ ငွေဖြည့်သွင်းလိုပါက အောက်ပါ Wallet မီနူးမှတစ်ဆင့် ငွေဖြည့်သွင်းနိုင်ပါသည်ခင်ဗျာ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}`,
+      `${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>ငွေလွှဲပြေစာ ပုံ လက်ခံရရှိပါသည်!</b>\n\n` +
+      `Wallet ထဲသို့ ငွေဖြည့်သွင်းလိုပါက လွှဲပြောင်းခဲ့သည့် <b>ငွေပမာဏ (MMK)</b> ကို အောက်တွင် ရွေးချယ်ပေးပါခင်ဗျာ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}\n\n` +
+      `<i>(ရွေးချယ်ပြီးပါက သင်ပေးပို့ထားသော ပြေစာပုံဖြင့် အလိုအလျောက် ပူးတွဲတင်ပြပေးသွားပါမည်)</i>`,
       {
-        reply_markup: buildMainMenuKeyboard(),
+        parse_mode: "HTML",
+        reply_markup: buildUnmatchedPhotoKeyboard(),
         reply_parameters: { message_id: ctx.message.message_id },
       }
     );
@@ -639,6 +706,31 @@ export function createBot(): Bot<BotContext> {
 
       ctx.session.awaitingCustomTopUp = false;
       const topUp = await botOrderService.createTopUpRequest({ telegramId, amountMmk: amount });
+      const unmatchedPhoto = ctx.session.unmatchedPhotoFileId;
+
+      if (unmatchedPhoto) {
+        ctx.session.unmatchedPhotoFileId = undefined;
+        ctx.session.awaitingTopUpSlip = undefined;
+
+        await botOrderService.submitTopUpSlip({
+          topUpId: topUp.reference,
+          telegramId,
+          fileId: unmatchedPhoto,
+          amountMmk: amount,
+          paymentMethod: "KPAY",
+        });
+
+        await ctx.reply(
+          formatTopUpSlipReceivedMessage({ amountMmk: amount, reference: topUp.reference }),
+          {
+            parse_mode: "HTML",
+            reply_markup: buildMainMenuKeyboard(),
+            reply_parameters: { message_id: ctx.message.message_id },
+          }
+        );
+        return;
+      }
+
       ctx.session.awaitingTopUpSlip = {
         topUpId: topUp.reference,
         amountMmk: amount,

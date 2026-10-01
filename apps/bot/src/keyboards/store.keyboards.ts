@@ -327,6 +327,46 @@ export function buildWalletKeyboard(): InlineKeyboard {
 }
 
 /**
+ * Builds preset amount selector when user uploads an unsolicited slip photo.
+ */
+export function buildUnmatchedPhotoKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .add({
+      text: "5,000 Ks",
+      callback_data: "topup_amount_5000",
+      icon_custom_emoji_id: BOT_EMOJIS.PRICE,
+    })
+    .add({
+      text: "10,000 Ks",
+      callback_data: "topup_amount_10000",
+      icon_custom_emoji_id: BOT_EMOJIS.PRICE,
+    })
+    .row()
+    .add({
+      text: "20,000 Ks",
+      callback_data: "topup_amount_20000",
+      icon_custom_emoji_id: BOT_EMOJIS.PRICE,
+    })
+    .add({
+      text: "50,000 Ks",
+      callback_data: "topup_amount_50000",
+      icon_custom_emoji_id: BOT_EMOJIS.PRICE,
+    })
+    .row()
+    .add({
+      text: "စိတ်ကြိုက်ပမာဏ ရိုက်ထည့်မည်",
+      callback_data: "topup_custom",
+      icon_custom_emoji_id: BOT_EMOJIS.COUNTER,
+    })
+    .row()
+    .add({
+      text: "🏠 Main Menu",
+      callback_data: "menu_start",
+      icon_custom_emoji_id: BOT_EMOJIS.BACK,
+    });
+}
+
+/**
  * Builds Top-Up invoice keyboard with cancel option.
  */
 export function buildTopUpInvoiceKeyboard(): InlineKeyboard {

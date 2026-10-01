@@ -30,6 +30,8 @@ const isRejectModalOpen = ref(false)
 const selectedSlip = ref<DepositItem | null>(null)
 const rejectReason = ref('Slip amount does not match requested top-up.')
 const isProcessing = ref(false)
+const isRejecting = ref(false)
+const approvingSlipId = ref<number | null>(null)
 const activeTab = ref<'ALL' | 'SUBMITTED' | 'APPROVED' | 'REJECTED'>('ALL')
 const searchQuery = ref('')
 
@@ -200,17 +202,21 @@ function openSlipPreview(slip: DepositItem) {
 async function approveDeposit(slip: DepositItem) {
   if (isProcessing.value) return
   isProcessing.value = true
+  approvingSlipId.value = slip.id
 
   try {
-    const res: any = await $fetch(`/api/admin/deposits/${slip.id}/review`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: {
-        action: 'APPROVE',
-      },
-    })
+    const [res] = await Promise.all([
+      $fetch(`/api/admin/deposits/${slip.id}/review`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: {
+          action: 'APPROVE',
+        },
+      }) as Promise<any>,
+      new Promise((resolve) => setTimeout(resolve, 450)),
+    ])
 
-    if (res.ok) {
+    if (res && res.ok) {
       slip.status = 'APPROVED'
       isSlipModalOpen.value = false
       toast.success(
@@ -219,53 +225,66 @@ async function approveDeposit(slip: DepositItem) {
       )
       await fetchSlips(true)
     } else {
-      toast.error('Approval failed: ' + (res.error || 'Server error'))
+      toast.error('Approval failed: ' + (res?.error || 'Server error'))
     }
   } catch (err: any) {
     toast.error('Approval failed: ' + (err.message || 'Network error'))
   } finally {
     isProcessing.value = false
+    approvingSlipId.value = null
   }
 }
 
 function openRejectDialog(slip: DepositItem) {
   selectedSlip.value = slip
+  if (!rejectReason.value || rejectReason.value === 'Slip amount does not match requested top-up.') {
+    rejectReason.value = 'ပြေစာ လွဲမှားနေပါသည် ခင်ဗျာ။'
+  }
   isRejectModalOpen.value = true
 }
 
 async function confirmReject() {
   if (!selectedSlip.value || isProcessing.value) return
   isProcessing.value = true
+  isRejecting.value = true
 
   const topUpId = selectedSlip.value.topUpId
-  const user = selectedSlip.value.telegramUsername
+  const user = selectedSlip.value.telegramUsername || selectedSlip.value.customerName
+  const reasonText = rejectReason.value.trim() || 'ပြေစာ လွဲမှားနေပါသည် ခင်ဗျာ။'
 
   try {
-    const res: any = await $fetch(`/api/admin/deposits/${selectedSlip.value.id}/review`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: {
-        action: 'REJECT',
-        rejectReason: rejectReason.value,
-      },
-    })
+    const [res] = await Promise.all([
+      $fetch(`/api/admin/deposits/${selectedSlip.value.id}/review`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: {
+          action: 'REJECT',
+          rejectReason: reasonText,
+        },
+      }) as Promise<any>,
+      new Promise((resolve) => setTimeout(resolve, 500)), // Smooth loading animation feeling
+    ])
 
-    if (res.ok) {
+    if (res && res.ok) {
       selectedSlip.value.status = 'REJECTED'
-      isRejectModalOpen.value = false
-      isSlipModalOpen.value = false
+      
+      // Toast notification fires simultaneously with modal closure
       toast.warn(
-        `Top-Up ${topUpId} rejected for ${user}. Reason: ${rejectReason.value}. Customer was notified on Telegram.`,
+        `Top-Up ${topUpId} rejected for ${user}. Reason: ${reasonText}. Customer was notified on Telegram.`,
         'Deposit Slip Rejected'
       )
+
+      isRejectModalOpen.value = false
+      isSlipModalOpen.value = false
       await fetchSlips(true)
     } else {
-      toast.error('Rejection failed: ' + (res.error || 'Server error'))
+      toast.error('Rejection failed: ' + (res?.error || 'Server error'))
     }
   } catch (err: any) {
     toast.error('Rejection failed: ' + (err.message || 'Network error'))
   } finally {
     isProcessing.value = false
+    isRejecting.value = false
   }
 }
 </script>
@@ -546,8 +565,9 @@ async function confirmReject() {
                     :disabled="isProcessing"
                     class="w-20 inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-sm shadow-emerald-600/20 transition-all disabled:opacity-50"
                   >
-                    <i class="pi pi-check text-[10px]"></i>
-                    <span>Approve</span>
+                    <i v-if="approvingSlipId === slip.id" class="pi pi-spin pi-spinner text-[10px]"></i>
+                    <i v-else class="pi pi-check text-[10px]"></i>
+                    <span>{{ approvingSlipId === slip.id ? 'Wait...' : 'Approve' }}</span>
                   </button>
 
                   <!-- Bottom: Reject (Color = Red) -->
@@ -733,8 +753,9 @@ async function confirmReject() {
                 :disabled="isProcessing"
                 class="inline-flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 transition-all disabled:opacity-50"
               >
-                <i class="pi pi-check"></i>
-                <span>Approve & Credit Wallet ({{ selectedSlip.depositAmountMmk.toLocaleString() }} Ks)</span>
+                <i v-if="approvingSlipId === selectedSlip.id" class="pi pi-spin pi-spinner"></i>
+                <i v-else class="pi pi-check"></i>
+                <span>{{ approvingSlipId === selectedSlip.id ? 'Approving & Crediting...' : `Approve & Credit Wallet (${selectedSlip.depositAmountMmk.toLocaleString()} Ks)` }}</span>
               </button>
             </div>
           </div>
@@ -747,37 +768,54 @@ async function confirmReject() {
       <div
         v-if="isRejectModalOpen && selectedSlip"
         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
-        @click.self="isRejectModalOpen = false"
+        @click.self="!isProcessing && (isRejectModalOpen = false)"
       >
         <div class="modal-card w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
-          <h3 class="text-base font-bold text-slate-900 dark:text-white">
-            Reject Deposit Slip
-          </h3>
-          <p class="text-xs text-slate-400">
-            State the reason why top-up <span class="font-mono text-white">{{ selectedSlip.topUpId }}</span> was rejected. This explanation will be delivered directly to {{ selectedSlip.customerName }} on Telegram.
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+              <span>Reject Deposit Slip</span>
+            </h3>
+            <button
+              type="button"
+              @click="!isProcessing && (isRejectModalOpen = false)"
+              :disabled="isProcessing"
+              class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 disabled:opacity-30 transition-colors"
+            >
+              <i class="pi pi-times text-sm"></i>
+            </button>
+          </div>
+
+          <p class="text-xs text-slate-400 leading-relaxed">
+            State the reason why top-up <span class="font-mono text-white font-semibold">{{ selectedSlip.topUpId }}</span> was rejected. This explanation will be delivered directly to {{ selectedSlip.customerName }} on Telegram.
           </p>
 
           <textarea
             v-model="rejectReason"
+            :disabled="isProcessing"
             rows="3"
-            class="w-full p-3 rounded-xl text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
-            placeholder="e.g. Transaction reference not found on bank statement..."
+            class="w-full p-3 rounded-xl text-sm bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+            placeholder="e.g. ပြေစာ လွဲမှားနေပါသည် ခင်ဗျာ / Transaction reference not found on bank statement..."
           ></textarea>
 
           <div class="flex items-center justify-end gap-3 pt-2">
             <button
               type="button"
               @click="isRejectModalOpen = false"
-              class="px-4 py-2 rounded-xl text-xs font-medium text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              :disabled="isProcessing"
+              class="px-4 py-2 rounded-xl text-xs font-medium text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               Cancel
             </button>
             <button
               type="button"
               @click="confirmReject"
-              class="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white shadow-md shadow-rose-600/30"
+              :disabled="isProcessing"
+              class="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 active:scale-95 text-white shadow-md shadow-rose-600/30 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Confirm Rejection
+              <i v-if="isRejecting" class="pi pi-spin pi-spinner text-xs"></i>
+              <i v-else class="pi pi-times-circle text-xs"></i>
+              <span>{{ isRejecting ? 'Rejecting...' : 'Confirm Rejection' }}</span>
             </button>
           </div>
         </div>
