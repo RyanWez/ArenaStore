@@ -15,12 +15,17 @@ import {
   walletLedger,
   productSupplierSnapshots,
 } from "@arena/db";
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq, sql, or } from "drizzle-orm";
 import { z } from "zod";
 import { xproClient } from "../services/xpro-client";
 import { catalogService } from "../services/catalog.service";
 import { orderService } from "../services/order.service";
-import { notifyTopUpApproved, notifyTopUpRejected } from "../services/telegram-notifier";
+import {
+  notifyTopUpApproved,
+  notifyTopUpRejected,
+  notifyOrderRefunded,
+  notifyOrderCredentialsResent,
+} from "../services/telegram-notifier";
 import { decryptPayload } from "../services/encryption";
 import { fetchTelegramFile, getPlaceholderSlipSvg } from "../services/telegram-file.service";
 
@@ -635,6 +640,171 @@ export async function adminRoutes(server: FastifyInstance) {
     return {
       ok: true,
       orders: enrichedOrders,
+    };
+  });
+
+  // POST /api/admin/orders/:id/refund (Refund order to customer's wallet and notify on Telegram)
+  server.post("/api/admin/orders/:id/refund", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body || {}) as { reason?: string };
+    const reason = body.reason?.trim() || "Admin Customer Support Refund";
+    const db = getDb();
+
+    // 1. Locate the order (by UUID or publicOrderNo)
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    const [order] = await db
+      .select({
+        id: orders.id,
+        publicOrderNo: orders.publicOrderNo,
+        status: orders.status,
+        totalAmountMmk: orders.totalAmountMmk,
+        customerId: orders.customerId,
+        customerTelegramId: users.telegramId,
+        customerName: users.firstName,
+      })
+      .from(orders)
+      .innerJoin(users, eq(orders.customerId, users.id))
+      .where(isUuid ? eq(orders.id, id) : eq(orders.publicOrderNo, id))
+      .limit(1);
+
+    if (!order) {
+      return reply.code(404).send({ ok: false, error: "Order not found" });
+    }
+
+    if (order.status === "REFUNDED") {
+      return reply.code(400).send({ ok: false, error: "This order has already been refunded" });
+    }
+
+    // 2. Fetch or create customer's wallet
+    let [wallet] = await db.select().from(wallets).where(eq(wallets.userId, order.customerId)).limit(1);
+    if (!wallet) {
+      const [newWallet] = await db
+        .insert(wallets)
+        .values({
+          userId: order.customerId,
+          balanceMmk: 0,
+          totalDepositedMmk: 0,
+          totalSpentMmk: 0,
+        })
+        .returning();
+      wallet = newWallet;
+    }
+
+    // 3. Atomically update wallet balance, write ledger entry, and update order status
+    const newBalance = wallet.balanceMmk + order.totalAmountMmk;
+    const newTotalSpent = Math.max(0, wallet.totalSpentMmk - order.totalAmountMmk);
+
+    await db
+      .update(wallets)
+      .set({
+        balanceMmk: newBalance,
+        totalSpentMmk: newTotalSpent,
+        updatedAt: new Date(),
+      })
+      .where(eq(wallets.id, wallet.id));
+
+    await db.insert(walletLedger).values({
+      walletId: wallet.id,
+      amountMmk: order.totalAmountMmk,
+      type: "REFUND_CREDIT",
+      referenceId: order.publicOrderNo,
+      notes: `Refund for ${order.publicOrderNo}: ${reason}`,
+    });
+
+    await db
+      .update(orders)
+      .set({
+        status: "REFUNDED",
+        updatedAt: new Date(),
+      })
+      .where(eq(orders.id, order.id));
+
+    // 4. Send Telegram instant notification to customer
+    if (order.customerTelegramId) {
+      await notifyOrderRefunded({
+        telegramId: order.customerTelegramId,
+        publicOrderNo: order.publicOrderNo,
+        amountMmk: order.totalAmountMmk,
+        newBalanceMmk: newBalance,
+        reason,
+      });
+    }
+
+    return {
+      ok: true,
+      publicOrderNo: order.publicOrderNo,
+      refundedAmountMmk: order.totalAmountMmk,
+      newBalanceMmk: newBalance,
+      customerName: order.customerName,
+    };
+  });
+
+  // POST /api/admin/orders/:id/resend (Re-send digital credentials to customer's Telegram chat)
+  server.post("/api/admin/orders/:id/resend", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const db = getDb();
+
+    // 1. Locate the order
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    const [order] = await db
+      .select({
+        id: orders.id,
+        publicOrderNo: orders.publicOrderNo,
+        status: orders.status,
+        customerId: orders.customerId,
+        customerTelegramId: users.telegramId,
+        customerName: users.firstName,
+      })
+      .from(orders)
+      .innerJoin(users, eq(orders.customerId, users.id))
+      .where(isUuid ? eq(orders.id, id) : eq(orders.publicOrderNo, id))
+      .limit(1);
+
+    if (!order) {
+      return reply.code(404).send({ ok: false, error: "Order not found" });
+    }
+
+    // 2. Fetch product name and delivery credentials
+    const items = await db
+      .select({ productName: orderItems.productNameSnapshot })
+      .from(orderItems)
+      .where(eq(orderItems.orderId, order.id));
+    const productName = items[0]?.productName || "Digital Product";
+
+    const deliveries = await db
+      .select()
+      .from(orderDeliveries)
+      .where(eq(orderDeliveries.orderId, order.id));
+
+    let credentialsText = "Direct Delivery";
+    if (deliveries.length > 0) {
+      try {
+        const decrypted = decryptPayload(deliveries[0].encryptedPayload);
+        credentialsText = typeof decrypted === "string" ? decrypted : JSON.stringify(decrypted, null, 2);
+      } catch {
+        credentialsText = deliveries[0].encryptedPayload;
+      }
+    }
+
+    // 3. Send Telegram delivery message to customer
+    if (!order.customerTelegramId) {
+      return reply.code(400).send({ ok: false, error: "Customer does not have a linked Telegram ID" });
+    }
+
+    const sent = await notifyOrderCredentialsResent({
+      telegramId: order.customerTelegramId,
+      publicOrderNo: order.publicOrderNo,
+      productName,
+      credentialsText,
+    });
+
+    if (!sent) {
+      return reply.code(502).send({ ok: false, error: "Failed to send Telegram message to customer" });
+    }
+
+    return {
+      ok: true,
+      message: `Credentials for ${order.publicOrderNo} successfully re-sent to customer on Telegram!`,
     };
   });
 

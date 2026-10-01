@@ -1,5 +1,5 @@
 import { config } from "../config";
-import { BOT_EMOJIS, tgEmoji } from "@arena/shared";
+import { BOT_EMOJIS, tgEmoji, escapeHtml } from "@arena/shared";
 
 export async function sendTelegramMessage(chatId: string, text: string): Promise<boolean> {
   if (!config.TELEGRAM_BOT_TOKEN) {
@@ -81,3 +81,58 @@ export async function notifyTopUpRejected(params: {
 
   return sendTelegramMessage(telegramId, text);
 }
+
+/**
+ * Sends an order refund notification to the customer on Telegram.
+ */
+export async function notifyOrderRefunded(params: {
+  telegramId: string;
+  publicOrderNo: string;
+  amountMmk: number;
+  newBalanceMmk: number;
+  reason?: string;
+}): Promise<boolean> {
+  const { telegramId, publicOrderNo, amountMmk, newBalanceMmk, reason } = params;
+  const money = tgEmoji(BOT_EMOJIS.MONEY, "💰");
+  const receipt = tgEmoji(BOT_EMOJIS.RECEIPT, "🧾");
+  const sparkles = tgEmoji(BOT_EMOJIS.SPARKLES, "✨");
+
+  const text =
+    `<blockquote>${money} <b>အော်ဒါ ငွေပြန်အမ်းခြင်း ပြီးမြောက်ပါသည်</b> ❞\n` +
+    `အော်ဒါအမှတ်: <b>${escapeHtml(publicOrderNo)}</b>\n` +
+    `ပြန်အမ်းငွေ: <b>+${amountMmk.toLocaleString("en-US")} Ks</b>\n` +
+    `လက်ကျန် Wallet: <b>${newBalanceMmk.toLocaleString("en-US")} Ks</b></blockquote>\n\n` +
+    `${receipt} <b>အကြောင်းပြချက်:</b> <i>${escapeHtml(reason || "Admin Customer Support")}</i>\n\n` +
+    `သင့်အော်ဒါအတွက် ငွေပမာဏကို Wallet ထဲသို့ ပြန်လည် ထည့်သွင်းပေးပြီးဖြစ်ပါသည်ခင်ဗျာ။ ${sparkles}`;
+
+  return sendTelegramMessage(telegramId, text);
+}
+
+/**
+ * Re-sends digital account / key credentials to the customer on Telegram.
+ */
+export async function notifyOrderCredentialsResent(params: {
+  telegramId: string;
+  publicOrderNo: string;
+  productName: string;
+  credentialsText: string;
+}): Promise<boolean> {
+  const { telegramId, publicOrderNo, productName, credentialsText } = params;
+  const party = tgEmoji(BOT_EMOJIS.PARTY, "🎉");
+  const key = tgEmoji(BOT_EMOJIS.KEY, "🔑");
+  const warning = tgEmoji(BOT_EMOJIS.WARNING, "⚠️");
+  const sparkles = tgEmoji(BOT_EMOJIS.SPARKLES, "✨");
+
+  const text =
+    `<blockquote>${party} <b>အော်ဒါ အချက်အလက်များ ပြန်လည်ပေးပို့ခြင်း</b> ❞\n` +
+    `အော်ဒါနံပါတ်: <b>${escapeHtml(publicOrderNo)}</b>\n` +
+    `ပစ္စည်း: <b>${escapeHtml(productName)}</b></blockquote>\n\n` +
+    `${key} <b>သင့်အကောင့် / ကုဒ် အချက်အလက်များ:</b>\n` +
+    `<pre><code>${escapeHtml(credentialsText)}</code></pre>\n\n` +
+    `${warning} <b>လုံခြုံရေး သတိပေးချက်:</b>\n` +
+    `မိမိအကောင့်၏ Password သို့မဟုတ် လုံခြုံရေးအချက်အလက်များကို ချက်ချင်း ပြောင်းလဲပြီး သိမ်းဆည်းထားပါရန် အကြံပြုအပ်ပါသည်။\n\n` +
+    `Arena Store ကို အားပေးသည့်အတွက် ကျေးဇူးအထူးတင်ရှိပါသည်! ${sparkles}`;
+
+  return sendTelegramMessage(telegramId, text);
+}
+

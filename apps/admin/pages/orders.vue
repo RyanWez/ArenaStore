@@ -45,6 +45,7 @@ const isDetailModalOpen = ref(false)
 const selectedOrder = ref<OrderRecord | null>(null)
 const copiedId = ref<string | null>(null)
 const isRefunding = ref(false)
+const isResending = ref(false)
 
 const ordersList = ref<OrderRecord[]>([])
 let ordersPollInterval: ReturnType<typeof setInterval> | null = null
@@ -231,24 +232,56 @@ function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US').format(amount) + ' Ks'
 }
 
-function resendCredentials(order: OrderRecord) {
-  toast.success(
-    `Digital credentials for ${order.publicOrderNo} successfully re-sent to ${order.customer.username || order.customer.firstName} on Telegram!`,
-    'Credentials Re-sent'
-  )
+async function resendCredentials(order: OrderRecord) {
+  if (isResending.value || isRefunding.value) return
+  isResending.value = true
+
+  try {
+    const res: any = await $fetch(`/api/admin/orders/${order.publicOrderNo || order.id}/resend`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    })
+
+    if (res && res.ok) {
+      toast.success(
+        `Digital credentials for ${order.publicOrderNo} successfully re-sent to ${order.customer.username ? '@' + order.customer.username : order.customer.firstName} on Telegram!`,
+        'Credentials Re-sent'
+      )
+    } else {
+      toast.error('Re-send failed: ' + (res?.error || 'Server error'))
+    }
+  } catch (err: any) {
+    toast.error('Re-send failed: ' + (err.message || 'Network error'))
+  } finally {
+    isResending.value = false
+  }
 }
 
 async function refundToWallet(order: OrderRecord) {
-  if (isRefunding.value) return
+  if (isRefunding.value || isResending.value) return
   isRefunding.value = true
 
   try {
-    await new Promise((r) => setTimeout(r, 600))
-    order.status = 'REFUNDED'
-    toast.warn(
-      `Order ${order.publicOrderNo} refunded! +${order.totalAmountMmk.toLocaleString()} Ks credited back to ${order.customer.firstName}'s Wallet.`,
-      'Refund Complete'
-    )
+    const res: any = await $fetch(`/api/admin/orders/${order.publicOrderNo || order.id}/refund`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: {
+        reason: 'Customer Support Refund by Admin',
+      },
+    })
+
+    if (res && res.ok) {
+      order.status = 'REFUNDED'
+      toast.warn(
+        `Order ${order.publicOrderNo} refunded! +${order.totalAmountMmk.toLocaleString()} Ks credited back to ${order.customer.firstName}'s Wallet. Customer was notified on Telegram.`,
+        'Refund Complete'
+      )
+      await fetchOrders(true)
+    } else {
+      toast.error('Refund failed: ' + (res?.error || 'Server error'))
+    }
+  } catch (err: any) {
+    toast.error('Refund failed: ' + (err.message || 'Network error'))
   } finally {
     isRefunding.value = false
   }
@@ -724,29 +757,37 @@ async function refundToWallet(order: OrderRecord) {
               v-if="selectedOrder.status === 'DELIVERED'"
               type="button"
               @click="refundToWallet(selectedOrder)"
-              :disabled="isRefunding"
-              class="px-3.5 py-2 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+              :disabled="isRefunding || isResending"
+              class="px-3.5 py-2 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 active:scale-95 transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <i class="pi pi-replay"></i>
-              <span>Refund {{ formatCurrency(selectedOrder.totalAmountMmk) }} to Wallet</span>
+              <i v-if="isRefunding" class="pi pi-spin pi-spinner"></i>
+              <i v-else class="pi pi-replay"></i>
+              <span>{{ isRefunding ? 'Refunding to Wallet...' : `Refund ${formatCurrency(selectedOrder.totalAmountMmk)} to Wallet` }}</span>
             </button>
+            <div v-else-if="selectedOrder.status === 'REFUNDED'" class="flex items-center gap-1.5 text-xs font-semibold text-rose-500">
+              <i class="pi pi-info-circle text-xs"></i>
+              <span>Refunded to Wallet</span>
+            </div>
             <div v-else></div>
 
             <div class="flex items-center gap-2.5">
               <button
-                v-if="selectedOrder.delivery"
+                v-if="selectedOrder.delivery && selectedOrder.status === 'DELIVERED'"
                 type="button"
                 @click="resendCredentials(selectedOrder)"
-                class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border border-indigo-500/20 transition-colors flex items-center gap-1.5"
+                :disabled="isResending || isRefunding"
+                class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-indigo-600/10 hover:bg-indigo-600/20 active:scale-95 text-indigo-400 border border-indigo-500/20 transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <i class="pi pi-send"></i>
-                <span>Re-send to Telegram</span>
+                <i v-if="isResending" class="pi pi-spin pi-spinner"></i>
+                <i v-else class="pi pi-send"></i>
+                <span>{{ isResending ? 'Sending to Telegram...' : 'Re-send to Telegram' }}</span>
               </button>
 
               <button
                 type="button"
                 @click="isDetailModalOpen = false"
-                class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
+                :disabled="isRefunding || isResending"
+                class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors disabled:opacity-50"
               >
                 Close
               </button>
