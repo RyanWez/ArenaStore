@@ -219,6 +219,7 @@ class BotCatalogService {
           supplierStock: productSupplierSnapshots.supplierStock,
           deliveryType: productSupplierSnapshots.deliveryType,
           inStock: productSupplierSnapshots.inStock,
+          rawDescription: productSupplierSnapshots.rawDescription,
         })
         .from(products)
         .leftJoin(productSupplierSnapshots, eq(products.id, productSupplierSnapshots.productId))
@@ -242,8 +243,9 @@ class BotCatalogService {
       const prodList: BotProduct[] = prodRows.map((p) => {
         const displayName = p.rawName || p.nameMmk;
         const parsed = parseCustomEmoji(displayName);
-        const formattedDesc = p.descriptionMmk
-          ? formatTelegramCustomEmoji(p.descriptionMmk, "✨")
+        const descText = p.descriptionMmk || p.rawDescription || "";
+        const formattedDesc = descText
+          ? formatTelegramCustomEmoji(descText, "✨")
           : "";
 
         const stockCalc = calculateSellableStock({
@@ -262,7 +264,7 @@ class BotCatalogService {
           name: displayName,
           cleanName: parsed.cleanText,
           emojiId: parsed.emojiId,
-          description: p.descriptionMmk || "",
+          description: descText,
           formattedDescription: formattedDesc,
           supplierPriceUsd: p.supplierPriceUsd || "0.00",
           retailPriceMmk: p.retailPriceMmk,

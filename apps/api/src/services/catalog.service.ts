@@ -1,5 +1,5 @@
 import { eq, and, sql } from "drizzle-orm";
-import { getDb, categories, products, productSupplierSnapshots, stockReservations, MYANMAR_PRODUCT_DESCRIPTIONS } from "@arena/db";
+import { getDb, categories, products, productSupplierSnapshots, stockReservations } from "@arena/db";
 import { calculateRetailMmk, calculateSellableStock, formatMmk } from "@arena/shared";
 import { xproClient, XProProduct, XProCategory } from "./xpro-client";
 import { config } from "../config";
@@ -103,8 +103,6 @@ export class CatalogService {
         }
       }
 
-      const defaultDesc = MYANMAR_PRODUCT_DESCRIPTIONS[upstreamId] || item.description || null;
-
       // Upsert local product with proper category foreign key
       const [localProduct] = await db
         .insert(products)
@@ -112,7 +110,7 @@ export class CatalogService {
           upstreamProductId: upstreamId,
           categoryId: matchedCategoryId,
           nameMmk: item.name,
-          descriptionMmk: defaultDesc,
+          descriptionMmk: item.description || null,
           retailPriceMmk: initialPricing.retailPriceMmk,
           localStockLimit: null,
           isActive: true,
@@ -121,7 +119,8 @@ export class CatalogService {
           target: products.upstreamProductId,
           set: {
             categoryId: matchedCategoryId,
-            // Keep existing nameMmk and descriptionMmk so admin edits & Myanmar descriptions are preserved!
+            nameMmk: item.name,
+            descriptionMmk: item.description || null,
             updatedAt: new Date(),
           },
         })
