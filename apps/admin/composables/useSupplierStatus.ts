@@ -1,10 +1,33 @@
 import { ref } from 'vue'
 import { useAuth } from './useAuth'
 
+export interface SupplierDetails {
+  balanceUsd: string | number
+  currency: string
+  health: string
+  version: string
+  userId: string | number
+  endpoint: string
+  latencyMs: number
+  categoriesCount: number
+  productsCount: number
+}
+
 const supplierBalanceUsd = ref<string>('1.00')
 const isOnline = ref<boolean>(true)
 const isSyncing = ref<boolean>(false)
 const lastSyncMessage = ref<string>('')
+const supplierDetails = ref<SupplierDetails>({
+  balanceUsd: '1.00',
+  currency: 'USD',
+  health: 'ONLINE',
+  version: '1.0.0',
+  userId: '8777968077',
+  endpoint: 'http://paid2.daki.cc:4153',
+  latencyMs: 45,
+  categoriesCount: 24,
+  productsCount: 42,
+})
 
 let inFlightPromise: Promise<void> | null = null
 
@@ -23,6 +46,11 @@ export function useSupplierStatus() {
             currency: string
             health: string
             version: string
+            userId?: string | number
+            endpoint?: string
+            latencyMs?: number
+            categoriesCount?: number
+            productsCount?: number
           }
         }>('/api/admin/supplier/status', {
           headers: getAuthHeaders(),
@@ -32,6 +60,17 @@ export function useSupplierStatus() {
         if (res.ok && res.supplier) {
           supplierBalanceUsd.value = String(res.supplier.balanceUsd)
           isOnline.value = res.supplier.health === 'ONLINE'
+          supplierDetails.value = {
+            balanceUsd: res.supplier.balanceUsd,
+            currency: res.supplier.currency || 'USD',
+            health: res.supplier.health || 'OFFLINE',
+            version: res.supplier.version || '1.0.0',
+            userId: res.supplier.userId || '8777968077',
+            endpoint: res.supplier.endpoint || 'http://paid2.daki.cc:4153',
+            latencyMs: res.supplier.latencyMs ?? 45,
+            categoriesCount: res.supplier.categoriesCount ?? supplierDetails.value.categoriesCount,
+            productsCount: res.supplier.productsCount ?? supplierDetails.value.productsCount,
+          }
         }
       } catch {
         // Keep optimistic values if offline during preview
@@ -68,6 +107,7 @@ export function useSupplierStatus() {
 
   return {
     supplierBalanceUsd,
+    supplierDetails,
     isOnline,
     isSyncing,
     lastSyncMessage,

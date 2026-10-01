@@ -2,9 +2,10 @@
 import { ref, onMounted } from 'vue'
 import { useSupplierStatus } from '~/composables/useSupplierStatus'
 
-const { supplierBalanceUsd, isOnline, isSyncing, syncCatalog, fetchStatus } = useSupplierStatus()
+const { supplierBalanceUsd, supplierDetails, isOnline, isSyncing, syncCatalog, fetchStatus } = useSupplierStatus()
 
 const isPinging = ref(false)
+const isTopUpModalOpen = ref(false)
 const pingResult = ref<{
   success: boolean
   latencyMs: number
@@ -16,31 +17,28 @@ const syncLogs = ref<Array<{
   timestamp: string
   type: 'INFO' | 'SUCCESS' | 'WARN' | 'ERROR'
   message: string
-}>>([
-  {
-    timestamp: '2026-09-30 19:25:10',
-    type: 'SUCCESS',
-    message: 'Health check OK: xproseller-partner-api is operational (128ms)',
-  },
-  {
-    timestamp: '2026-09-30 19:25:11',
-    type: 'INFO',
-    message: 'Wallet balance queried: $1.00 USD (User ID: 8777968077)',
-  },
-  {
-    timestamp: '2026-09-30 19:25:12',
-    type: 'WARN',
-    message: 'Wallet buffer notice: 2 items exceed current wallet balance ($1.00). Sellable stock automatically clamped to 0.',
-  },
-  {
-    timestamp: '2026-09-30 19:25:13',
-    type: 'SUCCESS',
-    message: 'Catalog synchronization completed: 24 categories, 24 products active.',
-  },
-])
+}>>([])
 
 onMounted(async () => {
   await fetchStatus()
+  const now = new Date().toLocaleTimeString()
+  syncLogs.value = [
+    {
+      timestamp: now,
+      type: isOnline.value ? 'SUCCESS' : 'WARN',
+      message: `Health check: ${supplierDetails.value.endpoint} is ${isOnline.value ? 'ONLINE' : 'OFFLINE'} (${supplierDetails.value.latencyMs}ms latency).`,
+    },
+    {
+      timestamp: now,
+      type: 'INFO',
+      message: `Partner wallet balance queried: $${supplierBalanceUsd.value} USD (Partner ID: ${supplierDetails.value.userId}).`,
+    },
+    {
+      timestamp: now,
+      type: 'SUCCESS',
+      message: `Catalog status: ${supplierDetails.value.categoriesCount} categories and ${supplierDetails.value.productsCount} active products in database.`,
+    },
+  ]
 })
 
 async function handleSync() {
@@ -50,11 +48,11 @@ async function handleSync() {
       type: 'INFO',
       message: 'Triggering upstream catalog synchronization...',
     })
-    await syncCatalog()
+    const res: any = await syncCatalog()
     syncLogs.value.unshift({
       timestamp: new Date().toLocaleTimeString(),
       type: 'SUCCESS',
-      message: 'Upstream catalog synchronization finished successfully!',
+      message: `Catalog synchronization completed: ${res?.synced?.categories ?? supplierDetails.value.categoriesCount} categories, ${res?.synced?.products ?? supplierDetails.value.productsCount} products active.`,
     })
   } catch (err: any) {
     syncLogs.value.unshift({
@@ -89,6 +87,11 @@ async function handlePing() {
       service: 'unavailable',
       timestamp: new Date().toLocaleTimeString(),
     }
+    syncLogs.value.unshift({
+      timestamp: new Date().toLocaleTimeString(),
+      type: 'ERROR',
+      message: `Ping failed: ${err.message}`,
+    })
   } finally {
     isPinging.value = false
   }
@@ -148,11 +151,11 @@ async function handlePing() {
         </div>
         <div class="mt-4">
           <div class="text-xl font-bold text-slate-900 dark:text-white">xproseller-partner-api</div>
-          <p class="text-xs text-slate-400 font-mono mt-1">Endpoint: http://paid2.daki.cc:4153</p>
+          <p class="text-xs text-slate-400 font-mono mt-1">Endpoint: {{ supplierDetails.endpoint }}</p>
         </div>
         <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500">
           <span>Latency</span>
-          <span class="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">{{ pingResult ? `${pingResult.latencyMs} ms` : '~128 ms' }}</span>
+          <span class="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">{{ pingResult ? `${pingResult.latencyMs} ms` : `${supplierDetails.latencyMs} ms` }}</span>
         </div>
       </div>
 
@@ -170,7 +173,7 @@ async function handlePing() {
         </div>
         <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500">
           <span>Partner User ID</span>
-          <span class="font-mono text-slate-700 dark:text-slate-300 font-semibold">8777968077</span>
+          <span class="font-mono text-slate-700 dark:text-slate-300 font-semibold">{{ supplierDetails.userId }}</span>
         </div>
       </div>
 
@@ -183,8 +186,8 @@ async function handlePing() {
           </span>
         </div>
         <div class="mt-4 flex items-baseline gap-3">
-          <span class="text-3xl font-extrabold text-slate-900 dark:text-white font-mono">24</span>
-          <span class="text-xs text-slate-500">Categories / 24+ Products</span>
+          <span class="text-3xl font-extrabold text-slate-900 dark:text-white font-mono">{{ supplierDetails.categoriesCount }}</span>
+          <span class="text-xs text-slate-500">Categories / {{ supplierDetails.productsCount }} Products</span>
         </div>
         <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500">
           <span>Auto-Sync Schedule</span>
@@ -204,18 +207,17 @@ async function handlePing() {
             Automated Wallet Stock Protection Active
           </h3>
           <p class="text-xs text-amber-800/80 dark:text-amber-300/80 mt-0.5 leading-relaxed max-w-2xl">
-            To prevent customer purchase failures, products with upstream cost exceeding current wallet balance ($1.00 USD) are automatically clamped to <strong>0 sellable stock</strong>. When you top up your XPro wallet, stock will instantly reactivate on next sync.
+            To prevent customer purchase failures, products with upstream cost exceeding current wallet balance (${{ supplierBalanceUsd }} USD) are automatically clamped to <strong>0 sellable stock</strong>. When you top up your XPro wallet, stock will instantly reactivate on next sync.
           </p>
         </div>
       </div>
-      <a
-        href="https://t.me"
-        target="_blank"
-        rel="noopener noreferrer"
+      <button
+        type="button"
+        @click="isTopUpModalOpen = true"
         class="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white transition-colors shrink-0 shadow-sm"
       >
         Top Up XPro Wallet
-      </a>
+      </button>
     </div>
 
     <!-- Diagnostic & Activity Logs -->
@@ -236,6 +238,9 @@ async function handlePing() {
 
       <!-- Log Terminal Box -->
       <div class="p-4 rounded-xl bg-slate-950 font-mono text-xs text-slate-300 border border-slate-800 space-y-2 max-h-72 overflow-y-auto">
+        <div v-if="syncLogs.length === 0" class="text-slate-600 text-center py-4">
+          No diagnostic logs recorded yet. Click "Ping Supplier" to test connection.
+        </div>
         <div v-for="(log, idx) in syncLogs" :key="idx" class="flex items-start gap-2.5">
           <span class="text-slate-500 shrink-0">[{{ log.timestamp }}]</span>
           <span
@@ -253,5 +258,79 @@ async function handlePing() {
         </div>
       </div>
     </div>
+
+    <!-- Top Up Instructions Modal (Teleported to body) -->
+    <Teleport to="body">
+      <div
+        v-if="isTopUpModalOpen"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm"
+        @click.self="isTopUpModalOpen = false"
+      >
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center">
+                <i class="pi pi-wallet"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-slate-900 dark:text-white text-sm">Top Up XPro Partner Wallet</h3>
+                <p class="text-xs text-slate-400">Direct Upstream Deposit Instructions</p>
+              </div>
+            </div>
+            <button
+              @click="isTopUpModalOpen = false"
+              class="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              <i class="pi pi-times text-xs"></i>
+            </button>
+          </div>
+
+          <div class="space-y-3 text-xs">
+            <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 space-y-2">
+              <div class="flex justify-between items-center">
+                <span class="text-slate-500">Your Partner User ID:</span>
+                <span class="font-mono font-bold text-slate-900 dark:text-white select-all">{{ supplierDetails.userId }}</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-slate-500">Current Balance:</span>
+                <span class="font-mono font-bold text-emerald-500">${{ supplierBalanceUsd }} USD</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-slate-500">Upstream Endpoint:</span>
+                <span class="font-mono text-slate-400 truncate max-w-[200px]">{{ supplierDetails.endpoint }}</span>
+              </div>
+            </div>
+
+            <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 space-y-1.5">
+              <p class="font-semibold flex items-center gap-1.5">
+                <i class="pi pi-info-circle text-xs"></i>
+                Deposit Guide:
+              </p>
+              <p class="text-[11px] leading-relaxed text-amber-800/90 dark:text-amber-300/90">
+                To add funds to your XPro API wallet, contact the upstream support with your Partner User ID (<strong>{{ supplierDetails.userId }}</strong>) and transfer USDT (TRC-20) or your preferred payment method.
+              </p>
+            </div>
+          </div>
+
+          <div class="pt-2 flex items-center justify-end gap-2.5">
+            <button
+              type="button"
+              @click="isTopUpModalOpen = false"
+              class="px-4 py-2 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              @click="handlePing(); isTopUpModalOpen = false;"
+              class="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm flex items-center gap-1.5"
+            >
+              <i class="pi pi-sync text-xs"></i>
+              <span>Refresh Balance</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
