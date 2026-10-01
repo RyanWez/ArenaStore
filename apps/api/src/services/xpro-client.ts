@@ -85,8 +85,10 @@ export class XProClient {
   private async request<T>(
     endpoint: string,
     init: RequestInit = {},
-    maxRetries: number = 2
+    maxRetries: number = 2,
+    customTimeoutMs?: number
   ): Promise<T> {
+    const effectiveTimeout = customTimeoutMs ?? this.timeoutMs;
     const url = `${this.baseUrl}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -102,7 +104,7 @@ export class XProClient {
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+      const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
       try {
         const response = await fetch(url, {
@@ -145,7 +147,7 @@ export class XProClient {
 
         const isAbort = err.name === "AbortError";
         lastError = new Error(
-          isAbort ? `XPro API request timed out after ${this.timeoutMs}ms` : err.message
+          isAbort ? `XPro API request timed out after ${effectiveTimeout}ms` : err.message
         );
 
         if (attempt < maxRetries) {
@@ -161,15 +163,15 @@ export class XProClient {
   /**
    * Checks upstream service health without authentication.
    */
-  async getHealth(): Promise<{ ok: boolean; service: string; version: string; time: number }> {
-    return this.request<{ ok: boolean; service: string; version: string; time: number }>("/health");
+  async getHealth(timeoutMs = 2500, maxRetries = 0): Promise<{ ok: boolean; service: string; version: string; time: number }> {
+    return this.request<{ ok: boolean; service: string; version: string; time: number }>("/health", {}, maxRetries, timeoutMs);
   }
 
   /**
    * Retrieves partner wallet balance in USD.
    */
-  async getBalance(): Promise<XProBalanceResponse> {
-    return this.request<XProBalanceResponse>("/balance");
+  async getBalance(timeoutMs = 2500, maxRetries = 2): Promise<XProBalanceResponse> {
+    return this.request<XProBalanceResponse>("/balance", {}, maxRetries, timeoutMs);
   }
 
   /**

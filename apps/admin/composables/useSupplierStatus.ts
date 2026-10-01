@@ -6,30 +6,41 @@ const isOnline = ref<boolean>(true)
 const isSyncing = ref<boolean>(false)
 const lastSyncMessage = ref<string>('')
 
+let inFlightPromise: Promise<void> | null = null
+
 export function useSupplierStatus() {
   const { getAuthHeaders } = useAuth()
 
   async function fetchStatus() {
-    try {
-      const res = await $fetch<{
-        ok: boolean
-        supplier: {
-          balanceUsd: string | number
-          currency: string
-          health: string
-          version: string
-        }
-      }>('/api/admin/supplier/status', {
-        headers: getAuthHeaders(),
-      })
+    if (inFlightPromise) return inFlightPromise
 
-      if (res.ok && res.supplier) {
-        supplierBalanceUsd.value = String(res.supplier.balanceUsd)
-        isOnline.value = res.supplier.health === 'ONLINE'
+    inFlightPromise = (async () => {
+      try {
+        const res = await $fetch<{
+          ok: boolean
+          supplier: {
+            balanceUsd: string | number
+            currency: string
+            health: string
+            version: string
+          }
+        }>('/api/admin/supplier/status', {
+          headers: getAuthHeaders(),
+          timeout: 4000,
+        })
+
+        if (res.ok && res.supplier) {
+          supplierBalanceUsd.value = String(res.supplier.balanceUsd)
+          isOnline.value = res.supplier.health === 'ONLINE'
+        }
+      } catch {
+        // Keep optimistic values if offline during preview
+      } finally {
+        inFlightPromise = null
       }
-    } catch {
-      // Keep optimistic values if offline during preview
-    }
+    })()
+
+    return inFlightPromise
   }
 
   async function syncCatalog() {

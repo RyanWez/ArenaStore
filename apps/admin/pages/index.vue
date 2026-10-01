@@ -25,22 +25,29 @@ const stats = ref({
 
 const recentOrders = ref<any[]>([])
 let dashboardPollInterval: ReturnType<typeof setInterval> | null = null
+let isFetching = false
 
 async function fetchDashboardData(isSilent = false) {
+  if (isFetching) return
+  isFetching = true
   if (!isSilent) isLoading.value = true
   try {
     const authHeaders = getAuthHeaders()
+
+    // Trigger non-blocking background supplier status update
+    fetchStatus().catch(() => {})
+
+    // Fetch primary database metrics concurrently
     const [statsRes, ordersRes] = (await Promise.all([
       $fetch('/api/admin/stats', { headers: authHeaders }).catch((err) => {
         console.error('Stats fetch error:', err)
         return null
       }),
-      $fetch('/api/admin/orders', { headers: authHeaders }).catch((err) => {
+      $fetch('/api/admin/orders?limit=6', { headers: authHeaders }).catch((err) => {
         console.error('Orders fetch error:', err)
         return null
       }),
-      fetchStatus().catch(() => {}),
-    ])) as [any, any, any]
+    ])) as [any, any]
 
     if (statsRes?.ok && statsRes.stats) {
       stats.value.totalSalesMmk = statsRes.stats.totalSalesMmk || 0
@@ -68,6 +75,7 @@ async function fetchDashboardData(isSilent = false) {
   } finally {
     if (!isSilent) isLoading.value = false
     isRefreshing.value = false
+    isFetching = false
   }
 }
 
@@ -80,8 +88,9 @@ async function refreshDashboard() {
 onMounted(() => {
   fetchDashboardData(false)
   dashboardPollInterval = setInterval(() => {
+    if (typeof document !== 'undefined' && document.hidden) return
     fetchDashboardData(true)
-  }, 4000)
+  }, 10000)
 })
 
 onUnmounted(() => {

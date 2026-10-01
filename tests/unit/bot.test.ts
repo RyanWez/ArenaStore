@@ -334,6 +334,12 @@ describe("Phase 4 Customer Telegram Bot", () => {
   });
 
   describe("BotOrderService & Order Lifecycle", () => {
+    const originalFetch = global.fetch;
+
+    afterEach(() => {
+      global.fetch = originalFetch;
+    });
+
     it("creates order and returns orderId, publicOrderNo, and totalMmk", async () => {
       global.fetch = vi.fn().mockResolvedValue({
         ok: true,
@@ -387,6 +393,7 @@ describe("Phase 4 Customer Telegram Bot", () => {
     });
 
     it("fetches user profile stats or returns resilient defaults", async () => {
+      global.fetch = originalFetch;
       const { botOrderService } = await import("../../apps/bot/src/services/order.service");
       const profile = await botOrderService.getUserProfile("8777968077");
       expect(profile).toBeDefined();

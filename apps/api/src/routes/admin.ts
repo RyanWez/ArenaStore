@@ -16,7 +16,7 @@ import {
   productSupplierSnapshots,
   auditLogs,
 } from "@arena/db";
-import { and, asc, desc, eq, ilike, or, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, or, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { xproClient } from "../services/xpro-client";
 import { catalogService } from "../services/catalog.service";
@@ -55,6 +55,80 @@ function buildCustomerDisplayName(u: {
   return `Customer #${u.id}`;
 }
 
+interface CachedSupplierStatus {
+  balanceUsd: string | number;
+  currency: string;
+  health: string;
+  version: string;
+  updatedAt: number;
+}
+
+let supplierStatusCache: CachedSupplierStatus = {
+  balanceUsd: "0.00",
+  currency: "USD",
+  health: "OFFLINE",
+  version: "1.0",
+  updatedAt: 0,
+};
+
+let isUpdatingSupplierStatus = false;
+
+async function refreshSupplierStatus(force = false): Promise<CachedSupplierStatus> {
+  const now = Date.now();
+  // Return cached if fresh within 30 seconds unless forced
+  if (!force && now - supplierStatusCache.updatedAt < 30_000 && supplierStatusCache.updatedAt > 0) {
+    return supplierStatusCache;
+  }
+
+  // Prevent multiple concurrent network probes
+  if (isUpdatingSupplierStatus) {
+    return supplierStatusCache;
+  }
+
+  isUpdatingSupplierStatus = true;
+  try {
+    const [balanceResult, healthResult] = await Promise.allSettled([
+      xproClient.getBalance(2500, 0),
+      xproClient.getHealth(2500, 0),
+    ]);
+
+    let balance = supplierStatusCache.balanceUsd;
+    let currency = supplierStatusCache.currency;
+    let health = "OFFLINE";
+    let version = supplierStatusCache.version;
+
+    if (balanceResult.status === "fulfilled" && balanceResult.value?.ok) {
+      balance = balanceResult.value.balance;
+      currency = balanceResult.value.currency || "USD";
+    }
+
+    if (healthResult.status === "fulfilled" && healthResult.value?.ok) {
+      health = "ONLINE";
+      version = healthResult.value.version || version;
+    } else if (balanceResult.status === "fulfilled") {
+      health = "ONLINE";
+    }
+
+    supplierStatusCache = {
+      balanceUsd: balance,
+      currency,
+      health,
+      version,
+      updatedAt: Date.now(),
+    };
+  } catch {
+    supplierStatusCache = {
+      ...supplierStatusCache,
+      health: "OFFLINE",
+      updatedAt: Date.now(),
+    };
+  } finally {
+    isUpdatingSupplierStatus = false;
+  }
+
+  return supplierStatusCache;
+}
+
 export async function adminRoutes(server: FastifyInstance) {
   // GET /api/admin/stats (Dashboard overview summary stats)
   server.get("/api/admin/stats", async () => {
@@ -86,16 +160,10 @@ export async function adminRoutes(server: FastifyInstance) {
       .from(products)
       .where(eq(products.isActive, true));
 
-    // 4. Supplier status
-    let supplierBalanceUsd = 0;
-    let supplierHealth = "OFFLINE";
-    try {
-      const balance = await xproClient.getBalance();
-      const health = await xproClient.getHealth();
-      supplierBalanceUsd = Number(balance.balance) || 0;
-      supplierHealth = health.ok ? "ONLINE" : "OFFLINE";
-    } catch {
-      // Keep defaults
+    // 4. Supplier status (served from cache so dashboard stats NEVER block on external HTTP network)
+    if (supplierStatusCache.updatedAt === 0) {
+      // Fire background probe on initial server boot without awaiting
+      refreshSupplierStatus().catch(() => {});
     }
 
     return {
@@ -107,8 +175,8 @@ export async function adminRoutes(server: FastifyInstance) {
         pendingOrders: Number(salesResult?.pendingOrders || 0),
         pendingDepositsCount: Number(depositsResult?.pendingDepositsCount || 0),
         activeProductsCount: Number(productsResult?.activeProductsCount || 0),
-        supplierBalanceUsd,
-        supplierHealth,
+        supplierBalanceUsd: Number(supplierStatusCache.balanceUsd) || 0,
+        supplierHealth: supplierStatusCache.health,
       },
     };
   });
@@ -116,23 +184,26 @@ export async function adminRoutes(server: FastifyInstance) {
   // GET /api/admin/supplier/status (For top bar wallet widget)
   server.get("/api/admin/supplier/status", async (_request, reply) => {
     try {
-      const balance = await xproClient.getBalance();
-      const health = await xproClient.getHealth();
-
+      const status = await refreshSupplierStatus();
       return {
         ok: true,
         supplier: {
-          balanceUsd: balance.balance,
-          currency: balance.currency,
-          health: health.ok ? "ONLINE" : "OFFLINE",
-          version: health.version,
+          balanceUsd: status.balanceUsd,
+          currency: status.currency,
+          health: status.health,
+          version: status.version,
         },
       };
-    } catch (err: any) {
-      return reply.status(502).send({
-        ok: false,
-        error: `Supplier status check failed: ${err.message}`,
-      });
+    } catch {
+      return {
+        ok: true,
+        supplier: {
+          balanceUsd: supplierStatusCache.balanceUsd,
+          currency: supplierStatusCache.currency,
+          health: "OFFLINE",
+          version: "1.0",
+        },
+      };
     }
   });
 
@@ -579,8 +650,11 @@ export async function adminRoutes(server: FastifyInstance) {
   });
 
   // GET /api/admin/orders (List all product orders with items and deliveries)
-  server.get("/api/admin/orders", async () => {
+  server.get<{
+    Querystring: { limit?: string };
+  }>("/api/admin/orders", async (request) => {
     const db = getDb();
+    const limit = Math.min(Math.max(1, Number(request.query?.limit) || 100), 100);
     const orderList = await db
       .select({
         id: orders.id,
@@ -600,63 +674,85 @@ export async function adminRoutes(server: FastifyInstance) {
       .from(orders)
       .innerJoin(users, eq(orders.customerId, users.id))
       .orderBy(desc(orders.createdAt))
-      .limit(100);
+      .limit(limit);
 
-    // Fetch items and deliveries for each order
-    const enrichedOrders = await Promise.all(
-      orderList.map(async (o) => {
-        const items = await db
-          .select({
-            id: orderItems.id,
-            productId: orderItems.productId,
-            productName: orderItems.productNameSnapshot,
-            quantity: orderItems.quantity,
-            unitPriceMmk: orderItems.unitPriceMmk,
-            subtotalMmk: orderItems.subtotalMmk,
-          })
-          .from(orderItems)
-          .where(eq(orderItems.orderId, o.id));
+    const orderIds = orderList.map((o) => o.id);
+    if (orderIds.length === 0) {
+      return { ok: true, orders: [] };
+    }
 
-        const deliveries = await db
-          .select()
-          .from(orderDeliveries)
-          .where(eq(orderDeliveries.orderId, o.id));
+    // Batch fetch items and deliveries in parallel instead of N+1 per order
+    const [allItems, allDeliveries] = await Promise.all([
+      db
+        .select({
+          id: orderItems.id,
+          orderId: orderItems.orderId,
+          productId: orderItems.productId,
+          productName: orderItems.productNameSnapshot,
+          quantity: orderItems.quantity,
+          unitPriceMmk: orderItems.unitPriceMmk,
+          subtotalMmk: orderItems.subtotalMmk,
+        })
+        .from(orderItems)
+        .where(inArray(orderItems.orderId, orderIds)),
+      db
+        .select()
+        .from(orderDeliveries)
+        .where(inArray(orderDeliveries.orderId, orderIds)),
+    ]);
 
-        const decryptedDeliveries = deliveries.map((d) => {
-          let payload: any = d.encryptedPayload;
-          try {
-            payload = decryptPayload(d.encryptedPayload);
-          } catch {
-            // Raw text or fallback
-          }
-          return {
-            id: d.id,
-            deliveryType: d.deliveryType,
-            deliveredAt: d.deliveredAt,
-            customerViewedAt: d.customerViewedAt,
-            payload,
-          };
-        });
+    const itemsByOrderId = new Map<string, typeof allItems>();
+    for (const item of allItems) {
+      const list = itemsByOrderId.get(item.orderId) || [];
+      list.push(item);
+      itemsByOrderId.set(item.orderId, list);
+    }
 
-        const firstItem = items[0];
+    const deliveriesByOrderId = new Map<string, typeof allDeliveries>();
+    for (const delivery of allDeliveries) {
+      const list = deliveriesByOrderId.get(delivery.orderId) || [];
+      list.push(delivery);
+      deliveriesByOrderId.set(delivery.orderId, list);
+    }
 
+    const enrichedOrders = orderList.map((o) => {
+      const items = itemsByOrderId.get(o.id) || [];
+      const deliveries = deliveriesByOrderId.get(o.id) || [];
+
+      const decryptedDeliveries = deliveries.map((d) => {
+        let payload: any = d.encryptedPayload;
+        try {
+          payload = decryptPayload(d.encryptedPayload);
+        } catch {
+          // Raw text or fallback
+        }
         return {
-          id: o.publicOrderNo,
-          orderId: o.id,
-          user: o.customer.username
-            ? `@${o.customer.username}`
-            : `${o.customer.firstName} ${o.customer.lastName || ""}`.trim(),
-          telegramId: o.customer.telegramId,
-          product: firstItem ? firstItem.productName : "Digital Product",
-          qty: firstItem ? firstItem.quantity : 1,
-          totalMmk: o.totalAmountMmk,
-          status: o.status === "DELIVERED" ? "DELIVERED" : o.status === "CANCELLED" ? "REFUNDED" : "PROCESSING",
-          date: o.createdAt ? new Date(o.createdAt).toISOString() : new Date().toISOString(),
-          delivery: decryptedDeliveries[0]?.payload || "Delivered directly to user chat",
-          rawDeliveries: decryptedDeliveries,
+          id: d.id,
+          deliveryType: d.deliveryType,
+          deliveredAt: d.deliveredAt,
+          customerViewedAt: d.customerViewedAt,
+          payload,
         };
-      })
-    );
+      });
+
+      const firstItem = items[0];
+
+      return {
+        id: o.publicOrderNo,
+        orderId: o.id,
+        user: o.customer.username
+          ? `@${o.customer.username}`
+          : `${o.customer.firstName} ${o.customer.lastName || ""}`.trim(),
+        telegramId: o.customer.telegramId,
+        product: firstItem ? firstItem.productName : "Digital Product",
+        qty: firstItem ? firstItem.quantity : 1,
+        totalMmk: o.totalAmountMmk,
+        status: o.status === "DELIVERED" ? "DELIVERED" : o.status === "CANCELLED" ? "REFUNDED" : "PROCESSING",
+        date: o.createdAt ? new Date(o.createdAt).toISOString() : new Date().toISOString(),
+        delivery: decryptedDeliveries[0]?.payload || "Delivered directly to user chat",
+        rawDeliveries: decryptedDeliveries,
+      };
+    });
 
     return {
       ok: true,
