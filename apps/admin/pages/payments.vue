@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
 
 const toast = useToast()
 const { getAuthHeaders } = useAuth()
 const isLoading = ref(true)
+const isRefreshing = ref(false)
 
 export interface DepositItem {
   id: number
@@ -19,6 +20,7 @@ export interface DepositItem {
   transactionRef: string
   slipImageUrl: string
   submittedAt: string
+  rawDate: string
   status: 'SUBMITTED' | 'APPROVED' | 'REJECTED'
   intendedProduct?: string
 }
@@ -29,11 +31,13 @@ const selectedSlip = ref<DepositItem | null>(null)
 const rejectReason = ref('Slip amount does not match requested top-up.')
 const isProcessing = ref(false)
 const activeTab = ref<'ALL' | 'SUBMITTED' | 'APPROVED' | 'REJECTED'>('ALL')
+const searchQuery = ref('')
 
 const slips = ref<DepositItem[]>([])
+let pollInterval: ReturnType<typeof setInterval> | null = null
 
-async function fetchSlips() {
-  isLoading.value = true
+async function fetchSlips(isSilent = false) {
+  if (!isSilent) isLoading.value = true
   try {
     const res: any = await $fetch('/api/admin/deposits', {
       headers: getAuthHeaders(),
@@ -56,25 +60,125 @@ async function fetchSlips() {
               : `/api/admin/telegram-file/${encodeURIComponent(s.slipUrl)}`)
           : `/api/admin/deposits/${s.id}/slip-image`,
         submittedAt: s.date ? new Date(s.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
+        rawDate: s.date || new Date().toISOString(),
         status: s.status === 'COMPLETED' ? 'APPROVED' : (s.status as any),
         intendedProduct: s.intendedProduct || 'General Wallet Topup',
       }))
     }
   } catch (err: any) {
-    toast.error('Failed to load deposit slips: ' + (err.message || 'Network error'))
+    if (!isSilent) {
+      toast.error('Failed to load deposit slips: ' + (err.message || 'Network error'))
+    }
   } finally {
-    isLoading.value = false
+    if (!isSilent) isLoading.value = false
+    isRefreshing.value = false
   }
 }
 
+async function refreshSlips(isSilent = false) {
+  isRefreshing.value = true
+  await fetchSlips(isSilent)
+}
+
 onMounted(() => {
-  fetchSlips()
+  fetchSlips(false)
+  // Real-time automatic background polling every 4 seconds
+  pollInterval = setInterval(() => {
+    fetchSlips(true)
+  }, 4000)
 })
 
-const filteredSlips = computed(() => {
-  if (activeTab.value === 'ALL') return slips.value
-  return slips.value.filter((s) => s.status === activeTab.value)
+onUnmounted(() => {
+  if (pollInterval) clearInterval(pollInterval)
 })
+
+// Filtered and sorted newest first (Requirement 3: "နောက်ဆုံး ဝင်လာရင် Order ကို အပေါ်ဆုံးမှာ ပြမယ်")
+const filteredSlips = computed(() => {
+  let list = slips.value
+
+  // Status Tab Filter
+  if (activeTab.value !== 'ALL') {
+    list = list.filter((s) => s.status === activeTab.value)
+  }
+
+  // Search Query Filter
+  if (searchQuery.value.trim()) {
+    const q = searchQuery.value.toLowerCase().trim()
+    list = list.filter((s) => {
+      const matchRef = s.topUpId.toLowerCase().includes(q)
+      const matchName = s.customerName.toLowerCase().includes(q)
+      const matchUser = s.telegramUsername.toLowerCase().includes(q)
+      const matchTxn = s.transactionRef.toLowerCase().includes(q)
+      const matchAmount = String(s.depositAmountMmk).includes(q)
+      const matchMethod = s.paymentMethod.toLowerCase().includes(q)
+      return matchRef || matchName || matchUser || matchTxn || matchAmount || matchMethod
+    })
+  }
+
+  // Sort newest first
+  return [...list].sort((a, b) => {
+    const timeA = a.rawDate ? new Date(a.rawDate).getTime() : 0
+    const timeB = b.rawDate ? new Date(b.rawDate).getTime() : 0
+    if (timeB !== timeA) return timeB - timeA
+    return b.id - a.id
+  })
+})
+
+// Pagination state
+const currentPage = ref(1)
+const pageSize = ref(10)
+
+watch([searchQuery, activeTab, pageSize], () => {
+  currentPage.value = 1
+})
+
+const totalFilteredCount = computed(() => filteredSlips.value.length)
+const totalPages = computed(() => Math.max(1, Math.ceil(totalFilteredCount.value / pageSize.value)))
+
+const paginatedSlips = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredSlips.value.slice(start, start + pageSize.value)
+})
+
+const showingRange = computed(() => {
+  if (totalFilteredCount.value === 0) return 'Showing 0-0 of 0'
+  const start = (currentPage.value - 1) * pageSize.value + 1
+  const end = Math.min(start + pageSize.value - 1, totalFilteredCount.value)
+  return `Showing ${start}-${end} of ${totalFilteredCount.value}`
+})
+
+const displayedPages = computed(() => {
+  const total = totalPages.value
+  const current = currentPage.value
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1)
+  }
+  const pages: number[] = []
+  if (current <= 4) {
+    for (let i = 1; i <= 5; i++) pages.push(i)
+    pages.push(-1)
+    pages.push(total)
+  } else if (current >= total - 3) {
+    pages.push(1)
+    pages.push(-1)
+    for (let i = total - 4; i <= total; i++) pages.push(i)
+  } else {
+    pages.push(1)
+    pages.push(-1)
+    pages.push(current - 1)
+    pages.push(current)
+    pages.push(current + 1)
+    pages.push(-1)
+    pages.push(total)
+  }
+  return pages
+})
+
+function goToPage(p: number) {
+  if (p >= 1 && p <= totalPages.value) {
+    currentPage.value = p
+  }
+}
 
 const pendingCount = computed(() => slips.value.filter((s) => s.status === 'SUBMITTED').length)
 const pendingTotalMmk = computed(() =>
@@ -113,7 +217,7 @@ async function approveDeposit(slip: DepositItem) {
         `Top-Up ${slip.topUpId} approved! +${slip.depositAmountMmk.toLocaleString()} Ks credited to ${slip.customerName}. Customer received instant Telegram celebration message.`,
         'Wallet Credited'
       )
-      await fetchSlips()
+      await fetchSlips(true)
     } else {
       toast.error('Approval failed: ' + (res.error || 'Server error'))
     }
@@ -154,7 +258,7 @@ async function confirmReject() {
         `Top-Up ${topUpId} rejected for ${user}. Reason: ${rejectReason.value}. Customer was notified on Telegram.`,
         'Deposit Slip Rejected'
       )
-      await fetchSlips()
+      await fetchSlips(true)
     } else {
       toast.error('Rejection failed: ' + (res.error || 'Server error'))
     }
@@ -182,11 +286,19 @@ async function confirmReject() {
         </p>
       </div>
 
-      <!-- Quick Counter -->
-      <div class="flex items-center gap-2">
+      <!-- Quick Counter & Live Indicator -->
+      <div class="flex items-center gap-2.5">
+        <div class="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shadow-sm">
+          <span class="relative flex h-2 w-2">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span>Real-time Sync</span>
+        </div>
+
         <span class="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-2 shadow-sm">
           <i class="pi pi-hourglass animate-pulse text-sm"></i>
-          <span>{{ pendingCount }} Pending Review · {{ pendingTotalMmk.toLocaleString() }} Ks</span>
+          <span>{{ pendingCount }} Pending · {{ pendingTotalMmk.toLocaleString() }} Ks</span>
         </span>
       </div>
     </div>
@@ -231,56 +343,83 @@ async function confirmReject() {
       </div>
     </div>
 
-    <!-- Tab Filter -->
-    <div class="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 text-xs font-semibold">
-      <button
-        type="button"
-        @click="activeTab = 'ALL'"
-        :class="activeTab === 'ALL' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
-        class="px-3.5 py-1.5 rounded-lg transition-colors"
-      >
-        All Deposits ({{ slips.length }})
-      </button>
-      <button
-        type="button"
-        @click="activeTab = 'SUBMITTED'"
-        :class="activeTab === 'SUBMITTED' ? 'bg-amber-600 text-white' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
-        class="px-3.5 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
-      >
-        <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
-        <span>Pending Review ({{ pendingCount }})</span>
-      </button>
-      <button
-        type="button"
-        @click="activeTab = 'APPROVED'"
-        :class="activeTab === 'APPROVED' ? 'bg-emerald-600 text-white' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
-        class="px-3.5 py-1.5 rounded-lg transition-colors"
-      >
-        Approved
-      </button>
-      <button
-        type="button"
-        @click="activeTab = 'REJECTED'"
-        :class="activeTab === 'REJECTED' ? 'bg-rose-600 text-white' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'"
-        class="px-3.5 py-1.5 rounded-lg transition-colors"
-      >
-        Rejected
-      </button>
+    <!-- Sticky Tab Filter & Search Controls (Sticks under Navbar: top-16) -->
+    <div class="sticky top-16 z-20 p-3 rounded-2xl bg-white/95 dark:bg-[#0b1220]/95 backdrop-blur-md border border-slate-200 dark:border-slate-800/80 shadow-md flex flex-col md:flex-row items-center justify-between gap-3 transition-all">
+      <!-- Tabs -->
+      <div class="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto text-xs font-semibold scrollbar-none">
+        <button
+          type="button"
+          @click="activeTab = 'ALL'"
+          :class="activeTab === 'ALL' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/20' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+          class="px-3.5 py-1.5 rounded-xl transition-all shrink-0"
+        >
+          All Deposits ({{ slips.length }})
+        </button>
+        <button
+          type="button"
+          @click="activeTab = 'SUBMITTED'"
+          :class="activeTab === 'SUBMITTED' ? 'bg-amber-600 text-white shadow-sm shadow-amber-600/20' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+          class="px-3.5 py-1.5 rounded-xl transition-all flex items-center gap-1.5 shrink-0"
+        >
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+          <span>Pending Review ({{ pendingCount }})</span>
+        </button>
+        <button
+          type="button"
+          @click="activeTab = 'APPROVED'"
+          :class="activeTab === 'APPROVED' ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+          class="px-3.5 py-1.5 rounded-xl transition-all shrink-0"
+        >
+          Approved
+        </button>
+        <button
+          type="button"
+          @click="activeTab = 'REJECTED'"
+          :class="activeTab === 'REJECTED' ? 'bg-rose-600 text-white shadow-sm shadow-rose-600/20' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+          class="px-3.5 py-1.5 rounded-xl transition-all shrink-0"
+        >
+          Rejected
+        </button>
+      </div>
+
+      <!-- Search Input + Manual Refresh -->
+      <div class="flex items-center gap-2.5 w-full md:w-auto">
+        <div class="relative flex-1 md:w-64">
+          <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Search slip, user, ref..."
+            class="w-full pl-8 pr-3 py-1.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+          />
+        </div>
+
+        <button
+          type="button"
+          @click="refreshSlips(false)"
+          :disabled="isRefreshing"
+          class="p-2 rounded-xl text-xs border border-slate-200 dark:border-slate-700/60 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-all shrink-0"
+          title="Refresh deposits manually"
+        >
+          <i class="pi pi-sync text-xs" :class="{ 'animate-spin': isRefreshing }"></i>
+        </button>
+      </div>
     </div>
 
-    <!-- Slips Table -->
-    <div class="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm overflow-hidden">
-      <div class="overflow-x-auto">
+    <!-- Slips Table & Pagination Container -->
+    <div class="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm flex flex-col overflow-hidden">
+      <!-- Fixed Max-Height Scrollable Table Viewport -->
+      <div class="overflow-x-auto overflow-y-auto max-h-[calc(100vh-270px)] min-h-[380px] relative scrollbar-thin">
         <table class="w-full text-left border-collapse text-sm">
-          <thead>
-            <tr class="border-b border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase bg-slate-50/50 dark:bg-slate-950/40">
-              <th class="py-3 px-4">Receipt</th>
-              <th class="py-3 px-4">Top-Up Ref</th>
-              <th class="py-3 px-4">Customer</th>
-              <th class="py-3 px-4">Method & Ref</th>
-              <th class="py-3 px-4">Deposit Amount</th>
-              <th class="py-3 px-4">Status</th>
-              <th class="py-3 px-4 text-right">Actions</th>
+          <thead class="sticky top-0 z-10 bg-slate-50 dark:bg-[#0e172a] shadow-sm border-b border-slate-200 dark:border-slate-800">
+            <tr class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a]">Receipt</th>
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a]">Top-Up Ref</th>
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a]">Customer</th>
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a]">Method & Ref</th>
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a]">Deposit Amount</th>
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a]">Status</th>
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a] text-right">Actions</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 dark:divide-slate-800/60">
@@ -293,12 +432,21 @@ async function confirmReject() {
                 <td class="py-3.5 px-4"><Skeleton height="1.1rem" width="70px" class="mb-1.5" border-radius="6px" /><Skeleton height="0.9rem" width="110px" border-radius="6px" /></td>
                 <td class="py-3.5 px-4"><Skeleton height="1.2rem" width="80px" border-radius="6px" /></td>
                 <td class="py-3.5 px-4"><Skeleton height="1.3rem" width="65px" border-radius="9999px" /></td>
-                <td class="py-3.5 px-4 text-right"><Skeleton height="1.6rem" width="75px" class="ml-auto" border-radius="10px" /></td>
+                <td class="py-3.5 px-4 text-right"><Skeleton height="2rem" width="75px" class="ml-auto" border-radius="10px" /></td>
+              </tr>
+            </template>
+            <!-- Empty state -->
+            <template v-else-if="paginatedSlips.length === 0">
+              <tr>
+                <td colspan="7" class="py-12 text-center text-slate-400">
+                  <i class="pi pi-inbox text-3xl mb-2 text-slate-400"></i>
+                  <p class="text-sm">No deposit requests found in this filter.</p>
+                </td>
               </tr>
             </template>
             <template v-else>
               <tr
-                v-for="slip in filteredSlips"
+                v-for="slip in paginatedSlips"
                 :key="slip.id"
                 class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
               >
@@ -388,36 +536,109 @@ async function confirmReject() {
                 </span>
               </td>
 
-              <!-- Action Buttons -->
+              <!-- Action Buttons (Requirement 1: Top Approve Green, Bottom Reject Red) -->
               <td class="py-3.5 px-4 text-right">
-                <div v-if="slip.status === 'SUBMITTED'" class="flex items-center justify-end gap-2">
+                <div v-if="slip.status === 'SUBMITTED'" class="flex flex-col items-end gap-1.5">
+                  <!-- Top: Approve (Color = Green) -->
                   <button
                     type="button"
                     @click="approveDeposit(slip)"
                     :disabled="isProcessing"
-                    class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-md shadow-emerald-600/20 transition-all disabled:opacity-50"
+                    class="w-20 inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shadow-sm shadow-emerald-600/20 transition-all disabled:opacity-50"
                   >
-                    <i class="pi pi-check text-[11px]"></i>
-                    <span>Approve & Credit</span>
+                    <i class="pi pi-check text-[10px]"></i>
+                    <span>Approve</span>
                   </button>
 
+                  <!-- Bottom: Reject (Color = Red) -->
                   <button
                     type="button"
                     @click="openRejectDialog(slip)"
-                    class="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                    title="Reject slip"
+                    :disabled="isProcessing"
+                    class="w-20 inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 active:scale-95 transition-all disabled:opacity-50"
                   >
-                    <i class="pi pi-times text-sm"></i>
+                    <i class="pi pi-times text-[10px]"></i>
+                    <span>Reject</span>
                   </button>
                 </div>
-                <div v-else class="text-xs text-slate-400 italic">
-                  Resolved
+
+                <!-- Resolved State -->
+                <div v-else class="flex flex-col items-end">
+                  <span
+                    v-if="slip.status === 'APPROVED'"
+                    class="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400"
+                  >
+                    <i class="pi pi-check-circle text-xs"></i>
+                    <span>Approved</span>
+                  </span>
+                  <span
+                    v-else
+                    class="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400"
+                  >
+                    <i class="pi pi-times-circle text-xs"></i>
+                    <span>Rejected</span>
+                  </span>
                 </div>
               </td>
             </tr>
           </template>
         </tbody>
         </table>
+      </div>
+
+      <!-- Pagination Footer matching Screenshot 2 -->
+      <div class="p-3.5 px-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
+        <!-- Left: Showing X-Y of Z -->
+        <div class="font-medium text-slate-600 dark:text-slate-400">
+          {{ showingRange }}
+        </div>
+
+        <!-- Right: Pagination Buttons and Page Size Selector -->
+        <div class="flex items-center gap-1.5 sm:gap-2">
+          <!-- Previous Button -->
+          <button
+            type="button"
+            @click="goToPage(currentPage - 1)"
+            :disabled="currentPage === 1"
+            class="w-7 h-7 rounded-lg border border-slate-200 dark:border-slate-700/80 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors text-slate-700 dark:text-slate-300"
+          >
+            <i class="pi pi-chevron-left text-[10px]"></i>
+          </button>
+
+          <!-- Page Numbers -->
+          <template v-for="(page, idx) in displayedPages" :key="'page-' + idx">
+            <span v-if="page === -1" class="px-1 text-slate-400">...</span>
+            <button
+              v-else
+              type="button"
+              @click="goToPage(page)"
+              class="min-w-7 h-7 px-1.5 rounded-lg text-xs font-semibold flex items-center justify-center transition-colors"
+              :class="currentPage === page ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700/80'"
+            >
+              {{ page }}
+            </button>
+          </template>
+
+          <!-- Next Button -->
+          <button
+            type="button"
+            @click="goToPage(currentPage + 1)"
+            :disabled="currentPage === totalPages"
+            class="w-7 h-7 rounded-lg border border-slate-200 dark:border-slate-700/80 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors text-slate-700 dark:text-slate-300"
+          >
+            <i class="pi pi-chevron-right text-[10px]"></i>
+          </button>
+
+          <!-- Page Size Selector -->
+          <select
+            v-model="pageSize"
+            class="ml-2 px-2.5 py-1 rounded-lg text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          >
+            <option :value="10">10 / page</option>
+            <option :value="20">20 / page</option>
+            <option :value="50">50 / page</option>
+          </select>
+        </div>
       </div>
     </div>
 

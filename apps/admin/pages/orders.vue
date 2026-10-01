@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
 
@@ -45,9 +45,10 @@ const copiedId = ref<string | null>(null)
 const isRefunding = ref(false)
 
 const ordersList = ref<OrderRecord[]>([])
+let ordersPollInterval: ReturnType<typeof setInterval> | null = null
 
-async function fetchOrders() {
-  isLoading.value = true
+async function fetchOrders(isSilent = false) {
+  if (!isSilent) isLoading.value = true
   try {
     const res: any = await $fetch('/api/admin/orders', {
       headers: getAuthHeaders(),
@@ -87,14 +88,23 @@ async function fetchOrders() {
       }))
     }
   } catch (err: any) {
-    toast.error('Failed to load orders: ' + (err.message || 'Network error'))
+    if (!isSilent) {
+      toast.error('Failed to load orders: ' + (err.message || 'Network error'))
+    }
   } finally {
-    isLoading.value = false
+    if (!isSilent) isLoading.value = false
   }
 }
 
 onMounted(() => {
-  fetchOrders()
+  fetchOrders(false)
+  ordersPollInterval = setInterval(() => {
+    fetchOrders(true)
+  }, 4000)
+})
+
+onUnmounted(() => {
+  if (ordersPollInterval) clearInterval(ordersPollInterval)
 })
 
 
