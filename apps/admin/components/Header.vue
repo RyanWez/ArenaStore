@@ -19,6 +19,9 @@ const formattedExchangeRate = computed(() => {
 })
 
 const pageTitle = computed(() => {
+  if (route.path.startsWith('/customers')) {
+    return 'Customer Wallets'
+  }
   switch (route.path) {
     case '/supplier':
       return 'XPro Supplier'

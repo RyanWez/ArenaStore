@@ -73,7 +73,7 @@ describe("Phase 4 Customer Telegram Bot", () => {
         marginPercentage: 25,
       });
       const formatted = `${pricing.retailPriceMmk.toLocaleString("en-US")} Ks`;
-      expect(formatted).toBe("3,900 Ks");
+      expect(formatted).toBe("4,000 Ks");
     });
   });
 

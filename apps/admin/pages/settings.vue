@@ -31,7 +31,7 @@ const calculatedBaseMmk = computed(() => Math.round(sampleCostUsd.value * (setti
 const calculatedRetailMmk = computed(() => {
   const base = calculatedBaseMmk.value
   const withMargin = base * (1 + (settings.value.defaultMarginPct || 25) / 100)
-  return Math.ceil(withMargin / 50) * 50 // Rounded to nearest 50 MMK
+  return Math.ceil(withMargin / 500) * 500 // Rounded up to nearest 500 MMK
 })
 const calculatedProfitMmk = computed(() => calculatedRetailMmk.value - calculatedBaseMmk.value)
 

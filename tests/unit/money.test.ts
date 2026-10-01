@@ -60,6 +60,32 @@ describe("Money Utilities", () => {
       expect(result.profitMmk).toBe(3900 - 3105);
     });
 
+    it("rounds up to nearest 500 MMK by default (e.g. 440 -> 500, 650 -> 1000, 5500 -> 5500)", () => {
+      // 440 MMK raw cost -> rounds up to 500 MMK
+      const res440 = calculateRetailMmk({
+        upstreamUsdCost: 0.1, // 10 cents
+        exchangeRateMmk: 4400, // 440 MMK
+        marginPercentage: 0,
+      });
+      expect(res440.retailPriceMmk).toBe(500);
+
+      // 650 MMK raw cost -> rounds up to 1000 MMK
+      const res650 = calculateRetailMmk({
+        upstreamUsdCost: 0.1, // 10 cents
+        exchangeRateMmk: 6500, // 650 MMK
+        marginPercentage: 0,
+      });
+      expect(res650.retailPriceMmk).toBe(1000);
+
+      // 5500 MMK raw cost -> stays 5500 MMK
+      const res5500 = calculateRetailMmk({
+        upstreamUsdCost: 1.0,
+        exchangeRateMmk: 5500,
+        marginPercentage: 0,
+      });
+      expect(res5500.retailPriceMmk).toBe(5500);
+    });
+
     it("handles fixed fees correctly", () => {
       const result = calculateRetailMmk({
         upstreamUsdCost: 1.0,

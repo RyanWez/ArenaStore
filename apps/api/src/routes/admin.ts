@@ -924,7 +924,7 @@ export async function adminRoutes(server: FastifyInstance) {
           upstreamUsdCost: usdPrice,
           exchangeRateMmk: exchangeRate,
           marginPercentage: marginPct,
-          roundToNearest: 50,
+          roundToNearest: 500,
         });
 
         await db
@@ -1126,16 +1126,26 @@ export async function adminRoutes(server: FastifyInstance) {
   server.get<{
     Params: { id: string };
   }>("/api/admin/customers/:id", async (request, reply) => {
-    const customerId = parseInt(request.params.id, 10);
-    if (isNaN(customerId)) {
-      return reply.status(400).send({ ok: false, error: "Invalid customer ID" });
+    const rawId = request.params.id;
+    const db = getDb();
+    let user = null;
+
+    const numericId = parseInt(rawId, 10);
+    if (!isNaN(numericId) && numericId > 0 && numericId <= 2147483647) {
+      const [found] = await db.select().from(users).where(eq(users.id, numericId));
+      if (found) user = found;
     }
 
-    const db = getDb();
-    const [user] = await db.select().from(users).where(eq(users.id, customerId));
+    if (!user) {
+      const [found] = await db.select().from(users).where(eq(users.telegramId, rawId));
+      if (found) user = found;
+    }
+
     if (!user) {
       return reply.status(404).send({ ok: false, error: "Customer not found" });
     }
+
+    const customerId = user.id;
 
     // Wallet
     let [wallet] = await db.select().from(wallets).where(eq(wallets.userId, customerId));
@@ -1280,11 +1290,24 @@ export async function adminRoutes(server: FastifyInstance) {
 
   // POST /api/admin/customers/:id/adjust-balance (Admin balance credit/debit with audit ledger and Telegram notification)
   server.post<{
-    Params: { id: string };
   }>("/api/admin/customers/:id/adjust-balance", async (request, reply) => {
-    const customerId = parseInt(request.params.id, 10);
-    if (isNaN(customerId)) {
-      return reply.status(400).send({ ok: false, error: "Invalid customer ID" });
+    const rawId = request.params.id;
+    const db = getDb();
+    let user = null;
+
+    const numericId = parseInt(rawId, 10);
+    if (!isNaN(numericId) && numericId > 0 && numericId <= 2147483647) {
+      const [found] = await db.select().from(users).where(eq(users.id, numericId));
+      if (found) user = found;
+    }
+
+    if (!user) {
+      const [found] = await db.select().from(users).where(eq(users.telegramId, rawId));
+      if (found) user = found;
+    }
+
+    if (!user) {
+      return reply.status(404).send({ ok: false, error: "Customer not found" });
     }
 
     const AdjustBalanceSchema = z.object({
@@ -1304,12 +1327,7 @@ export async function adminRoutes(server: FastifyInstance) {
     }
 
     const { action, amountMmk, notes, notifyTelegram } = parseRes.data;
-
-    const db = getDb();
-    const [user] = await db.select().from(users).where(eq(users.id, customerId));
-    if (!user) {
-      return reply.status(404).send({ ok: false, error: "Customer not found" });
-    }
+    const customerId = user.id;
 
     let [wallet] = await db.select().from(wallets).where(eq(wallets.userId, customerId));
     if (!wallet) {
