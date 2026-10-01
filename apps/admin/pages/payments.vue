@@ -50,7 +50,11 @@ async function fetchSlips() {
         paymentMethod: s.method || 'KPAY',
         depositAmountMmk: s.amount || 0,
         transactionRef: s.txnRef || '-',
-        slipImageUrl: s.slipUrl || 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=800&q=80',
+        slipImageUrl: s.slipUrl
+          ? (s.slipUrl.startsWith('http') || s.slipUrl.startsWith('/')
+              ? s.slipUrl
+              : `/api/admin/telegram-file/${encodeURIComponent(s.slipUrl)}`)
+          : `/api/admin/deposits/${s.id}/slip-image`,
         submittedAt: s.date ? new Date(s.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
         status: s.status === 'COMPLETED' ? 'APPROVED' : (s.status as any),
         intendedProduct: s.intendedProduct || 'General Wallet Topup',
@@ -444,12 +448,21 @@ async function confirmReject() {
           </div>
 
           <!-- High-res Image Preview Area -->
-          <div class="max-h-[58vh] overflow-auto rounded-xl bg-black/40 border border-slate-800 flex items-center justify-center p-2">
+          <div class="relative max-h-[58vh] overflow-auto rounded-xl bg-black/40 border border-slate-800 flex items-center justify-center p-2 group">
             <img
               :src="selectedSlip.slipImageUrl"
               alt="Full Receipt"
               class="max-h-[52vh] object-contain rounded-lg shadow-md"
             />
+            <a
+              :href="selectedSlip.slipImageUrl"
+              target="_blank"
+              class="absolute top-4 right-4 px-3 py-1.5 rounded-lg bg-black/70 hover:bg-black/90 text-white text-xs font-semibold flex items-center gap-1.5 shadow-lg backdrop-blur-sm opacity-80 hover:opacity-100 transition-all"
+              title="Open high-res receipt in new tab"
+            >
+              <i class="pi pi-external-link text-[11px]"></i>
+              <span>Open Original</span>
+            </a>
           </div>
 
           <!-- Transaction Details Row -->

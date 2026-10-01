@@ -12,7 +12,7 @@ import {
   orderItems,
   orderDeliveries,
 } from "@arena/db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, or, and } from "drizzle-orm";
 
 export interface CreateOrderResult {
   orderId: string;
@@ -235,6 +235,7 @@ export class BotOrderService {
 
   /**
    * Submits a top-up payment slip screenshot proof to Neon DB.
+   * Matches by reference ('TOP-XXXXXX') OR numeric database ID.
    */
   async submitTopUpSlip(params: {
     topUpId: string;
@@ -245,6 +246,14 @@ export class BotOrderService {
   }): Promise<{ submissionId: number; status: string }> {
     try {
       const db = getDb();
+      const isNumeric = /^\d+$/.test(params.topUpId);
+      const condition = isNumeric
+        ? or(
+            eq(topUpRequests.reference, params.topUpId),
+            eq(topUpRequests.id, parseInt(params.topUpId, 10))
+          )
+        : eq(topUpRequests.reference, params.topUpId);
+
       const [updated] = await db
         .update(topUpRequests)
         .set({
@@ -252,11 +261,11 @@ export class BotOrderService {
           paymentMethod: params.paymentMethod,
           status: "SUBMITTED",
         })
-        .where(eq(topUpRequests.reference, params.topUpId))
+        .where(condition)
         .returning();
 
       if (updated) {
-        const mem = this.memoryTopUps.get(params.topUpId);
+        const mem = this.memoryTopUps.get(params.topUpId) || this.memoryTopUps.get(updated.reference);
         if (mem) {
           mem.status = "SUBMITTED";
           mem.slipFileId = params.fileId;
@@ -282,6 +291,53 @@ export class BotOrderService {
       submissionId: Date.now(),
       status: "SUBMITTED",
     };
+  }
+
+  /**
+   * Retrieves the latest pending top-up request for a user.
+   * Useful when user submits a slip photo even after bot restart or session reset.
+   */
+  async getLatestPendingTopUp(telegramId: string): Promise<TopUpRecord | null> {
+    try {
+      const db = getDb();
+      const userRecord = await this.getOrCreateUser({ telegramId });
+      if (userRecord?.user) {
+        const [latest] = await db
+          .select()
+          .from(topUpRequests)
+          .where(
+            and(
+              eq(topUpRequests.userId, userRecord.user.id),
+              eq(topUpRequests.status, "PENDING")
+            )
+          )
+          .orderBy(desc(topUpRequests.createdAt))
+          .limit(1);
+
+        if (latest) {
+          return {
+            id: String(latest.id),
+            telegramId,
+            amountMmk: latest.amountMmk,
+            reference: latest.reference,
+            status: latest.status as any,
+            createdAt: latest.createdAt ? new Date(latest.createdAt).toISOString() : new Date().toISOString(),
+            slipFileId: latest.slipFileId || undefined,
+          };
+        }
+      }
+    } catch (err: any) {
+      console.warn("[BotOrderService] DB getLatestPendingTopUp error:", err.message);
+    }
+
+    // Memory fallback
+    for (const record of Array.from(this.memoryTopUps.values()).reverse()) {
+      if (record.telegramId === telegramId && record.status === "PENDING") {
+        return record;
+      }
+    }
+
+    return null;
   }
 
   /**

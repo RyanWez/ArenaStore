@@ -22,6 +22,7 @@ import { catalogService } from "../services/catalog.service";
 import { orderService } from "../services/order.service";
 import { notifyTopUpApproved, notifyTopUpRejected } from "../services/telegram-notifier";
 import { decryptPayload } from "../services/encryption";
+import { fetchTelegramFile, getPlaceholderSlipSvg } from "../services/telegram-file.service";
 
 const ReviewDepositSchema = z.object({
   action: z.enum(["APPROVE", "REJECT"]),
@@ -327,13 +328,83 @@ export async function adminRoutes(server: FastifyInstance) {
         amount: s.amountMmk,
         method: s.paymentMethod,
         txnRef: s.transactionRef || "-",
-        slipUrl: s.slipFileId || null,
+        slipUrl: s.slipFileId
+          ? `/api/admin/telegram-file/${encodeURIComponent(s.slipFileId)}`
+          : `/api/admin/deposits/${s.id}/slip-image`,
         intendedProduct: s.intendedProduct || "General Wallet Topup",
         status: s.status,
         date: s.createdAt ? new Date(s.createdAt).toISOString() : new Date().toISOString(),
         rejectReason: s.rejectReason,
       })),
     };
+  });
+
+  // GET /api/admin/telegram-file/:fileId (Stream Telegram Photo Proxy)
+  server.get<{
+    Params: { fileId: string };
+  }>("/api/admin/telegram-file/:fileId", async (request, reply) => {
+    const fileId = request.params.fileId;
+    try {
+      const file = await fetchTelegramFile(fileId);
+      if (!file) {
+        reply.header("Content-Type", "image/svg+xml");
+        reply.header("Cache-Control", "no-cache");
+        return reply.send(getPlaceholderSlipSvg("Telegram file expired or not found"));
+      }
+      reply.header("Content-Type", file.contentType);
+      reply.header("Cache-Control", "public, max-age=86400, immutable");
+      return reply.send(file.buffer);
+    } catch (err: any) {
+      reply.header("Content-Type", "image/svg+xml");
+      return reply.send(getPlaceholderSlipSvg(err.message || "Failed to load slip photo"));
+    }
+  });
+
+  // GET /api/admin/telegram-file (Query string format)
+  server.get<{
+    Querystring: { fileId?: string };
+  }>("/api/admin/telegram-file", async (request, reply) => {
+    const fileId = request.query.fileId;
+    if (!fileId) {
+      reply.header("Content-Type", "image/svg+xml");
+      return reply.send(getPlaceholderSlipSvg("No fileId specified"));
+    }
+    const file = await fetchTelegramFile(fileId);
+    if (!file) {
+      reply.header("Content-Type", "image/svg+xml");
+      return reply.send(getPlaceholderSlipSvg("Telegram file expired or not found"));
+    }
+    reply.header("Content-Type", file.contentType);
+    reply.header("Cache-Control", "public, max-age=86400, immutable");
+    return reply.send(file.buffer);
+  });
+
+  // GET /api/admin/deposits/:id/slip-image (Direct Slip Image by Deposit ID)
+  server.get<{
+    Params: { id: string };
+  }>("/api/admin/deposits/:id/slip-image", async (request, reply) => {
+    const depositId = parseInt(request.params.id, 10);
+    const db = getDb();
+    const [topUp] = await db
+      .select({ id: topUpRequests.id, slipFileId: topUpRequests.slipFileId })
+      .from(topUpRequests)
+      .where(eq(topUpRequests.id, depositId))
+      .limit(1);
+
+    if (!topUp || !topUp.slipFileId) {
+      reply.header("Content-Type", "image/svg+xml");
+      return reply.send(getPlaceholderSlipSvg(topUp ? "No slip attached to deposit" : "Deposit record not found"));
+    }
+
+    const file = await fetchTelegramFile(topUp.slipFileId);
+    if (!file) {
+      reply.header("Content-Type", "image/svg+xml");
+      return reply.send(getPlaceholderSlipSvg("Slip file expired on Telegram"));
+    }
+
+    reply.header("Content-Type", file.contentType);
+    reply.header("Cache-Control", "public, max-age=86400, immutable");
+    return reply.send(file.buffer);
   });
 
   // POST /api/admin/deposits/:id/review (Approve or Reject top-up request)

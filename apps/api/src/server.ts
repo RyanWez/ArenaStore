@@ -24,19 +24,31 @@ export async function buildServer(): Promise<FastifyInstance> {
   });
   await server.register(sensible);
 
-  // Authentication preHandler hook for /api/admin/* (excluding /api/admin/auth/login)
+  // Authentication preHandler hook for /api/admin/* (excluding login and image proxies)
   server.addHook("preHandler", async (request, reply) => {
     const url = request.url.split("?")[0];
-    if (url.startsWith("/api/admin/") && url !== "/api/admin/auth/login") {
+    const isExemptRoute =
+      url === "/api/admin/auth/login" ||
+      url.startsWith("/api/admin/telegram-file") ||
+      url.endsWith("/slip-image");
+
+    if (url.startsWith("/api/admin/") && !isExemptRoute) {
+      let token: string | null = null;
       const authHeader = request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        token = authHeader.replace("Bearer ", "").trim();
+      } else if (request.headers.cookie) {
+        const match = request.headers.cookie.match(/arena_admin_token=([^;]+)/);
+        if (match) token = decodeURIComponent(match[1]);
+      }
+
+      if (!token) {
         return reply.status(401).send({
           ok: false,
           error: "Unauthorized. Please log in to access admin functions.",
         });
       }
 
-      const token = authHeader.replace("Bearer ", "").trim();
       const session = await authService.getSession(token);
       if (!session) {
         return reply.status(401).send({

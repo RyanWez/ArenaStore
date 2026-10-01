@@ -388,7 +388,7 @@ export function createBot(): Bot<BotContext> {
 
     const topUp = await botOrderService.createTopUpRequest({ telegramId, amountMmk: amount });
     ctx.session.awaitingTopUpSlip = {
-      topUpId: topUp.id,
+      topUpId: topUp.reference,
       amountMmk: amount,
       reference: topUp.reference,
     };
@@ -414,7 +414,7 @@ export function createBot(): Bot<BotContext> {
     ctx.session.intendedOrderAfterTopUp = { productId, quantity };
     const topUp = await botOrderService.createTopUpRequest({ telegramId, amountMmk: deficit });
     ctx.session.awaitingTopUpSlip = {
-      topUpId: topUp.id,
+      topUpId: topUp.reference,
       amountMmk: deficit,
       reference: topUp.reference,
     };
@@ -547,16 +547,30 @@ export function createBot(): Bot<BotContext> {
 
   // 21. Customer Sends Photo (Top-Up Slip Proof Receipt)
   bot.on("message:photo", async (ctx) => {
+    let topUpSlip = ctx.session.awaitingTopUpSlip;
+    const telegramId = String(ctx.from?.id || "");
+
+    // Fallback: If session was lost (e.g. process restart), query DB for latest pending top-up
+    if (!topUpSlip && telegramId) {
+      const pending = await botOrderService.getLatestPendingTopUp(telegramId);
+      if (pending) {
+        topUpSlip = {
+          topUpId: pending.reference,
+          amountMmk: pending.amountMmk,
+          reference: pending.reference,
+        };
+      }
+    }
+
     // Top-up receipt slip
-    if (ctx.session.awaitingTopUpSlip) {
-      const { topUpId, amountMmk, reference } = ctx.session.awaitingTopUpSlip;
+    if (topUpSlip) {
+      const { topUpId, amountMmk, reference } = topUpSlip;
       const photo = ctx.message.photo;
       const highestRes = photo[photo.length - 1];
       const fileId = highestRes.file_id;
-      const telegramId = String(ctx.from?.id || "");
 
       await botOrderService.submitTopUpSlip({
-        topUpId,
+        topUpId: reference || topUpId,
         telegramId,
         fileId,
         amountMmk,
@@ -626,7 +640,7 @@ export function createBot(): Bot<BotContext> {
       ctx.session.awaitingCustomTopUp = false;
       const topUp = await botOrderService.createTopUpRequest({ telegramId, amountMmk: amount });
       ctx.session.awaitingTopUpSlip = {
-        topUpId: topUp.id,
+        topUpId: topUp.reference,
         amountMmk: amount,
         reference: topUp.reference,
       };
