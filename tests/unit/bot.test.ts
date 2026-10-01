@@ -304,7 +304,7 @@ describe("Phase 4 Customer Telegram Bot", () => {
       };
       const keyboard = buildProductsKeyboard(10, [outOfStockProd]);
       const btn = keyboard.inline_keyboard[0][0];
-      expect(btn.text).toContain("ပြတ်နေပါသည် ❌");
+      expect(btn.text).toContain("ပြတ်လပ်နေပါသည် ❌");
       expect(btn.callback_data).toBe("out_of_stock");
     });
 

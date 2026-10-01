@@ -113,7 +113,7 @@ export function buildProductsKeyboard(categoryId: number, products: BotProduct[]
     for (const prod of products) {
       const label = prod.inStock
         ? `${prod.cleanName} — ${prod.formattedPriceMmk}`
-        : `${prod.cleanName} — ပြတ်နေပါသည် ❌`;
+        : `${prod.cleanName} — ပြတ်လပ်နေပါသည် ❌`;
 
       keyboard
         .add({
