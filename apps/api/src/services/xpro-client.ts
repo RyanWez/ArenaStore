@@ -178,9 +178,20 @@ export class XProClient {
    */
   async getCategories(): Promise<XProCategory[]> {
     const res = await this.request<any>("/catalog/categories");
-    if (Array.isArray(res.categories)) return res.categories;
-    if (Array.isArray(res.data)) return res.data;
-    return [];
+    const raw = Array.isArray(res.categories)
+      ? res.categories
+      : Array.isArray(res.data)
+      ? res.data
+      : [];
+    return raw.map((c: any) => {
+      const id = c.categoryId !== undefined ? Number(c.categoryId) : Number(c.id);
+      return {
+        id,
+        categoryId: id,
+        name: c.name,
+        productsCount: c.productsCount,
+      };
+    });
   }
 
   /**

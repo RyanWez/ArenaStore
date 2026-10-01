@@ -16,9 +16,13 @@ const envSchema = z.object({
   DEFAULT_MARGIN_PERCENTAGE: z.coerce.number().default(25),
   SUPPORT_USERNAME: z.string().default("ryanwez"),
   CHANNEL_URL: z.string().default("https://t.me/arenasellerstore"),
-  PAYMENT_KPAY_PHONE: z.string().default("09-8472918471"),
-  PAYMENT_WAVEPAY_PHONE: z.string().default("09-8492019400"),
-  PAYMENT_ACCOUNT_NAME: z.string().default("Ryan Wez (Arena Store)"),
+  PAYMENT_KPAY_PHONE: z.string().default("09960476738"),
+  PAYMENT_WAVEPAY_PHONE: z.string().default("09960476738"),
+  PAYMENT_ACCOUNT_NAME: z.string().default("Ryan Wez"),
+  DELIVERY_ENCRYPTION_KEY: z
+    .string()
+    .min(16)
+    .default("arena-store-default-dev-encryption-key-32bytes!"),
 });
 
 export type BotConfig = z.infer<typeof envSchema>;
@@ -35,6 +39,9 @@ export function loadBotConfig(): BotConfig {
       process.env.UPSTREAM_PARTNER_API_KEY ||
       process.env.UPTREAM_API_KEY ||
       "",
+    DELIVERY_ENCRYPTION_KEY:
+      process.env.DELIVERY_ENCRYPTION_KEY ||
+      "arena-store-default-dev-encryption-key-32bytes!",
   };
 
   const parsed = envSchema.safeParse(rawEnv);

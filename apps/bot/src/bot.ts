@@ -358,7 +358,7 @@ export function createBot(): Bot<BotContext> {
 
     if (!result.success) {
       await ctx.answerCallbackQuery({
-        text: "⚠️ လက်ကျန်ငွေ မလုံလောက်တော့ပါခင်ဗျာ။",
+        text: result.errorMessage || "⚠️ ဝယ်ယူမှု မအောင်မြင်ပါခင်ဗျာ။",
         show_alert: true,
       });
       return;

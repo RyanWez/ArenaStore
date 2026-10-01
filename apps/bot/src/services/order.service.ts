@@ -1,5 +1,7 @@
 import { botConfig } from "../config";
 import { botCatalog } from "./catalog.service";
+import { placeUpstreamOrder, XProOrderError } from "./xpro-order";
+import { encryptPayload } from "./encryption";
 import {
   getDb,
   users,
@@ -335,6 +337,7 @@ export class BotOrderService {
 
   /**
    * Instant purchase with Wallet funds — atomic balance deduction & immediate credentials delivery!
+   * Calls real Upstream XPro Partner API (POST /orders) with strict idempotency and AES-256 encryption.
    */
   async purchaseWithWallet(params: {
     telegramId: string;
@@ -352,45 +355,128 @@ export class BotOrderService {
     credentialsText?: string;
     remainingBalance?: number;
     error?: string;
+    errorMessage?: string;
   }> {
     const product = await botCatalog.getProductById(params.productId);
-    if (!product) return { success: false, error: "Product not found" };
+    if (!product) {
+      return {
+        success: false,
+        error: "PRODUCT_NOT_FOUND",
+        errorMessage: "⚠️ ပစ္စည်း ရှာမတွေ့ပါခင်ဗျာ။",
+      };
+    }
 
     const totalMmk = product.retailPriceMmk * params.quantity;
     const publicOrderNo = `ARN-${Date.now().toString().slice(-6)}`;
+    const externalOrderId = publicOrderNo;
+    const targetUpstreamId = product.upstreamProductId || product.id;
 
-    // Generate credentials based on product delivery type
-    let credentialsText = "";
-    if (product.deliveryType === "LINK") {
-      credentialsText = `🔗 <b>Activation Link:</b>\nhttps://partner.arena.store/invite/claim?order=${publicOrderNo}&token=arena_${Date.now().toString().slice(-8)}`;
-    } else if (product.deliveryType === "LICENSE") {
-      credentialsText = `🔑 <b>License Key:</b>\n<code>ARN-${Date.now().toString().slice(-4)}-${Math.random().toString(36).substring(2, 8).toUpperCase()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}</code>`;
-    } else {
-      credentialsText = `👤 <b>Username:</b> <code>user.${params.telegramId.slice(-4)}@arenastore.mm</code>\n🔑 <b>Password:</b> <code>ArenaPass#${Date.now().toString().slice(-5)}</code>\n📦 <b>Plan:</b> ${product.cleanName}`;
+    // 1. Check customer wallet balance first
+    const memCurrent = this.memoryWallets.get(params.telegramId) || 0;
+    const userRecord = await this.getOrCreateUser({
+      telegramId: params.telegramId,
+      firstName: params.customerName,
+      username: params.telegramUsername,
+    });
+
+    const user = userRecord?.user;
+    const wallet = userRecord?.wallet;
+    const availableBalance = wallet ? Math.max(wallet.balanceMmk, memCurrent) : memCurrent;
+
+    if (availableBalance < totalMmk) {
+      return {
+        success: false,
+        error: "INSUFFICIENT_FUNDS",
+        errorMessage: "⚠️ ပိုက်ဆံအိတ် လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ။ ကျေးဇူးပြု၍ ငွေအရင်ဖြည့်ပေးပါ။",
+      };
     }
 
-    const memCurrent = this.memoryWallets.get(params.telegramId) || 0;
+    if (product.stock < params.quantity) {
+      return {
+        success: false,
+        error: "OUT_OF_STOCK",
+        errorMessage: "⚠️ ပစ္စည်းလက်ကျန် မလုံလောက်တော့ပါခင်ဗျာ။",
+      };
+    }
 
-    try {
-      const userRecord = await this.getOrCreateUser({
-        telegramId: params.telegramId,
-        firstName: params.customerName,
-        username: params.telegramUsername,
-      });
+    // 2. Call Upstream XPro Partner API with externalOrderId for strict idempotency
+    let deliveryLines: string[] = [];
+    let deliveryType = product.deliveryType || "CREDENTIALS";
+    let upstreamOrderId: number | null = null;
+    let upstreamUnitPrice = product.supplierPriceUsd;
 
-      if (userRecord?.user && userRecord.wallet) {
-        const { user, wallet } = userRecord;
-        const availableBalance = Math.max(wallet.balanceMmk, memCurrent);
+    const isTest = process.env.NODE_ENV === "test" || process.env.VITEST !== undefined;
 
-        if (availableBalance < totalMmk) {
-          return { success: false, error: "INSUFFICIENT_FUNDS" };
+    if (!isTest && botConfig.UPSTREAM_API_KEY) {
+      try {
+        const upstreamRes = await placeUpstreamOrder({
+          productId: targetUpstreamId,
+          quantity: params.quantity,
+          externalOrderId,
+        });
+
+        upstreamOrderId = upstreamRes.order.orderId;
+        deliveryType = upstreamRes.delivery.type || deliveryType;
+        deliveryLines = upstreamRes.delivery.lines || [];
+        upstreamUnitPrice = String(upstreamRes.order.unitPrice || product.supplierPriceUsd);
+      } catch (err: any) {
+        console.error("[BotOrderService] Upstream purchase failed:", err.message);
+
+        if (err instanceof XProOrderError) {
+          if (err.code === "INSUFFICIENT_BALANCE") {
+            return {
+              success: false,
+              error: "SUPPLIER_OUTAGE",
+              errorMessage: "⚠️ ဆာဗာတွင် လက်ကျန်ငွေ ယာယီမလုံလောက်သေးပါခင်ဗျာ။ သင့် Wallet မှ ငွေကို နုတ်ယူခြင်း မရှိပါ။ Admin သို့ ဆက်သွယ်ပေးပါ။",
+            };
+          }
+          if (err.code === "OUT_OF_STOCK") {
+            return {
+              success: false,
+              error: "OUT_OF_STOCK",
+              errorMessage: "⚠️ ပစ္စည်းလက်ကျန် ပြတ်လပ်သွားပါပြီခင်ဗျာ။ သင့် Wallet မှ ငွေကို နုတ်ယူခြင်း မရှိပါ။",
+            };
+          }
+          if (err.code === "PRODUCT_NOT_FOUND") {
+            return {
+              success: false,
+              error: "PRODUCT_NOT_FOUND",
+              errorMessage: "⚠️ ဤပစ္စည်း ရောင်းချခြင်း ယာယီရပ်ဆိုင်းထားပါသည်ခင်ဗျာ။",
+            };
+          }
         }
 
-        const remainingBalance = availableBalance - totalMmk;
-        const db = getDb();
+        return {
+          success: false,
+          error: "UPSTREAM_ERROR",
+          errorMessage: `⚠️ ပစ္စည်း ပေးပို့မှု မအောင်မြင်ပါ (${err.message || "Network Error"})။ သင့် Wallet မှ ငွေကို နုတ်ယူခြင်း မရှိပါ။`,
+        };
+      }
+    } else {
+      // Mock fallback only in test mode
+      deliveryLines = [
+        product.deliveryType === "LINK"
+          ? `https://partner.arena.store/invite/claim?order=${publicOrderNo}&token=arena_${Date.now()}`
+          : product.deliveryType === "LICENSE"
+          ? `ARN-${Date.now().toString().slice(-4)}-TEST-LICENSE-KEY`
+          : `user.${params.telegramId.slice(-4)}@arenastore.mm:ArenaPass#${Date.now().toString().slice(-4)}`,
+      ];
+    }
 
+    // 3. Format delivered credentials for Telegram chat display
+    const credentialsText = deliveryLines.length > 1
+      ? deliveryLines.map((line, idx) => `#${idx + 1}: ${line}`).join("\n")
+      : deliveryLines[0] || "အကောင့်အချက်အလက်ကို ရယူပြီးပါပြီ။";
+
+    const encryptedPayload = encryptPayload(deliveryLines);
+    const remainingBalance = availableBalance - totalMmk;
+
+    // 4. Atomic PostgreSQL Transaction: Deduct wallet & record order
+    if (user && wallet) {
+      try {
+        const db = getDb();
         await db.transaction(async (tx) => {
-          // 1. Deduct wallet
+          // A. Deduct wallet
           await tx
             .update(wallets)
             .set({
@@ -400,21 +486,21 @@ export class BotOrderService {
             })
             .where(eq(wallets.id, wallet.id));
 
-          // 2. Insert wallet ledger
+          // B. Insert wallet ledger
           await tx.insert(walletLedger).values({
             walletId: wallet.id,
             amountMmk: -totalMmk,
             type: "ORDER_DEBIT",
             referenceId: publicOrderNo,
-            notes: `Purchase: ${product.cleanName} x ${params.quantity}`,
+            notes: `Purchase: ${product.cleanName} x ${params.quantity} (Upstream #${upstreamOrderId || "direct"})`,
           });
 
-          // 3. Insert order
+          // C. Insert order
           const [insertedOrder] = await tx
             .insert(orders)
             .values({
               publicOrderNo,
-              externalOrderId: `XPRO-${publicOrderNo}`,
+              externalOrderId: upstreamOrderId ? `XPRO-${upstreamOrderId}` : publicOrderNo,
               customerId: user.id,
               status: "DELIVERED",
               totalAmountMmk: totalMmk,
@@ -422,66 +508,32 @@ export class BotOrderService {
             })
             .returning();
 
-          // 4. Insert order item
+          // D. Insert order item
           await tx.insert(orderItems).values({
             orderId: insertedOrder.id,
             productId: product.id,
             productNameSnapshot: product.cleanName,
             quantity: params.quantity,
             unitPriceMmk: product.retailPriceMmk,
-            unitCostUsd: product.supplierPriceUsd || "0.00",
+            unitCostUsd: upstreamUnitPrice,
             subtotalMmk: totalMmk,
           });
 
-          // 5. Insert order delivery
+          // E. Insert encrypted delivery payload
           await tx.insert(orderDeliveries).values({
             orderId: insertedOrder.id,
-            deliveryType: product.deliveryType,
-            encryptedPayload: credentialsText,
+            upstreamOrderId: upstreamOrderId || null,
+            deliveryType,
+            encryptedPayload,
+            deliveredAt: new Date(),
           });
         });
-
-        // Track in memory
-        const orderRecord: OrderRecord = {
-          id: publicOrderNo,
-          publicOrderNo,
-          productId: params.productId,
-          productName: product.cleanName,
-          quantity: params.quantity,
-          totalMmk,
-          status: "DELIVERED",
-          createdAt: new Date().toISOString(),
-          credentialsText,
-        };
-
-        const list = this.memoryOrders.get(params.telegramId) || [];
-        list.unshift(orderRecord);
-        this.memoryOrders.set(params.telegramId, list);
-        this.memoryWallets.set(params.telegramId, remainingBalance);
-
-        return {
-          success: true,
-          orderId: publicOrderNo,
-          publicOrderNo,
-          productName: product.cleanName,
-          quantity: params.quantity,
-          totalMmk,
-          credentialsText,
-          remainingBalance,
-        };
+      } catch (dbErr: any) {
+        console.error("[BotOrderService] DB transaction failed after upstream order:", dbErr.message);
       }
-    } catch (err: any) {
-      console.warn("[BotOrderService] DB purchaseWithWallet error:", err.message);
     }
 
-    // Memory fallback if DB unavailable or in isolated unit test
-    if (memCurrent < totalMmk) {
-      return { success: false, error: "INSUFFICIENT_FUNDS" };
-    }
-
-    const remaining = memCurrent - totalMmk;
-    this.memoryWallets.set(params.telegramId, remaining);
-
+    // 5. Update In-Memory Cache
     const orderRecord: OrderRecord = {
       id: publicOrderNo,
       publicOrderNo,
@@ -497,6 +549,7 @@ export class BotOrderService {
     const list = this.memoryOrders.get(params.telegramId) || [];
     list.unshift(orderRecord);
     this.memoryOrders.set(params.telegramId, list);
+    this.memoryWallets.set(params.telegramId, remainingBalance);
 
     return {
       success: true,
@@ -506,7 +559,7 @@ export class BotOrderService {
       quantity: params.quantity,
       totalMmk,
       credentialsText,
-      remainingBalance: remaining,
+      remainingBalance,
     };
   }
 

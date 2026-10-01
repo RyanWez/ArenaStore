@@ -208,7 +208,7 @@ class BotCatalogService {
         return {
           id: p.id,
           upstreamProductId: p.upstreamProductId,
-          categoryId: p.categoryId || 1,
+          categoryId: p.categoryId ?? 0,
           name: displayName,
           cleanName: parsed.cleanText,
           emojiId: parsed.emojiId,
