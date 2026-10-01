@@ -379,7 +379,7 @@ export async function adminRoutes(server: FastifyInstance) {
     if (parseRes.data.nameMmk) {
       updateValues.nameMmk = parseRes.data.nameMmk;
     }
-    if (parseRes.data.descriptionMmk) {
+    if (parseRes.data.descriptionMmk !== undefined) {
       updateValues.descriptionMmk = parseRes.data.descriptionMmk;
     }
 
