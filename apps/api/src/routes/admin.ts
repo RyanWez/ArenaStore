@@ -15,7 +15,7 @@ import {
   walletLedger,
   productSupplierSnapshots,
 } from "@arena/db";
-import { desc, eq, sql, or } from "drizzle-orm";
+import { desc, eq, sql, or, ne } from "drizzle-orm";
 import { z } from "zod";
 import { xproClient } from "../services/xpro-client";
 import { catalogService } from "../services/catalog.service";
@@ -938,7 +938,7 @@ export async function adminRoutes(server: FastifyInstance) {
     const db = getDb();
     const { search, balanceFilter, sortBy = "balance_desc" } = request.query;
 
-    // 1. Overall KPI summary
+    // 1. Overall KPI summary (customers only)
     const [kpiResult] = await db
       .select({
         totalCustomers: sql<number>`count(${users.id})`,
@@ -947,7 +947,8 @@ export async function adminRoutes(server: FastifyInstance) {
         totalSpentMmk: sql<number>`coalesce(sum(${wallets.totalSpentMmk}), 0)`,
       })
       .from(users)
-      .leftJoin(wallets, eq(users.id, wallets.userId));
+      .leftJoin(wallets, eq(users.id, wallets.userId))
+      .where(ne(users.role, "ADMIN"));
 
     // 2. Subquery for orders aggregated per customer
     const orderStats = db
@@ -961,7 +962,7 @@ export async function adminRoutes(server: FastifyInstance) {
       .groupBy(orders.customerId)
       .as("order_stats");
 
-    // 3. Query all users joined with wallets and order stats
+    // 3. Query all customer users joined with wallets and order stats
     const rows = await db
       .select({
         id: users.id,
@@ -983,14 +984,22 @@ export async function adminRoutes(server: FastifyInstance) {
       })
       .from(users)
       .leftJoin(wallets, eq(users.id, wallets.userId))
-      .leftJoin(orderStats, eq(users.id, orderStats.customerId));
+      .leftJoin(orderStats, eq(users.id, orderStats.customerId))
+      .where(ne(users.role, "ADMIN"));
 
     // Transform and map
     let customerList = rows.map((r) => {
-      const displayName =
-        [r.firstName, r.lastName].filter(Boolean).join(" ") ||
-        r.username ||
-        (r.telegramId ? `User ${r.telegramId}` : `Customer #${r.id}`);
+      const fullName = [r.firstName, r.lastName].filter(Boolean).join(" ").trim();
+      let displayName = fullName;
+      if (!displayName || displayName === "Customer") {
+        if (r.username) {
+          displayName = `@${r.username}`;
+        } else if (r.telegramId) {
+          displayName = `User ${r.telegramId}`;
+        } else {
+          displayName = `Customer #${r.id}`;
+        }
+      }
       const effectiveSpent = Math.max(
         Number(r.walletTotalSpentMmk || 0),
         Number(r.deliveredSpentMmk || 0)
@@ -1178,10 +1187,17 @@ export async function adminRoutes(server: FastifyInstance) {
       .orderBy(desc(walletLedger.createdAt))
       .limit(100);
 
-    const displayName =
-      [user.firstName, user.lastName].filter(Boolean).join(" ") ||
-      user.username ||
-      (user.telegramId ? `User ${user.telegramId}` : `Customer #${user.id}`);
+    const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
+    let displayName = fullName;
+    if (!displayName || displayName === "Customer") {
+      if (user.username) {
+        displayName = `@${user.username}`;
+      } else if (user.telegramId) {
+        displayName = `User ${user.telegramId}`;
+      } else {
+        displayName = `Customer #${user.id}`;
+      }
+    }
 
     return {
       ok: true,

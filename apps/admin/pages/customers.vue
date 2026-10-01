@@ -317,7 +317,7 @@ onMounted(() => {
   fetchCustomers(false)
   autoPollInterval = setInterval(() => {
     fetchCustomers(true)
-  }, 10000)
+  }, 3000)
 })
 
 onUnmounted(() => {
@@ -659,26 +659,38 @@ onUnmounted(() => {
 
               <!-- Customer Name & Handle -->
               <h2 class="text-lg font-bold text-white">{{ selectedCustomer.displayName }}</h2>
-              <p v-if="selectedCustomer.username" class="text-xs text-slate-400 mt-0.5">
-                @{{ selectedCustomer.username }}
-              </p>
+              <div class="mt-1 flex items-center justify-center gap-1.5 flex-wrap">
+                <a
+                  v-if="selectedCustomer.username"
+                  :href="'https://t.me/' + selectedCustomer.username"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-xs font-semibold text-emerald-400 hover:text-emerald-300 hover:underline flex items-center gap-1 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20"
+                >
+                  <i class="pi pi-send text-[10px]"></i>
+                  <span>@{{ selectedCustomer.username }}</span>
+                </a>
+                <span v-else class="text-[11px] text-slate-500 italic bg-slate-800/60 px-2 py-0.5 rounded-full">
+                  No @username
+                </span>
+              </div>
 
               <!-- Telegram ID Chip -->
               <div
                 v-if="selectedCustomer.telegramId"
                 @click="copyToClipboard(selectedCustomer.telegramId, 'detail-id')"
                 class="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 font-mono text-xs cursor-pointer hover:bg-slate-700/80 transition-all"
-                title="Click to copy"
+                title="Click to copy Telegram ID"
               >
-                <span>ID {{ selectedCustomer.telegramId }}</span>
+                <span>ID: {{ selectedCustomer.telegramId }}</span>
                 <i
                   class="text-[10px]"
                   :class="copiedId === 'detail-id' ? 'pi pi-check text-emerald-400' : 'pi pi-copy text-slate-400'"
                 ></i>
               </div>
 
-              <!-- Customer Badge -->
-              <div class="mt-2.5 inline-flex items-center px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[11px] font-semibold text-emerald-400">
+              <!-- Customer Role Badge -->
+              <div class="mt-2.5 inline-flex items-center px-2.5 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-[11px] font-semibold text-indigo-400">
                 Customer
               </div>
 

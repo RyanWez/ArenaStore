@@ -49,7 +49,30 @@ export function createBot(): Bot<BotContext> {
     })
   );
 
-  // 2. Global Zero-Clock Callback Query Auto-Acknowledge Middleware
+  // 2. Global Telegram User Profile Auto-Sync Middleware
+  // Immediately synchronizes Name, @username, and Telegram ID to DB on any interaction
+  bot.use(async (ctx, next) => {
+    if (ctx.from && ctx.from.id) {
+      const telegramId = String(ctx.from.id);
+      const firstName = ctx.from.first_name || "Customer";
+      const lastName = ctx.from.last_name || null;
+      const username = ctx.from.username || null;
+
+      botOrderService
+        .upsertTelegramUser({
+          telegramId,
+          firstName,
+          lastName,
+          username,
+        })
+        .catch((err) => {
+          console.warn("[Bot] Auto user sync warning:", err.message);
+        });
+    }
+    await next();
+  });
+
+  // 3. Global Zero-Clock Callback Query Auto-Acknowledge Middleware
   bot.use(async (ctx, next) => {
     if (ctx.callbackQuery) {
       // Auto acknowledge callback to dismiss Telegram loading clock instantly
@@ -58,13 +81,24 @@ export function createBot(): Bot<BotContext> {
     await next();
   });
 
-  // 3. Command Handlers (quoting user's message)
+  // 4. Command Handlers (quoting user's message)
   bot.command(["start", "menu", "help"], async (ctx) => {
     ctx.session.awaitingCustomQuantity = false;
     ctx.session.awaitingCustomTopUp = false;
     ctx.session.awaitingTopUpSlip = undefined;
     ctx.session.unmatchedPhotoFileId = undefined;
     const firstName = ctx.from?.first_name || "Customer";
+
+    if (ctx.from?.id) {
+      await botOrderService
+        .upsertTelegramUser({
+          telegramId: String(ctx.from.id),
+          firstName: ctx.from.first_name || "Customer",
+          lastName: ctx.from.last_name || null,
+          username: ctx.from.username || null,
+        })
+        .catch(() => {});
+    }
 
     await ctx.reply(formatStartMessage(firstName), {
       parse_mode: "HTML",

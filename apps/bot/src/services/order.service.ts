@@ -60,8 +60,8 @@ export class BotOrderService {
   async getOrCreateUser(params: {
     telegramId: string;
     firstName?: string;
-    lastName?: string;
-    username?: string;
+    lastName?: string | null;
+    username?: string | null;
   }) {
     try {
       const db = getDb();
@@ -85,6 +85,30 @@ export class BotOrderService {
           })
           .returning();
         user = newUser;
+      } else {
+        // Automatically sync latest Telegram profile (Name, Username) into DB
+        const updates: Record<string, any> = {};
+        if (params.firstName && params.firstName !== user.firstName) {
+          updates.firstName = params.firstName;
+        }
+        if (params.lastName !== undefined && params.lastName !== user.lastName) {
+          updates.lastName = params.lastName;
+        }
+        if (params.username !== undefined && params.username !== user.username) {
+          updates.username = params.username;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          updates.updatedAt = new Date();
+          const [updated] = await db
+            .update(users)
+            .set(updates)
+            .where(eq(users.id, user.id))
+            .returning();
+          if (updated) {
+            user = updated;
+          }
+        }
       }
 
       // Check or create wallet
@@ -113,6 +137,18 @@ export class BotOrderService {
       console.warn("[BotOrderService] DB getOrCreateUser error:", err.message);
       return null;
     }
+  }
+
+  /**
+   * Synchronizes latest Telegram user info (id, name, username) directly into DB.
+   */
+  async upsertTelegramUser(params: {
+    telegramId: string;
+    firstName: string;
+    lastName?: string | null;
+    username?: string | null;
+  }) {
+    return this.getOrCreateUser(params);
   }
 
   /**
