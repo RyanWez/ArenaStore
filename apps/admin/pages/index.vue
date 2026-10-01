@@ -52,7 +52,7 @@ async function fetchDashboardData(isSilent = false) {
     }
 
     if (ordersRes?.ok && Array.isArray(ordersRes.orders)) {
-      recentOrders.value = ordersRes.orders.slice(0, 8).map((o: any) => ({
+      recentOrders.value = ordersRes.orders.slice(0, 6).map((o: any) => ({
         id: o.orderId || o.id,
         publicOrderNo: o.id || o.publicOrderNo,
         productName: o.product || 'Digital Item',
@@ -329,39 +329,39 @@ function navigateToCustomer(telegramId?: string, customerName?: string, event?: 
         <table class="w-full text-left border-collapse text-sm">
           <thead class="bg-slate-50 dark:bg-[#0e172a] border-b border-slate-200 dark:border-slate-800">
             <tr class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              <th class="py-3 px-4">Order ID</th>
-              <th class="py-3 px-4">Product</th>
-              <th class="py-3 px-4 w-60 max-w-[240px]">Customer</th>
-              <th class="py-3 px-4">Total</th>
-              <th class="py-3 px-4">Status</th>
-              <th class="py-3 px-4">Time</th>
-              <th class="py-3 px-4 text-right">Action</th>
+              <th class="py-2.5 px-4">Order ID</th>
+              <th class="py-2.5 px-4">Product</th>
+              <th class="py-2.5 px-4 w-60 max-w-[240px]">Customer</th>
+              <th class="py-2.5 px-4">Total</th>
+              <th class="py-2.5 px-4">Status</th>
+              <th class="py-2.5 px-4">Time</th>
+              <th class="py-2.5 px-4 text-right">Action</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 dark:divide-slate-800/60 text-sm">
             <!-- Skeleton Rows -->
             <template v-if="isLoading">
-              <tr v-for="n in 5" :key="'skel-' + n" class="animate-pulse">
-                <td class="py-3.5 px-4"><div class="h-4 w-24 rounded bg-slate-200 dark:bg-slate-800"></div></td>
-                <td class="py-3.5 px-4"><div class="h-4 w-36 rounded bg-slate-200 dark:bg-slate-800"></div></td>
-                <td class="py-3.5 px-4 w-60 max-w-[240px]">
+              <tr v-for="n in 6" :key="'skel-' + n" class="animate-pulse">
+                <td class="py-2.5 px-4"><div class="h-4 w-24 rounded bg-slate-200 dark:bg-slate-800"></div></td>
+                <td class="py-2.5 px-4"><div class="h-4 w-36 rounded bg-slate-200 dark:bg-slate-800"></div></td>
+                <td class="py-2.5 px-4 w-60 max-w-[240px]">
                   <div class="flex items-center gap-2.5">
-                    <div class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 shrink-0"></div>
+                    <div class="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-800 shrink-0"></div>
                     <div class="h-3.5 w-24 rounded bg-slate-200 dark:bg-slate-800"></div>
                   </div>
                 </td>
-                <td class="py-3.5 px-4"><div class="h-4 w-16 rounded bg-slate-200 dark:bg-slate-800"></div></td>
-                <td class="py-3.5 px-4"><div class="h-5 w-20 rounded-full bg-slate-200 dark:bg-slate-800"></div></td>
-                <td class="py-3.5 px-4"><div class="h-3.5 w-14 rounded bg-slate-200 dark:bg-slate-800"></div></td>
-                <td class="py-3.5 px-4 text-right"><div class="h-7 w-16 rounded-xl bg-slate-200 dark:bg-slate-800 ml-auto"></div></td>
+                <td class="py-2.5 px-4"><div class="h-4 w-16 rounded bg-slate-200 dark:bg-slate-800"></div></td>
+                <td class="py-2.5 px-4"><div class="h-5 w-20 rounded-full bg-slate-200 dark:bg-slate-800"></div></td>
+                <td class="py-2.5 px-4"><div class="h-3.5 w-14 rounded bg-slate-200 dark:bg-slate-800"></div></td>
+                <td class="py-2.5 px-4 text-right"><div class="h-6 w-14 rounded-xl bg-slate-200 dark:bg-slate-800 ml-auto"></div></td>
               </tr>
             </template>
 
             <!-- Empty State -->
             <tr v-else-if="recentOrders.length === 0">
-              <td colspan="7" class="py-12 text-center text-slate-400">
+              <td colspan="7" class="py-10 text-center text-slate-400">
                 <div class="flex flex-col items-center justify-center max-w-sm mx-auto">
-                  <div class="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 text-xl mb-2">
+                  <div class="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 text-lg mb-2">
                     <i class="pi pi-shopping-bag"></i>
                   </div>
                   <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-200">No Orders Yet</h3>
@@ -381,7 +381,7 @@ function navigateToCustomer(telegramId?: string, customerName?: string, event?: 
                 class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer group"
               >
                 <!-- Order ID -->
-                <td class="py-3 px-4 font-mono font-medium text-slate-900 dark:text-slate-100 text-xs">
+                <td class="py-2.5 px-4 font-mono font-medium text-slate-900 dark:text-slate-100 text-xs">
                   <div class="flex items-center gap-1.5">
                     <span class="text-indigo-600 dark:text-indigo-400 font-semibold">{{ order.publicOrderNo }}</span>
                     <button
@@ -396,14 +396,14 @@ function navigateToCustomer(telegramId?: string, customerName?: string, event?: 
                 </td>
 
                 <!-- Product Name -->
-                <td class="py-3 px-4 text-slate-800 dark:text-slate-200 font-medium">
+                <td class="py-2.5 px-4 text-slate-800 dark:text-slate-200 font-medium">
                   <div class="truncate max-w-[200px]" :title="order.productName">
                     {{ order.productName }}
                   </div>
                 </td>
 
                 <!-- Customer (Constrained, avatar with click to customer) -->
-                <td class="py-3 px-4 w-60 max-w-[240px]">
+                <td class="py-2.5 px-4 w-60 max-w-[240px]">
                   <div class="flex items-center gap-2.5 min-w-0">
                     <div
                       @click="navigateToCustomer(order.telegramId, order.customer, $event)"
@@ -425,12 +425,12 @@ function navigateToCustomer(telegramId?: string, customerName?: string, event?: 
                 </td>
 
                 <!-- Total Amount -->
-                <td class="py-3 px-4 font-mono font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                <td class="py-2.5 px-4 font-mono font-bold text-slate-900 dark:text-white whitespace-nowrap text-xs">
                   {{ order.amountMmk.toLocaleString() }} Ks
                 </td>
 
                 <!-- Status -->
-                <td class="py-3 px-4 whitespace-nowrap">
+                <td class="py-2.5 px-4 whitespace-nowrap">
                   <span
                     v-if="order.status === 'DELIVERED'"
                     class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
@@ -455,12 +455,12 @@ function navigateToCustomer(telegramId?: string, customerName?: string, event?: 
                 </td>
 
                 <!-- Time -->
-                <td class="py-3 px-4 text-xs text-slate-400 font-mono whitespace-nowrap">
+                <td class="py-2.5 px-4 text-xs text-slate-400 font-mono whitespace-nowrap">
                   {{ order.createdAt }}
                 </td>
 
                 <!-- Action -->
-                <td class="py-3 px-4 text-right whitespace-nowrap">
+                <td class="py-2.5 px-4 text-right whitespace-nowrap">
                   <NuxtLink
                     to="/orders"
                     class="px-2.5 py-1 rounded-xl text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 border border-indigo-500/20 transition-colors inline-flex items-center gap-1"
