@@ -333,9 +333,12 @@ export async function adminRoutes(server: FastifyInstance) {
 
     const db = getDb();
     const updateValues: Record<string, unknown> = {
-      retailPriceMmk: parseRes.data.retailPriceMmk,
       updatedAt: new Date(),
     };
+
+    if (parseRes.data.retailPriceMmk !== undefined) {
+      updateValues.retailPriceMmk = parseRes.data.retailPriceMmk;
+    }
 
     if (parseRes.data.localStockLimit !== undefined) {
       updateValues.localStockLimit = parseRes.data.localStockLimit;

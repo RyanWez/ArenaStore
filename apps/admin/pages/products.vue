@@ -302,65 +302,163 @@ async function saveProductChanges() {
   }
 }
 
-async function toggleProductStatus(product: ProductItem, event?: Event) {
-  if (event) event.stopPropagation()
-  if (togglingId.value !== null) return
+interface ConfirmDialogState {
+  isOpen: boolean
+  title: string
+  message: string
+  subMessage: string
+  actionType: 'PAUSE' | 'ACTIVATE' | 'BULK_PAUSE' | 'BULK_ACTIVATE'
+  confirmText: string
+  confirmButtonClass: string
+  confirmIcon: string
+  product?: ProductItem
+  targetActive?: boolean
+  targets?: ProductItem[]
+  isLoading: boolean
+}
 
-  const newStatus = !product.isActive
-  togglingId.value = product.id
-  try {
-    await $fetch(`/api/admin/products/${product.id}`, {
-      method: 'PUT',
-      headers: getAuthHeaders(),
-      body: {
-        retailPriceMmk: product.retailPriceMmk,
-        isActive: newStatus,
-      },
-    })
-    product.isActive = newStatus
-    toast.info(
-      newStatus
-        ? `"${cleanProductName(product.nameMmk)}" is now ACTIVE for Telegram sale.`
-        : `"${cleanProductName(product.nameMmk)}" is now PAUSED (hidden from Bot).`,
-      newStatus ? 'Product Activated' : 'Product Paused'
-    )
-  } catch (err: any) {
-    toast.error('Status update failed: ' + err.message)
-  } finally {
-    togglingId.value = null
+const confirmState = ref<ConfirmDialogState>({
+  isOpen: false,
+  title: '',
+  message: '',
+  subMessage: '',
+  actionType: 'PAUSE',
+  confirmText: '',
+  confirmButtonClass: '',
+  confirmIcon: '',
+  isLoading: false,
+})
+
+function promptToggleProductStatus(product: ProductItem, event?: Event) {
+  if (event) event.stopPropagation()
+  if (confirmState.value.isLoading) return
+
+  const targetActive = !product.isActive
+  const prodName = cleanProductName(product.nameMmk)
+
+  if (!targetActive) {
+    // PAUSE
+    confirmState.value = {
+      isOpen: true,
+      title: 'Pause Product from Telegram Store?',
+      message: `Are you sure you want to pause "${prodName}"?`,
+      subMessage: 'This product will be immediately hidden from the Telegram Bot catalog, and customer orders will be blocked.',
+      actionType: 'PAUSE',
+      confirmText: 'Pause Product',
+      confirmButtonClass: 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-600/30',
+      confirmIcon: 'pi pi-pause',
+      product,
+      targetActive: false,
+      isLoading: false,
+    }
+  } else {
+    // ACTIVATE
+    confirmState.value = {
+      isOpen: true,
+      title: 'Activate Product for Telegram Store?',
+      message: `Are you sure you want to activate "${prodName}"?`,
+      subMessage: 'This product will be published to the Telegram Bot and available for customers to order.',
+      actionType: 'ACTIVATE',
+      confirmText: 'Activate Product',
+      confirmButtonClass: 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/30',
+      confirmIcon: 'pi pi-play',
+      product,
+      targetActive: true,
+      isLoading: false,
+    }
   }
 }
 
-async function setBulkStatus(targetActive: boolean) {
+function promptBulkStatus(targetActive: boolean) {
   const targets = filteredProducts.value.filter((p) => p.isActive !== targetActive)
   if (targets.length === 0) {
     toast.info(`All filtered products already match this status.`)
     return
   }
 
-  isBulkUpdating.value = true
+  if (!targetActive) {
+    // BULK PAUSE
+    confirmState.value = {
+      isOpen: true,
+      title: 'Pause All Products In View?',
+      message: `Are you sure you want to pause all ${targets.length} products currently in view?`,
+      subMessage: 'These products will be immediately hidden from the Telegram Bot storefront. You can activate individual items anytime.',
+      actionType: 'BULK_PAUSE',
+      confirmText: `Pause All (${targets.length})`,
+      confirmButtonClass: 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-600/30',
+      confirmIcon: 'pi pi-pause',
+      targets,
+      targetActive: false,
+      isLoading: false,
+    }
+  } else {
+    // BULK ACTIVATE
+    confirmState.value = {
+      isOpen: true,
+      title: 'Activate All Products In View?',
+      message: `Are you sure you want to activate all ${targets.length} products currently in view?`,
+      subMessage: 'These products will be published to the Telegram Bot catalog and made available for customer purchases.',
+      actionType: 'BULK_ACTIVATE',
+      confirmText: `Activate All (${targets.length})`,
+      confirmButtonClass: 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/30',
+      confirmIcon: 'pi pi-play',
+      targets,
+      targetActive: true,
+      isLoading: false,
+    }
+  }
+}
+
+async function executeConfirmAction() {
+  if (confirmState.value.isLoading) return
+  confirmState.value.isLoading = true
+
+  const { actionType, product, targetActive, targets } = confirmState.value
+
   try {
-    await Promise.all(
-      targets.map((p) =>
-        $fetch(`/api/admin/products/${p.id}`, {
-          method: 'PUT',
-          headers: getAuthHeaders(),
-          body: {
-            retailPriceMmk: p.retailPriceMmk,
-            isActive: targetActive,
-          },
-        }).then(() => {
-          p.isActive = targetActive
-        })
+    if ((actionType === 'PAUSE' || actionType === 'ACTIVATE') && product && targetActive !== undefined) {
+      togglingId.value = product.id
+      await $fetch(`/api/admin/products/${product.id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: {
+          isActive: targetActive,
+        },
+      })
+      product.isActive = targetActive
+      toast.info(
+        targetActive
+          ? `"${cleanProductName(product.nameMmk)}" is now ACTIVE for Telegram sale.`
+          : `"${cleanProductName(product.nameMmk)}" is now PAUSED (hidden from Bot).`,
+        targetActive ? 'Product Activated' : 'Product Paused'
       )
-    )
-    toast.success(
-      `${targets.length} products have been ${targetActive ? 'activated for sale' : 'paused (hidden from Bot)'}.`,
-      'Bulk Action Complete'
-    )
+      confirmState.value.isOpen = false
+    } else if ((actionType === 'BULK_PAUSE' || actionType === 'BULK_ACTIVATE') && targets && targetActive !== undefined) {
+      isBulkUpdating.value = true
+      await Promise.all(
+        targets.map((p) =>
+          $fetch(`/api/admin/products/${p.id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: {
+              isActive: targetActive,
+            },
+          }).then(() => {
+            p.isActive = targetActive
+          })
+        )
+      )
+      toast.success(
+        `${targets.length} products have been ${targetActive ? 'activated for sale' : 'paused (hidden from Bot)'}.`,
+        'Bulk Action Complete'
+      )
+      confirmState.value.isOpen = false
+    }
   } catch (err: any) {
-    toast.error('Bulk update failed: ' + err.message)
+    toast.error('Action failed: ' + (err.data?.error || err.message))
   } finally {
+    confirmState.value.isLoading = false
+    togglingId.value = null
     isBulkUpdating.value = false
   }
 }
@@ -497,7 +595,7 @@ async function setBulkStatus(targetActive: boolean) {
           <div class="flex items-center gap-2">
             <button
               type="button"
-              @click="setBulkStatus(false)"
+              @click="promptBulkStatus(false)"
               :disabled="isBulkUpdating || activeCount === 0"
               class="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/20 transition-colors disabled:opacity-40"
               title="Pause all filtered products from the Bot"
@@ -507,7 +605,7 @@ async function setBulkStatus(targetActive: boolean) {
             </button>
             <button
               type="button"
-              @click="setBulkStatus(true)"
+              @click="promptBulkStatus(true)"
               :disabled="isBulkUpdating || pausedCount === 0"
               class="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 transition-colors disabled:opacity-40"
               title="Activate all filtered products for sale"
@@ -653,7 +751,7 @@ async function setBulkStatus(targetActive: boolean) {
                   <div class="flex items-center gap-2">
                     <button
                       type="button"
-                      @click="toggleProductStatus(p, $event)"
+                      @click="promptToggleProductStatus(p, $event)"
                       :disabled="togglingId === p.id"
                       class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50"
                       :class="p.isActive ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'"
@@ -911,6 +1009,81 @@ async function setBulkStatus(targetActive: boolean) {
               >
                 <i v-if="isSaving" class="pi pi-spinner animate-spin text-xs"></i>
                 <span>{{ isSaving ? 'Saving...' : 'Save Product Changes' }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Confirmation Dialog Modal (Teleported to body for silky-smooth transition & full backdrop coverage) -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div
+          v-if="confirmState.isOpen"
+          class="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          @click.self="!confirmState.isLoading && (confirmState.isOpen = false)"
+          @keydown.escape="!confirmState.isLoading && (confirmState.isOpen = false)"
+        >
+          <div class="modal-card relative w-full max-w-md bg-white dark:bg-[#0e1726] border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl p-6 space-y-4">
+            <!-- Header Icon & Title -->
+            <div class="flex items-start gap-3.5">
+              <div
+                class="w-11 h-11 rounded-2xl flex items-center justify-center text-lg shrink-0"
+                :class="confirmState.targetActive ? 'bg-emerald-500/10 text-emerald-500 dark:bg-emerald-500/20' : 'bg-amber-500/10 text-amber-500 dark:bg-amber-500/20'"
+              >
+                <i :class="confirmState.confirmIcon"></i>
+              </div>
+              <div class="flex-1 min-w-0 pt-0.5">
+                <h3 class="text-base font-bold text-slate-900 dark:text-white leading-snug">
+                  {{ confirmState.title }}
+                </h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                  {{ confirmState.message }}
+                </p>
+              </div>
+              <button
+                v-if="!confirmState.isLoading"
+                type="button"
+                @click="confirmState.isOpen = false"
+                class="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-200 flex items-center justify-center text-[11px] transition-colors"
+              >
+                <i class="pi pi-times"></i>
+              </button>
+            </div>
+
+            <!-- Submessage / Warning Pill Box -->
+            <div
+              v-if="confirmState.subMessage"
+              class="p-3 rounded-2xl text-xs leading-relaxed"
+              :class="confirmState.targetActive ? 'bg-emerald-50/80 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-300' : 'bg-amber-50/80 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40 text-amber-800 dark:text-amber-300'"
+            >
+              <div class="flex items-start gap-2">
+                <i :class="confirmState.targetActive ? 'pi pi-check-circle' : 'pi pi-exclamation-triangle'" class="text-[12px] mt-0.5 shrink-0"></i>
+                <span>{{ confirmState.subMessage }}</span>
+              </div>
+            </div>
+
+            <!-- Footer Action Buttons -->
+            <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                @click="confirmState.isOpen = false"
+                :disabled="confirmState.isLoading"
+                class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                @click="executeConfirmAction"
+                :disabled="confirmState.isLoading"
+                class="px-5 py-2 rounded-xl text-xs font-bold shadow-lg transition-all flex items-center gap-1.5 disabled:opacity-50"
+                :class="confirmState.confirmButtonClass"
+              >
+                <i v-if="confirmState.isLoading" class="pi pi-spinner animate-spin text-xs"></i>
+                <i v-else :class="confirmState.confirmIcon" class="text-[11px]"></i>
+                <span>{{ confirmState.isLoading ? 'Processing...' : confirmState.confirmText }}</span>
               </button>
             </div>
           </div>

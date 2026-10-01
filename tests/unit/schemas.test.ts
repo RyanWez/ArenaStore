@@ -82,5 +82,27 @@ describe("Shared Zod Schemas Validation", () => {
       isActive: true,
     };
     expect(UpdateProductPricingSchema.safeParse(valid).success).toBe(true);
+
+    // Allows retailPriceMmk to be 0 (e.g., zero cost or free tier products)
+    const zeroPrice = {
+      productId: 31,
+      retailPriceMmk: 0,
+      isActive: false,
+    };
+    expect(UpdateProductPricingSchema.safeParse(zeroPrice).success).toBe(true);
+
+    // Allows updating status without re-sending retailPriceMmk
+    const statusOnly = {
+      productId: 31,
+      isActive: false,
+    };
+    expect(UpdateProductPricingSchema.safeParse(statusOnly).success).toBe(true);
+
+    // Rejects negative retailPriceMmk
+    const negativePrice = {
+      productId: 31,
+      retailPriceMmk: -500,
+    };
+    expect(UpdateProductPricingSchema.safeParse(negativePrice).success).toBe(false);
   });
 });
