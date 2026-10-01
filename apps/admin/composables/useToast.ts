@@ -6,6 +6,11 @@ export interface ToastMessage {
   message: string
   type: 'success' | 'error' | 'warn' | 'info'
   duration?: number
+  /** Optional interactive action (e.g. "Undo") rendered inside the toast. */
+  action?: {
+    label: string
+    handler: () => void
+  }
 }
 
 const toasts = ref<ToastMessage[]>([])

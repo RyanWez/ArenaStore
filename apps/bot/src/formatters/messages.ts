@@ -352,3 +352,14 @@ export function formatOrderDetailMessage(order: {
 ${tgEmoji(BOT_EMOJIS.BOX, "📦")} <b>ပစ္စည်း:</b> <b>${escapeHtml(order.productName)}</b> x ${order.quantity}
 ${tgEmoji(BOT_EMOJIS.PRICE, "💵")} <b>ကျသင့်ငွေ:</b> <b>${order.totalMmk.toLocaleString("en-US")} MMK</b>${credentialsBlock}`;
 }
+
+/**
+ * Formats the suspension notice shown to customers whose account
+ * has been deactivated by an admin.
+ */
+export function formatAccountSuspendedMessage(): string {
+  return `<blockquote>${tgEmoji(BOT_EMOJIS.SPEAKER, "📢")} <b>Account Suspended</b> ❞
+သင့်အကောင့်ကို ယာယီပိတ်ထားပါသည်။</blockquote>
+
+ဤအကောင့်ဖြင့် အော်ဒါများ ဝယ်ယူနိုင်မည်မဟုတ်ပါ။ အသေးစိတ်သိရှိလိုပါက Support ကို ဆက်သွယ်စစ်ဆေးပါ ${tgEmoji(BOT_EMOJIS.CHAT, "💬")}`;
+}

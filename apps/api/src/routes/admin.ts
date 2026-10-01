@@ -14,8 +14,9 @@ import {
   wallets,
   walletLedger,
   productSupplierSnapshots,
+  auditLogs,
 } from "@arena/db";
-import { desc, eq, sql, or, ne } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, or, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { xproClient } from "../services/xpro-client";
 import { catalogService } from "../services/catalog.service";
@@ -34,6 +35,25 @@ const ReviewDepositSchema = z.object({
   action: z.enum(["APPROVE", "REJECT"]),
   rejectReason: z.string().optional(),
 });
+
+const DeactivateCustomerSchema = z.object({
+  reason: z.string().max(500).optional(),
+});
+
+/** Customer-facing display name used in audit details and responses. */
+function buildCustomerDisplayName(u: {
+  id: number;
+  telegramId: string | null;
+  username: string | null;
+  firstName: string | null;
+  lastName: string | null;
+}): string {
+  const fullName = [u.firstName, u.lastName].filter(Boolean).join(" ").trim();
+  if (fullName && fullName !== "Customer") return fullName;
+  if (u.username) return `@${u.username}`;
+  if (u.telegramId) return `User ${u.telegramId}`;
+  return `Customer #${u.id}`;
+}
 
 export async function adminRoutes(server: FastifyInstance) {
   // GET /api/admin/stats (Dashboard overview summary stats)
@@ -933,10 +953,21 @@ export async function adminRoutes(server: FastifyInstance) {
       search?: string;
       balanceFilter?: string;
       sortBy?: string;
+      page?: string;
+      pageSize?: string;
+      statusFilter?: string;
     };
   }>("/api/admin/customers", async (request) => {
     const db = getDb();
-    const { search, balanceFilter, sortBy = "balance_desc" } = request.query;
+    const {
+      search,
+      balanceFilter,
+      sortBy = "balance_desc",
+      statusFilter = "active",
+    } = request.query;
+
+    const page = Math.max(1, Number(request.query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(request.query.pageSize) || 20));
 
     // 1. Overall KPI summary (customers only)
     const [kpiResult] = await db
@@ -962,7 +993,57 @@ export async function adminRoutes(server: FastifyInstance) {
       .groupBy(orders.customerId)
       .as("order_stats");
 
-    // 3. Query all customer users joined with wallets and order stats
+    // 3. WHERE conditions pushed down to SQL (role, status, search, balance)
+    const conditions = [ne(users.role, "ADMIN")];
+
+    if (statusFilter === "deactivated") {
+      conditions.push(ne(users.status, "ACTIVE"));
+    } else if (statusFilter !== "all") {
+      conditions.push(eq(users.status, "ACTIVE"));
+    }
+
+    const term = search?.trim().replace(/^@/, "").toLowerCase() || "";
+    if (term) {
+      const pattern = `%${term}%`;
+      const searchCondition = or(
+        ilike(users.telegramId, pattern),
+        ilike(users.username, pattern),
+        sql`(coalesce(${users.firstName}, '') || ' ' || coalesce(${users.lastName}, '')) ilike ${pattern}`,
+        sql`cast(${users.id} as text) ilike ${pattern}`
+      );
+      if (searchCondition) conditions.push(searchCondition);
+    }
+
+    if (balanceFilter === "has_balance") {
+      conditions.push(sql`coalesce(${wallets.balanceMmk}, 0) > 0`);
+    } else if (balanceFilter === "zero_balance") {
+      conditions.push(sql`coalesce(${wallets.balanceMmk}, 0) = 0`);
+    }
+
+    const whereExpr = and(...conditions);
+
+    // 4. Total count for pagination (same joins/where)
+    const [countResult] = await db
+      .select({ total: sql<number>`count(*)` })
+      .from(users)
+      .leftJoin(wallets, eq(users.id, wallets.userId))
+      .leftJoin(orderStats, eq(users.id, orderStats.customerId))
+      .where(whereExpr);
+    const total = Number(countResult?.total || 0);
+
+    // 5. Sort expressions (SQL level) with stable id tiebreaker
+    const balanceExpr = sql`coalesce(${wallets.balanceMmk}, 0)`;
+    const spentExpr = sql`greatest(coalesce(${wallets.totalSpentMmk}, 0), coalesce(${orderStats.deliveredSpentMmk}, 0))`;
+    const orderCountExpr = sql`coalesce(${orderStats.orderCount}, 0)`;
+
+    let orderByExpr: ReturnType<typeof desc>;
+    if (sortBy === "balance_asc") orderByExpr = asc(balanceExpr);
+    else if (sortBy === "spent_desc") orderByExpr = desc(spentExpr);
+    else if (sortBy === "orders_desc") orderByExpr = desc(orderCountExpr);
+    else if (sortBy === "newest") orderByExpr = desc(users.createdAt);
+    else orderByExpr = desc(balanceExpr);
+
+    // 6. Page of customer users joined with wallets and order stats
     const rows = await db
       .select({
         id: users.id,
@@ -985,10 +1066,13 @@ export async function adminRoutes(server: FastifyInstance) {
       .from(users)
       .leftJoin(wallets, eq(users.id, wallets.userId))
       .leftJoin(orderStats, eq(users.id, orderStats.customerId))
-      .where(ne(users.role, "ADMIN"));
+      .where(whereExpr)
+      .orderBy(orderByExpr, asc(users.id))
+      .limit(pageSize)
+      .offset((page - 1) * pageSize);
 
     // Transform and map
-    let customerList = rows.map((r) => {
+    const customerList = rows.map((r) => {
       const fullName = [r.firstName, r.lastName].filter(Boolean).join(" ").trim();
       let displayName = fullName;
       if (!displayName || displayName === "Customer") {
@@ -1023,40 +1107,6 @@ export async function adminRoutes(server: FastifyInstance) {
       };
     });
 
-    // Search filter
-    if (search && search.trim()) {
-      const term = search.trim().toLowerCase().replace(/^@/, "");
-      customerList = customerList.filter((c) => {
-        const idMatch = c.telegramId?.toLowerCase().includes(term);
-        const userMatch = c.username?.toLowerCase().includes(term);
-        const nameMatch = c.displayName.toLowerCase().includes(term);
-        const numIdMatch = String(c.id).includes(term);
-        return idMatch || userMatch || nameMatch || numIdMatch;
-      });
-    }
-
-    // Balance filter
-    if (balanceFilter === "has_balance") {
-      customerList = customerList.filter((c) => c.walletBalanceMmk > 0);
-    } else if (balanceFilter === "zero_balance") {
-      customerList = customerList.filter((c) => c.walletBalanceMmk === 0);
-    }
-
-    // Sort
-    if (sortBy === "balance_desc") {
-      customerList.sort((a, b) => b.walletBalanceMmk - a.walletBalanceMmk);
-    } else if (sortBy === "balance_asc") {
-      customerList.sort((a, b) => a.walletBalanceMmk - b.walletBalanceMmk);
-    } else if (sortBy === "spent_desc") {
-      customerList.sort((a, b) => b.totalSpentMmk - a.totalSpentMmk);
-    } else if (sortBy === "orders_desc") {
-      customerList.sort((a, b) => b.ordersCount - a.ordersCount);
-    } else if (sortBy === "newest") {
-      customerList.sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-    }
-
     return {
       ok: true,
       stats: {
@@ -1065,6 +1115,9 @@ export async function adminRoutes(server: FastifyInstance) {
         totalWalletBalanceMmk: Number(kpiResult?.totalWalletBalanceMmk || 0),
         totalSpentMmk: Number(kpiResult?.totalSpentMmk || 0),
       },
+      total,
+      page,
+      pageSize,
       customers: customerList,
     };
   });
@@ -1331,6 +1384,196 @@ export async function adminRoutes(server: FastifyInstance) {
       newBalanceMmk,
       telegramNotified,
       message: `Successfully ${action === "CREDIT" ? "credited" : "debited"} ${amountMmk.toLocaleString()} MMK. New balance: ${newBalanceMmk.toLocaleString()} MMK.`,
+    };
+  });
+
+  // POST /api/admin/customers/:id/deactivate (Soft delete — reversible, keeps all history)
+  server.post<{
+    Params: { id: string };
+    Body: { reason?: string };
+  }>("/api/admin/customers/:id/deactivate", async (request, reply) => {
+    const db = getDb();
+    const customerId = Number(request.params.id);
+    if (!Number.isInteger(customerId) || customerId <= 0) {
+      return reply.status(400).send({ ok: false, error: "Invalid customer id" });
+    }
+
+    const parsed = DeactivateCustomerSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.status(400).send({ ok: false, error: "Invalid request payload" });
+    }
+
+    const [customer] = await db.select().from(users).where(eq(users.id, customerId)).limit(1);
+    if (!customer) {
+      return reply.status(404).send({ ok: false, error: "Customer not found" });
+    }
+    if (customer.role !== "CUSTOMER") {
+      return reply.status(400).send({ ok: false, error: "Only customer accounts can be deactivated" });
+    }
+    if (customer.status !== "ACTIVE") {
+      return reply.status(400).send({ ok: false, error: "This customer is already deactivated" });
+    }
+
+    const adminUser = (request as any).adminUser as { userId: number } | undefined;
+    const displayName = buildCustomerDisplayName(customer);
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(users)
+        .set({ status: "DEACTIVATED", updatedAt: new Date() })
+        .where(eq(users.id, customerId));
+
+      await tx.insert(auditLogs).values({
+        actorId: adminUser?.userId ?? null,
+        action: "CUSTOMER_DEACTIVATE",
+        entityType: "USER",
+        entityId: String(customerId),
+        details: {
+          displayName,
+          telegramId: customer.telegramId,
+          reason: parsed.data.reason ?? null,
+        },
+      });
+    });
+
+    return {
+      ok: true,
+      customerId,
+      displayName,
+      message: `${displayName} has been deactivated. The customer can no longer use the bot.`,
+    };
+  });
+
+  // POST /api/admin/customers/:id/restore (Undo a deactivation)
+  server.post<{
+    Params: { id: string };
+  }>("/api/admin/customers/:id/restore", async (request, reply) => {
+    const db = getDb();
+    const customerId = Number(request.params.id);
+    if (!Number.isInteger(customerId) || customerId <= 0) {
+      return reply.status(400).send({ ok: false, error: "Invalid customer id" });
+    }
+
+    const [customer] = await db.select().from(users).where(eq(users.id, customerId)).limit(1);
+    if (!customer) {
+      return reply.status(404).send({ ok: false, error: "Customer not found" });
+    }
+    if (customer.status === "ACTIVE") {
+      return reply.status(400).send({ ok: false, error: "This customer is already active" });
+    }
+
+    const adminUser = (request as any).adminUser as { userId: number } | undefined;
+    const displayName = buildCustomerDisplayName(customer);
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(users)
+        .set({ status: "ACTIVE", updatedAt: new Date() })
+        .where(eq(users.id, customerId));
+
+      await tx.insert(auditLogs).values({
+        actorId: adminUser?.userId ?? null,
+        action: "CUSTOMER_RESTORE",
+        entityType: "USER",
+        entityId: String(customerId),
+        details: {
+          displayName,
+          telegramId: customer.telegramId,
+          previousStatus: customer.status,
+        },
+      });
+    });
+
+    return {
+      ok: true,
+      customerId,
+      displayName,
+      message: `${displayName} has been restored and can use the bot again.`,
+    };
+  });
+
+  // DELETE /api/admin/customers/:id (Permanent hard delete — only for deactivated customers with no orders)
+  server.delete<{
+    Params: { id: string };
+  }>("/api/admin/customers/:id", async (request, reply) => {
+    const db = getDb();
+    const customerId = Number(request.params.id);
+    if (!Number.isInteger(customerId) || customerId <= 0) {
+      return reply.status(400).send({ ok: false, error: "Invalid customer id" });
+    }
+
+    const [customer] = await db.select().from(users).where(eq(users.id, customerId)).limit(1);
+    if (!customer) {
+      return reply.status(404).send({ ok: false, error: "Customer not found" });
+    }
+    if (customer.role !== "CUSTOMER") {
+      return reply.status(400).send({ ok: false, error: "Only customer accounts can be deleted" });
+    }
+    if (customer.status === "ACTIVE") {
+      return reply.status(400).send({
+        ok: false,
+        error: "Deactivate this customer first. Permanent deletion is only allowed for deactivated accounts.",
+      });
+    }
+
+    const [ordersCountRow] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(orders)
+      .where(eq(orders.customerId, customerId));
+    const ordersCount = Number(ordersCountRow?.count || 0);
+    if (ordersCount > 0) {
+      return reply.status(400).send({
+        ok: false,
+        error: `This customer has ${ordersCount} order${ordersCount === 1 ? "" : "s"} in history, so the account cannot be permanently deleted. Keep it deactivated instead.`,
+      });
+    }
+
+    const adminUser = (request as any).adminUser as { userId: number } | undefined;
+    const displayName = buildCustomerDisplayName(customer);
+
+    await db.transaction(async (tx) => {
+      // Snapshot remaining related data before cascading delete
+      const [topupsRow] = await tx
+        .select({ count: sql<number>`count(*)` })
+        .from(topUpRequests)
+        .where(eq(topUpRequests.userId, customerId));
+      const [walletRow] = await tx
+        .select({
+          balanceMmk: sql<number>`coalesce(${wallets.balanceMmk}, 0)`,
+          totalDepositedMmk: sql<number>`coalesce(${wallets.totalDepositedMmk}, 0)`,
+          ledgerCount: sql<number>`(select count(*) from ${walletLedger} where ${walletLedger.walletId} = ${wallets.id})`,
+        })
+        .from(wallets)
+        .where(eq(wallets.userId, customerId))
+        .limit(1);
+
+      // Audit row first, inside the same transaction as the delete
+      await tx.insert(auditLogs).values({
+        actorId: adminUser?.userId ?? null,
+        action: "CUSTOMER_HARD_DELETE",
+        entityType: "USER",
+        entityId: String(customerId),
+        details: {
+          displayName,
+          telegramId: customer.telegramId,
+          username: customer.username,
+          ordersCount,
+          topUpsCount: Number(topupsRow?.count || 0),
+          walletBalanceMmk: Number(walletRow?.balanceMmk || 0),
+          walletTotalDepositedMmk: Number(walletRow?.totalDepositedMmk || 0),
+          ledgerEntriesCount: Number(walletRow?.ledgerCount || 0),
+        },
+      });
+
+      // Cascades: wallets → wallet_ledger, topup_requests (orders FK blocks earlier)
+      await tx.delete(users).where(eq(users.id, customerId));
+    });
+
+    return {
+      ok: true,
+      customerId,
+      displayName,
+      message: `${displayName} has been permanently deleted along with their wallet and deposit records.`,
     };
   });
 }

@@ -219,6 +219,7 @@ describe("Admin Order Action Routes", () => {
       get: register("GET"),
       post: register("POST"),
       put: register("PUT"),
+      delete: register("DELETE"),
     } as any;
     await adminRoutes(server);
     (globalThis as any).__adminRouteHandlers = handlers;

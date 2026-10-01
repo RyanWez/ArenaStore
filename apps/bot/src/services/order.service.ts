@@ -152,6 +152,26 @@ export class BotOrderService {
   }
 
   /**
+   * Returns the current status of a user ("ACTIVE", "DEACTIVATED", ...).
+   * Returns null when the user is unknown or the DB is briefly unreachable —
+   * callers treat null as "allow" and getOrCreateUser registers new users as ACTIVE.
+   */
+  async getUserStatus(telegramId: string): Promise<string | null> {
+    try {
+      const db = getDb();
+      const [row] = await db
+        .select({ status: users.status })
+        .from(users)
+        .where(eq(users.telegramId, telegramId))
+        .limit(1);
+      return row?.status ?? null;
+    } catch (err: any) {
+      console.warn("[BotOrderService] getUserStatus DB error:", err.message);
+      return null;
+    }
+  }
+
+  /**
    * Returns customer's live wallet balance in MMK from Neon DB.
    */
   async getWalletBalance(telegramId: string): Promise<number> {

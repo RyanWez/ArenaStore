@@ -36,6 +36,7 @@ import {
   formatWalletDeliveryMessage,
   formatOrdersListMessage,
   formatOrderDetailMessage,
+  formatAccountSuspendedMessage,
 } from "./formatters/messages";
 import { BOT_EMOJIS, tgEmoji, escapeHtml } from "@arena/shared";
 
@@ -81,7 +82,21 @@ export function createBot(): Bot<BotContext> {
     await next();
   });
 
-  // 4. Command Handlers (quoting user's message)
+  // 4. Suspension Guard Middleware — blocks deactivated customers from any bot interaction
+  bot.use(async (ctx, next) => {
+    const telegramId = ctx.from?.id ? String(ctx.from.id) : null;
+    if (!telegramId) return next();
+
+    const status = await botOrderService.getUserStatus(telegramId);
+    if (status && status !== "ACTIVE") {
+      console.warn(`[Bot] Blocked interaction from suspended user ${telegramId} (status: ${status})`);
+      await ctx.reply(formatAccountSuspendedMessage(), { parse_mode: "HTML" }).catch(() => {});
+      return;
+    }
+    return next();
+  });
+
+  // 5. Command Handlers (quoting user's message)
   bot.command(["start", "menu", "help"], async (ctx) => {
     ctx.session.awaitingCustomQuantity = false;
     ctx.session.awaitingCustomTopUp = false;

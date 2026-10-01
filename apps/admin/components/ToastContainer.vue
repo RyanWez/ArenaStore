@@ -2,6 +2,12 @@
 import { useToast } from '~/composables/useToast'
 
 const { toasts, dismissToast } = useToast()
+
+function runToastAction(toastId: string) {
+  const toast = toasts.value.find(t => t.id === toastId)
+  toast?.action?.handler()
+  dismissToast(toastId)
+}
 </script>
 
 <template>
@@ -17,7 +23,7 @@ const { toasts, dismissToast } = useToast()
       <div
         v-for="toast in toasts"
         :key="toast.id"
-        class="pointer-events-auto flex items-start gap-3 p-4 rounded-2xl shadow-xl backdrop-blur-md border text-xs transition-all"
+        class="pointer-events-auto relative overflow-hidden flex items-start gap-3 p-4 rounded-2xl shadow-xl backdrop-blur-md border text-xs transition-all"
         :class="{
           'bg-emerald-950/90 text-emerald-200 border-emerald-500/30 shadow-emerald-900/20': toast.type === 'success',
           'bg-rose-950/90 text-rose-200 border-rose-500/30 shadow-rose-900/20': toast.type === 'error',
@@ -53,6 +59,15 @@ const { toasts, dismissToast } = useToast()
           <p class="mt-0.5 text-slate-300 leading-relaxed break-words">
             {{ toast.message }}
           </p>
+          <button
+            v-if="toast.action"
+            type="button"
+            @click="runToastAction(toast.id)"
+            class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 border border-white/15 text-white font-bold text-[11px] transition-colors active:scale-95"
+          >
+            <i class="pi pi-replay text-[10px]"></i>
+            {{ toast.action.label }}
+          </button>
         </div>
 
         <!-- Close button -->
@@ -64,7 +79,31 @@ const { toasts, dismissToast } = useToast()
         >
           <i class="pi pi-times text-xs"></i>
         </button>
+
+        <!-- Auto-dismiss countdown bar -->
+        <span
+          v-if="toast.duration && toast.duration > 0"
+          class="absolute bottom-0 left-0 h-0.5 bg-white/20 rounded-full"
+          :style="{ animation: `toast-countdown ${toast.duration}ms linear forwards` }"
+        ></span>
       </div>
     </TransitionGroup>
   </div>
 </template>
+
+<style scoped>
+@keyframes toast-countdown {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [style*='toast-countdown'] {
+    animation-duration: 0s !important;
+  }
+}
+</style>
