@@ -77,12 +77,6 @@ const navGroups: NavGroup[] = [
         icon: 'pi pi-box',
         badge: null,
       },
-      {
-        to: '/categories',
-        label: 'Categories',
-        icon: 'pi pi-tags',
-        badge: null,
-      },
     ],
   },
   {

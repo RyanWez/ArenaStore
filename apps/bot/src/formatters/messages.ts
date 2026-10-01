@@ -6,10 +6,10 @@ import { escapeHtml, BOT_EMOJIS, tgEmoji } from "@arena/shared";
  * Formats the Welcome /start greeting message with animated custom emojis.
  */
 export function formatStartMessage(firstName: string): string {
-  return `${tgEmoji(BOT_EMOJIS.WAVE, "👋")} မင်္ဂလာပါ <b>${escapeHtml(firstName)}</b>,
+  return `${tgEmoji(BOT_EMOJIS.WAVE, "👋")} Hello, <b>${escapeHtml(firstName)}</b>,
 
 <b>Arena Store</b> မှ ကြိုဆိုပါတယ်ဗျာ! ${tgEmoji(BOT_EMOJIS.SPARKLES, "✨")}\n
-AI Tools များနှင့် Digital Products များကို မြန်မာကျပ်ငွေ (MMK) ဖြင့် လွယ်ကူလျင်မြန်စွာ ဝယ်ယူနိုင်ပါတယ် ခင်ဗျာ။\n
+AI Tools များနှင့် Digital Products များကို မြန်မာကျပ်ငွေ (MMK) ဖြင့် စျေးနှုန်းသက်သာစွာ ဝယ်ယူနိုင်ပါတယ် ခင်ဗျာ။\n
 ဝယ်ယူလိုသော ပစ္စည်း အမျိုးအစားများကို ရွေးချယ်ရန် အောက်ပါ ခလုတ်ကို နှိပ်ပါ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}`;
 }
 

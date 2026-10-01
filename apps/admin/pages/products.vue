@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useSupplierStatus } from '~/composables/useSupplierStatus'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
 import { useStoreSettings } from '~/composables/useStoreSettings'
 
-const { isSyncing, syncCatalog: runSync } = useSupplierStatus()
+const { supplierBalanceUsd, isSyncing, syncCatalog: runSync } = useSupplierStatus()
 const { getAuthHeaders } = useAuth()
 const { settings: storeSettings, fetchSettings: fetchStoreSettings } = useStoreSettings()
 const toast = useToast()
@@ -16,7 +16,6 @@ interface ProductItem {
   upstreamProductId: number
   nameMmk: string
   rawName: string
-  categoryName: string
   supplierPriceUsd: string
   retailPriceMmk: number
   sellableStock: number
@@ -28,7 +27,6 @@ interface ProductItem {
 }
 
 const searchQuery = ref('')
-const selectedCategory = ref('ALL')
 const stockFilter = ref('ALL')
 const isDrawerOpen = ref(false)
 const selectedProduct = ref<ProductItem | null>(null)
@@ -54,13 +52,12 @@ async function fetchProducts() {
     if (res.ok && Array.isArray(res.products)) {
       productsList.value = res.products.map((p: any) => {
         const usdCost = parseFloat(p.supplierPriceUsd) || 0
-        const isConstrained = usdCost > 1.0 // If supplier balance < cost
+        const isConstrained = usdCost > (parseFloat(supplierBalanceUsd.value) || 1.0)
         return {
           id: p.id,
           upstreamProductId: p.supplierProductId || p.upstreamProductId || p.id,
           nameMmk: p.nameMmk || p.name,
           rawName: p.name || p.nameMmk,
-          categoryName: p.categoryName || 'General',
           supplierPriceUsd: p.supplierPriceUsd || '0.00',
           retailPriceMmk: p.retailPriceMmk || 0,
           sellableStock: p.localStockLimit !== null ? p.localStockLimit : (p.supplierStock || 999),
@@ -94,28 +91,82 @@ onMounted(() => {
   fetchStoreSettings()
 })
 
-const categoriesList = computed(() => {
-  const cats = new Set(productsList.value.map((p) => p.categoryName).filter(Boolean))
-  return ['ALL', ...Array.from(cats)]
-})
-
 const filteredProducts = computed(() => {
   return productsList.value.filter((p) => {
     const matchesSearch =
       p.nameMmk.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
       p.rawName.toLowerCase().includes(searchQuery.value.toLowerCase())
 
-    const matchesCategory =
-      selectedCategory.value === 'ALL' || p.categoryName === selectedCategory.value
-
     const matchesStock =
       stockFilter.value === 'ALL' ||
       (stockFilter.value === 'IN_STOCK' && p.sellableStock > 0) ||
       (stockFilter.value === 'OUT_OF_STOCK' && p.sellableStock === 0)
 
-    return matchesSearch && matchesCategory && matchesStock
+    return matchesSearch && matchesStock
   })
 })
+
+// Pagination state
+const currentPage = ref(1)
+const pageSize = ref(10)
+
+// Reset to page 1 on filter or search change
+watch([searchQuery, stockFilter, pageSize], () => {
+  currentPage.value = 1
+})
+
+const totalFilteredCount = computed(() => filteredProducts.value.length)
+const totalPages = computed(() => Math.max(1, Math.ceil(totalFilteredCount.value / pageSize.value)))
+
+const paginatedProducts = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredProducts.value.slice(start, start + pageSize.value)
+})
+
+const showingRange = computed(() => {
+  if (totalFilteredCount.value === 0) return 'Showing 0-0 of 0'
+  const start = (currentPage.value - 1) * pageSize.value + 1
+  const end = Math.min(start + pageSize.value - 1, totalFilteredCount.value)
+  return `Showing ${start}-${end} of ${totalFilteredCount.value}`
+})
+
+const displayedPages = computed(() => {
+  const total = totalPages.value
+  const current = currentPage.value
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1)
+  }
+  const pages: number[] = []
+  if (current <= 4) {
+    for (let i = 1; i <= 5; i++) pages.push(i)
+    pages.push(-1)
+    pages.push(total)
+  } else if (current >= total - 3) {
+    pages.push(1)
+    pages.push(-1)
+    for (let i = total - 4; i <= total; i++) pages.push(i)
+  } else {
+    pages.push(1)
+    pages.push(-1)
+    pages.push(current - 1)
+    pages.push(current)
+    pages.push(current + 1)
+    pages.push(-1)
+    pages.push(total)
+  }
+  return pages
+})
+
+function goToPage(p: number) {
+  if (p >= 1 && p <= totalPages.value) {
+    currentPage.value = p
+  }
+}
+
+function cleanProductName(name: string): string {
+  if (!name) return ''
+  return name.replace(/\{pe:\d+\}/g, '').trim()
+}
 
 function openEditDrawer(product: ProductItem) {
   selectedProduct.value = product
@@ -222,8 +273,8 @@ async function toggleProductStatus(product: ProductItem) {
       </button>
     </div>
 
-    <!-- Search & Filter Controls -->
-    <div class="p-4 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
+    <!-- Search & Filter Controls (Sticky under Header) -->
+    <div class="sticky top-16 z-20 p-4 rounded-2xl bg-white/95 dark:bg-[#0b1220]/95 backdrop-blur-md border border-slate-200 dark:border-slate-800/80 shadow-md flex flex-col md:flex-row items-center justify-between gap-3 transition-all">
       <!-- Search Input -->
       <div class="relative w-full md:w-80">
         <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
@@ -238,16 +289,6 @@ async function toggleProductStatus(product: ProductItem) {
       <!-- Filters -->
       <div class="flex items-center gap-3 w-full md:w-auto">
         <select
-          v-model="selectedCategory"
-          class="px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        >
-          <option value="ALL">All Categories</option>
-          <option value="AI & Developer">AI & Developer</option>
-          <option value="Design & Creative">Design & Creative</option>
-          <option value="Gaming">Gaming</option>
-        </select>
-
-        <select
           v-model="stockFilter"
           class="px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
         >
@@ -258,19 +299,19 @@ async function toggleProductStatus(product: ProductItem) {
       </div>
     </div>
 
-    <!-- Products Table -->
-    <div class="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm overflow-hidden">
-      <div class="overflow-x-auto">
+    <!-- Products Table & Pagination Container -->
+    <div class="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800/80 shadow-sm flex flex-col overflow-hidden">
+      <!-- Fixed Max-Height Scrollable Table Viewport -->
+      <div class="overflow-x-auto overflow-y-auto max-h-[calc(100vh-270px)] min-h-[380px] relative scrollbar-thin">
         <table class="w-full text-left border-collapse text-sm">
-          <thead>
-            <tr class="border-b border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase bg-slate-50/50 dark:bg-slate-950/40">
-              <th class="py-3 px-4">Product Name</th>
-              <th class="py-3 px-4">Category</th>
-              <th class="py-3 px-4">USD Cost</th>
-              <th class="py-3 px-4">MMK Retail Price</th>
-              <th class="py-3 px-4">Sellable Stock</th>
-              <th class="py-3 px-4">Status</th>
-              <th class="py-3 px-4 text-right">Actions</th>
+          <thead class="sticky top-0 z-10 bg-slate-50 dark:bg-[#0e172a] shadow-sm border-b border-slate-200 dark:border-slate-800">
+            <tr class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a]">Product Name</th>
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a]">USD Cost</th>
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a]">MMK Retail Price</th>
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a]">Sellable Stock</th>
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a]">Status</th>
+              <th class="py-3 px-4 bg-slate-50 dark:bg-[#0e172a] text-right">Actions</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 dark:divide-slate-800/60">
@@ -278,7 +319,6 @@ async function toggleProductStatus(product: ProductItem) {
             <template v-if="isLoading">
               <tr v-for="n in 5" :key="'prod-skel-' + n">
                 <td class="py-3.5 px-4"><Skeleton height="1.1rem" width="160px" class="mb-1.5" border-radius="6px" /><Skeleton height="0.9rem" width="100px" border-radius="6px" /></td>
-                <td class="py-3.5 px-4"><Skeleton height="1.1rem" width="100px" border-radius="6px" /></td>
                 <td class="py-3.5 px-4"><Skeleton height="1.1rem" width="60px" border-radius="6px" /></td>
                 <td class="py-3.5 px-4"><Skeleton height="1.2rem" width="90px" border-radius="6px" /></td>
                 <td class="py-3.5 px-4"><Skeleton height="1.1rem" width="70px" border-radius="6px" /></td>
@@ -286,94 +326,157 @@ async function toggleProductStatus(product: ProductItem) {
                 <td class="py-3.5 px-4 text-right"><Skeleton height="1.6rem" width="65px" class="ml-auto" border-radius="8px" /></td>
               </tr>
             </template>
+            <!-- Empty state -->
+            <template v-else-if="paginatedProducts.length === 0">
+              <tr>
+                <td colspan="6" class="py-12 text-center text-slate-400">
+                  <i class="pi pi-inbox text-3xl mb-2 text-slate-400"></i>
+                  <p class="text-sm">No products found matching your filters.</p>
+                </td>
+              </tr>
+            </template>
+            <!-- Product Rows -->
             <template v-else>
               <tr
-                v-for="p in filteredProducts"
+                v-for="p in paginatedProducts"
                 :key="p.id"
                 class="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
               >
-              <!-- Product Name -->
-              <td class="py-3.5 px-4">
-                <div class="font-medium text-slate-900 dark:text-white">
-                  {{ p.nameMmk }}
-                </div>
-                <div class="text-[11px] text-slate-400 font-mono mt-0.5">
-                  ID: {{ p.upstreamProductId }} · {{ p.deliveryType }}
-                </div>
-              </td>
+                <!-- Product Name -->
+                <td class="py-3.5 px-4">
+                  <div class="font-medium text-slate-900 dark:text-white">
+                    {{ cleanProductName(p.nameMmk) }}
+                  </div>
+                  <div class="text-[11px] text-slate-400 font-mono mt-0.5">
+                    ID: {{ p.upstreamProductId }} · {{ p.deliveryType }}
+                  </div>
+                </td>
 
-              <!-- Category -->
-              <td class="py-3.5 px-4 text-xs text-slate-600 dark:text-slate-300">
-                {{ p.categoryName }}
-              </td>
+                <!-- Upstream USD Cost -->
+                <td class="py-3.5 px-4 font-mono font-medium text-slate-700 dark:text-slate-300">
+                  ${{ p.supplierPriceUsd }}
+                </td>
 
-              <!-- Upstream USD Cost -->
-              <td class="py-3.5 px-4 font-mono font-medium text-slate-700 dark:text-slate-300">
-                ${{ p.supplierPriceUsd }}
-              </td>
+                <!-- MMK Retail Price -->
+                <td class="py-3.5 px-4">
+                  <div class="font-bold text-slate-900 dark:text-white">
+                    {{ p.retailPriceMmk.toLocaleString() }} Ks
+                  </div>
+                  <div class="text-[11px] text-emerald-600 dark:text-emerald-400">
+                    Margin: ~{{ Math.round(((p.retailPriceMmk - (parseFloat(p.supplierPriceUsd) * (storeSettings.usdToMmkRate || 5000))) / (parseFloat(p.supplierPriceUsd) * (storeSettings.usdToMmkRate || 5000))) * 100) }}%
+                  </div>
+                </td>
 
-              <!-- MMK Retail Price -->
-              <td class="py-3.5 px-4">
-                <div class="font-bold text-slate-900 dark:text-white">
-                  {{ p.retailPriceMmk.toLocaleString() }} Ks
-                </div>
-                <div class="text-[11px] text-emerald-600 dark:text-emerald-400">
-                  Margin: ~{{ Math.round(((p.retailPriceMmk - (parseFloat(p.supplierPriceUsd) * (storeSettings.usdToMmkRate || 5000))) / (parseFloat(p.supplierPriceUsd) * (storeSettings.usdToMmkRate || 5000))) * 100) }}%
-                </div>
-              </td>
+                <!-- Sellable Stock with Wallet Warning -->
+                <td class="py-3.5 px-4">
+                  <div class="flex items-center gap-2">
+                    <span
+                      class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                      :class="p.sellableStock > 0 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20'"
+                    >
+                      {{ p.sellableStock }} available
+                    </span>
+                    <span
+                      v-if="p.isWalletConstrained && p.supplierStock > p.sellableStock"
+                      class="text-[11px] text-amber-500 cursor-help"
+                      title="Constrained by XPro wallet balance ($1.00 USD)"
+                    >
+                      <i class="pi pi-exclamation-triangle"></i>
+                    </span>
+                  </div>
+                  <div class="text-[11px] text-slate-400 mt-0.5">
+                    Supplier: {{ p.supplierStock }} in stock
+                  </div>
+                </td>
 
-              <!-- Sellable Stock with Wallet Warning -->
-              <td class="py-3.5 px-4">
-                <div class="flex items-center gap-2">
-                  <span
-                    class="px-2 py-0.5 rounded-full text-xs font-semibold"
-                    :class="p.sellableStock > 0 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20'"
+                <!-- Active Status Toggle -->
+                <td class="py-3.5 px-4">
+                  <button
+                    type="button"
+                    @click="toggleProductStatus(p)"
+                    class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+                    :class="p.isActive ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'"
                   >
-                    {{ p.sellableStock }} available
-                  </span>
-                  <span
-                    v-if="p.isWalletConstrained && p.supplierStock > p.sellableStock"
-                    class="text-[11px] text-amber-500 cursor-help"
-                    title="Constrained by XPro wallet balance ($1.00 USD)"
+                    <span
+                      class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out"
+                      :class="p.isActive ? 'translate-x-4' : 'translate-x-0'"
+                    ></span>
+                  </button>
+                </td>
+
+                <!-- Action Edit Button -->
+                <td class="py-3.5 px-4 text-right">
+                  <button
+                    type="button"
+                    @click="openEditDrawer(p)"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 transition-colors"
                   >
-                    <i class="pi pi-exclamation-triangle"></i>
-                  </span>
-                </div>
-                <div class="text-[11px] text-slate-400 mt-0.5">
-                  Supplier: {{ p.supplierStock }} in stock
-                </div>
-              </td>
-
-              <!-- Active Status Toggle -->
-              <td class="py-3.5 px-4">
-                <button
-                  type="button"
-                  @click="toggleProductStatus(p)"
-                  class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
-                  :class="p.isActive ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'"
-                >
-                  <span
-                    class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out"
-                    :class="p.isActive ? 'translate-x-4' : 'translate-x-0'"
-                  ></span>
-                </button>
-              </td>
-
-              <!-- Action Edit Button -->
-              <td class="py-3.5 px-4 text-right">
-                <button
-                  type="button"
-                  @click="openEditDrawer(p)"
-                  class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 transition-colors"
-                >
-                  <i class="pi pi-pencil text-[11px]"></i>
-                  <span>Edit Pricing</span>
-                </button>
-              </td>
-            </tr>
-          </template>
-        </tbody>
+                    <i class="pi pi-pencil text-[11px]"></i>
+                    <span>Edit Pricing</span>
+                  </button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
         </table>
+      </div>
+
+      <!-- Pagination Footer matching Screenshot 2 -->
+      <div class="p-3.5 px-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
+        <!-- Left: Showing X-Y of Z -->
+        <div class="font-medium text-slate-600 dark:text-slate-400">
+          {{ showingRange }}
+        </div>
+
+        <!-- Right: Pagination Buttons and Page Size Selector -->
+        <div class="flex items-center gap-1.5 sm:gap-2">
+          <!-- Previous Button -->
+          <button
+            type="button"
+            @click="goToPage(currentPage - 1)"
+            :disabled="currentPage === 1"
+            class="w-7 h-7 rounded-lg border border-slate-200 dark:border-slate-700/80 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors text-slate-700 dark:text-slate-300"
+          >
+            <i class="pi pi-chevron-left text-[10px]"></i>
+          </button>
+
+          <!-- Page Numbers -->
+          <template v-for="(page, idx) in displayedPages" :key="'page-' + idx">
+            <span v-if="page === -1" class="px-1 text-slate-400">...</span>
+            <button
+              v-else
+              type="button"
+              @click="goToPage(page)"
+              class="min-w-7 h-7 px-1.5 rounded-lg text-xs font-semibold flex items-center justify-center transition-colors"
+              :class="currentPage === page ? 'bg-emerald-600 text-white shadow-sm' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'"
+            >
+              {{ page }}
+            </button>
+          </template>
+
+          <!-- Next Button -->
+          <button
+            type="button"
+            @click="goToPage(currentPage + 1)"
+            :disabled="currentPage === totalPages"
+            class="w-7 h-7 rounded-lg border border-slate-200 dark:border-slate-700/80 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors text-slate-700 dark:text-slate-300"
+          >
+            <i class="pi pi-chevron-right text-[10px]"></i>
+          </button>
+
+          <!-- Page Size Dropdown -->
+          <div class="ml-2">
+            <select
+              v-model="pageSize"
+              class="px-2.5 py-1 rounded-lg text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            >
+              <option :value="10">10 / page</option>
+              <option :value="20">20 / page</option>
+              <option :value="50">50 / page</option>
+              <option :value="100">100 / page</option>
+            </select>
+          </div>
+        </div>
       </div>
     </div>
 

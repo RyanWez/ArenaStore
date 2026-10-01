@@ -20,6 +20,7 @@ export interface BotCategory {
 
 export interface BotProduct {
   id: number;
+  upstreamProductId?: number;
   categoryId: number;
   name: string;
   cleanName: string;
@@ -132,6 +133,7 @@ class BotCatalogService {
 
       return {
         id: p.productId ?? p.id,
+        upstreamProductId: p.productId ?? p.id,
         categoryId: p.categoryId,
         name: p.name,
         cleanName: parsed.cleanText,
@@ -165,7 +167,8 @@ class BotCatalogService {
 
       const prodRows = await db
         .select({
-          id: products.upstreamProductId,
+          id: products.id,
+          upstreamProductId: products.upstreamProductId,
           categoryId: products.categoryId,
           nameMmk: products.nameMmk,
           descriptionMmk: products.descriptionMmk,
@@ -204,6 +207,7 @@ class BotCatalogService {
 
         return {
           id: p.id,
+          upstreamProductId: p.upstreamProductId,
           categoryId: p.categoryId || 1,
           name: displayName,
           cleanName: parsed.cleanText,
@@ -266,7 +270,11 @@ class BotCatalogService {
 
   async getCategories(): Promise<BotCategory[]> {
     await this.ensureFreshCache();
-    return this.categoriesCache || [];
+    const cats = this.categoriesCache || [];
+    const prods = this.productsCache || [];
+    // Only return categories that actually have active products
+    const activeCatIds = new Set(prods.map((p) => p.categoryId));
+    return cats.filter((c) => activeCatIds.has(c.id));
   }
 
   async getCategoryById(categoryId: number): Promise<BotCategory | null> {

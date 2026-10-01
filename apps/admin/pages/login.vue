@@ -112,7 +112,7 @@ async function handleLogin() {
       <!-- Footer Info -->
       <div class="mt-8 pt-6 border-t border-slate-800/80 text-center">
         <p class="text-[11px] text-slate-500 font-mono">
-          ArenaStore v2.0 • Secure Neon PostgreSQL & Redis Session
+          ArenaStore v2.0
         </p>
       </div>
     </div>

@@ -62,14 +62,28 @@ export class CatalogService {
 
   /**
    * Synchronizes all products from upstream supplier into local database.
-   * Calculates initial retail MMK prices for newly discovered products.
+   * Calculates initial retail MMK prices for newly discovered products and maps category relations.
    */
   async syncProducts(exchangeRateMmk: number = config.DEFAULT_EXCHANGE_RATE_MMK): Promise<number> {
     const { products: upstreamProducts } = await xproClient.getProducts({ limit: 100 });
     const db = getDb();
     let syncedCount = 0;
 
+    // Build lookup maps for categories to link foreign key accurately
+    const allCategories = await db.select().from(categories);
+    const catByUpstreamId = new Map<number, number>();
+    const catByName = new Map<string, number>();
+    for (const c of allCategories) {
+      if (c.upstreamCategoryId !== null && c.upstreamCategoryId !== undefined) {
+        catByUpstreamId.set(c.upstreamCategoryId, c.id);
+      }
+      catByName.set(c.name.trim().toLowerCase(), c.id);
+    }
+
     for (const item of upstreamProducts) {
+      const upstreamId = Number((item as any).productId ?? (item as any).id);
+      if (!upstreamId || isNaN(upstreamId)) continue;
+
       const usdPrice = item.yourPrice !== undefined ? item.yourPrice : item.price;
       const initialPricing = calculateRetailMmk({
         upstreamUsdCost: usdPrice,
@@ -77,13 +91,26 @@ export class CatalogService {
         marginPercentage: config.DEFAULT_MARGIN_PERCENTAGE,
       });
 
-      // Upsert local product
+      // Match category from upstream category ID or category name
+      let matchedCategoryId: number | null = null;
+      const rawCatId = (item as any).categoryId ?? (typeof (item as any).category === "number" ? (item as any).category : null);
+      if (rawCatId !== null && rawCatId !== undefined && catByUpstreamId.has(Number(rawCatId))) {
+        matchedCategoryId = catByUpstreamId.get(Number(rawCatId))!;
+      } else if ((item as any).category) {
+        const catStr = String((item as any).category).trim().toLowerCase();
+        if (catByName.has(catStr)) {
+          matchedCategoryId = catByName.get(catStr)!;
+        }
+      }
+
+      // Upsert local product with proper category foreign key
       const [localProduct] = await db
         .insert(products)
         .values({
-          upstreamProductId: item.productId,
+          upstreamProductId: upstreamId,
+          categoryId: matchedCategoryId,
           nameMmk: item.name,
-          descriptionMmk: item.description,
+          descriptionMmk: item.description || null,
           retailPriceMmk: initialPricing.retailPriceMmk,
           localStockLimit: null,
           isActive: true,
@@ -91,6 +118,9 @@ export class CatalogService {
         .onConflictDoUpdate({
           target: products.upstreamProductId,
           set: {
+            categoryId: matchedCategoryId,
+            nameMmk: item.name,
+            descriptionMmk: item.description || null,
             updatedAt: new Date(),
           },
         })
@@ -101,24 +131,25 @@ export class CatalogService {
         .insert(productSupplierSnapshots)
         .values({
           productId: localProduct.id,
-          upstreamProductId: item.productId,
+          upstreamProductId: upstreamId,
           rawName: item.name,
-          rawDescription: item.description,
-          deliveryType: item.deliveryType || "CREDENTIALS",
+          rawDescription: item.description || null,
+          deliveryType: (item as any).deliveryType || "CREDENTIALS",
           supplierPriceUsd: String(usdPrice),
-          supplierStock: item.stock,
-          inStock: item.inStock,
+          supplierStock: item.stock ?? 0,
+          inStock: item.inStock !== false && (item.stock ?? 0) > 0,
           syncedAt: new Date(),
         })
         .onConflictDoUpdate({
           target: productSupplierSnapshots.productId,
           set: {
+            upstreamProductId: upstreamId,
             rawName: item.name,
-            rawDescription: item.description,
-            deliveryType: item.deliveryType || "CREDENTIALS",
+            rawDescription: item.description || null,
+            deliveryType: (item as any).deliveryType || "CREDENTIALS",
             supplierPriceUsd: String(usdPrice),
-            supplierStock: item.stock,
-            inStock: item.inStock,
+            supplierStock: item.stock ?? 0,
+            inStock: item.inStock !== false && (item.stock ?? 0) > 0,
             syncedAt: new Date(),
           },
         });

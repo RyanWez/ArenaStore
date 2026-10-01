@@ -24,8 +24,6 @@ const pageTitle = computed(() => {
       return 'XPro Supplier'
     case '/products':
       return 'Products'
-    case '/categories':
-      return 'Categories'
     case '/orders':
       return 'All Orders'
     case '/payments':
