@@ -24,12 +24,24 @@ interface ProductItem {
   descriptionMmk: string
   supplierPriceUsd: string
   retailPriceMmk: number
-  sellableStock: number
   supplierStock: number
   localStockLimit: number | null
   isActive: boolean
-  isWalletConstrained: boolean
   deliveryType: string
+}
+
+function getProductWalletCapacity(product: ProductItem): number {
+  const usdCost = parseFloat(product.supplierPriceUsd) || 0
+  const walletBal = parseFloat(supplierBalanceUsd.value) || 0
+  if (usdCost <= 0) return product.supplierStock
+  return Math.floor(walletBal / usdCost)
+}
+
+function getProductSellableStock(product: ProductItem): number {
+  const walletCap = getProductWalletCapacity(product)
+  const safeSupplierStock = product.supplierStock
+  const safeLocalLimit = product.localStockLimit !== null && product.localStockLimit !== undefined ? product.localStockLimit : Infinity
+  return Math.max(0, Math.min(safeSupplierStock, walletCap, safeLocalLimit))
 }
 
 const searchQuery = ref('')
@@ -73,7 +85,7 @@ const categoriesList = computed(() => {
 
 const activeCount = computed(() => productsList.value.filter((p) => p.isActive).length)
 const pausedCount = computed(() => productsList.value.filter((p) => !p.isActive).length)
-const inStockCount = computed(() => productsList.value.filter((p) => p.sellableStock > 0).length)
+const inStockCount = computed(() => productsList.value.filter((p) => getProductSellableStock(p) > 0).length)
 
 async function fetchProducts(isSilent = false) {
   if (!isSilent) {
@@ -89,26 +101,20 @@ async function fetchProducts(isSilent = false) {
     })
 
     if (res.ok && Array.isArray(res.products)) {
-      productsList.value = res.products.map((p: any) => {
-        const usdCost = parseFloat(p.supplierPriceUsd) || 0
-        const isConstrained = usdCost > (parseFloat(supplierBalanceUsd.value) || 1.0)
-        return {
-          id: p.id,
-          upstreamProductId: p.supplierProductId || p.upstreamProductId || p.id,
-          nameMmk: p.nameMmk || p.name,
-          rawName: p.name || p.nameMmk,
-          categoryName: p.categoryName || 'General',
-          descriptionMmk: p.descriptionMmk || p.description || '',
-          supplierPriceUsd: p.supplierPriceUsd || '0.00',
-          retailPriceMmk: p.retailPriceMmk || 0,
-          sellableStock: p.localStockLimit !== null ? p.localStockLimit : (p.supplierStock || 999),
-          supplierStock: p.supplierStock || 999,
-          localStockLimit: p.localStockLimit,
-          isActive: p.isActive !== false,
-          isWalletConstrained: isConstrained,
-          deliveryType: p.deliveryType || 'CREDENTIALS',
-        }
-      })
+      productsList.value = res.products.map((p: any) => ({
+        id: p.id,
+        upstreamProductId: p.supplierProductId || p.upstreamProductId || p.id,
+        nameMmk: p.nameMmk || p.name,
+        rawName: p.name || p.nameMmk,
+        categoryName: p.categoryName || 'General',
+        descriptionMmk: p.descriptionMmk || p.description || '',
+        supplierPriceUsd: p.supplierPriceUsd || '0.00',
+        retailPriceMmk: p.retailPriceMmk || 0,
+        supplierStock: p.supplierStock ?? 999,
+        localStockLimit: p.localStockLimit,
+        isActive: p.isActive !== false,
+        deliveryType: p.deliveryType || 'CREDENTIALS',
+      }))
     }
   } catch (err: any) {
     if (!isSilent) {
@@ -149,8 +155,8 @@ const filteredProducts = computed(() => {
 
     const matchesStock =
       stockFilter.value === 'ALL' ||
-      (stockFilter.value === 'IN_STOCK' && p.sellableStock > 0) ||
-      (stockFilter.value === 'OUT_OF_STOCK' && p.sellableStock === 0)
+      (stockFilter.value === 'IN_STOCK' && getProductSellableStock(p) > 0) ||
+      (stockFilter.value === 'OUT_OF_STOCK' && getProductSellableStock(p) === 0)
 
     const matchesStatus =
       statusFilter.value === 'ALL' ||
@@ -582,14 +588,21 @@ async function executeConfirmAction() {
         </div>
 
         <!-- Quick Bulk Protection Bar (Allows Admin to Pause/Activate products in 1 click) -->
-        <div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/60 text-xs">
-          <div class="flex items-center gap-2 text-slate-500 dark:text-slate-400">
-            <i class="pi pi-info-circle text-[11px] text-indigo-500"></i>
-            <span>
-              Telegram Store Status:
-              <strong class="text-emerald-600 dark:text-emerald-400">{{ activeCount }} selling</strong> ·
-              <span class="text-slate-400">{{ pausedCount }} paused</span>
-            </span>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/60 text-xs">
+          <div class="flex flex-wrap items-center gap-2 text-slate-500 dark:text-slate-400">
+            <div class="flex items-center gap-1.5">
+              <i class="pi pi-info-circle text-[11px] text-indigo-500"></i>
+              <span>
+                Telegram Store:
+                <strong class="text-emerald-600 dark:text-emerald-400">{{ activeCount }} selling</strong> ·
+                <span class="text-slate-400">{{ pausedCount }} paused</span>
+              </span>
+            </div>
+            <span class="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
+            <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-medium">
+              <i class="pi pi-wallet text-[11px]"></i>
+              <span>Supplier Wallet: <strong class="font-mono">${{ supplierBalanceUsd }}</strong></span>
+            </div>
           </div>
 
           <div class="flex items-center gap-2">
@@ -632,8 +645,9 @@ async function executeConfirmAction() {
             <tr class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               <th class="py-3 px-4">Product Name & Category</th>
               <th class="py-3 px-4">USD Cost</th>
+              <th class="py-3 px-4">Supplier Stock</th>
               <th class="py-3 px-4">MMK Retail Price</th>
-              <th class="py-3 px-4">Sellable Stock</th>
+              <th class="py-3 px-4">Our Sellable Stock</th>
               <th class="py-3 px-4">Storefront Status</th>
               <th class="py-3 px-4 text-right">Actions</th>
             </tr>
@@ -646,9 +660,10 @@ async function executeConfirmAction() {
             <template v-if="isLoading">
               <tr v-for="n in 5" :key="'prod-skel-' + n" class="animate-pulse">
                 <td class="py-3.5 px-4"><div class="h-4 w-40 rounded bg-slate-200 dark:bg-slate-800 mb-1.5"></div><div class="h-3 w-20 rounded bg-slate-200 dark:bg-slate-800"></div></td>
-                <td class="py-3.5 px-4"><div class="h-4 w-16 rounded bg-slate-200 dark:bg-slate-800"></div></td>
-                <td class="py-3.5 px-4"><div class="h-4 w-24 rounded bg-slate-200 dark:bg-slate-800"></div></td>
+                <td class="py-3.5 px-4"><div class="h-4 w-14 rounded bg-slate-200 dark:bg-slate-800"></div></td>
                 <td class="py-3.5 px-4"><div class="h-4 w-20 rounded bg-slate-200 dark:bg-slate-800"></div></td>
+                <td class="py-3.5 px-4"><div class="h-4 w-24 rounded bg-slate-200 dark:bg-slate-800"></div></td>
+                <td class="py-3.5 px-4"><div class="h-4 w-24 rounded bg-slate-200 dark:bg-slate-800"></div></td>
                 <td class="py-3.5 px-4"><div class="h-5 w-12 rounded-full bg-slate-200 dark:bg-slate-800"></div></td>
                 <td class="py-3.5 px-4 text-right"><div class="h-7 w-20 rounded-xl bg-slate-200 dark:bg-slate-800 ml-auto"></div></td>
               </tr>
@@ -656,7 +671,7 @@ async function executeConfirmAction() {
 
             <!-- Empty state -->
             <tr v-else-if="paginatedProducts.length === 0">
-              <td colspan="6" class="py-14 text-center">
+              <td colspan="7" class="py-14 text-center">
                 <div class="flex flex-col items-center justify-center max-w-sm mx-auto">
                   <div class="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 text-2xl mb-3">
                     <i class="pi pi-box"></i>
@@ -707,12 +722,22 @@ async function executeConfirmAction() {
                 </td>
 
                 <!-- Upstream USD Cost -->
-                <td class="py-3.5 px-4 font-mono font-medium text-slate-700 dark:text-slate-300">
+                <td class="py-3.5 px-4 font-mono font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">
                   ${{ p.supplierPriceUsd }}
                 </td>
 
+                <!-- Upstream Physical Supplier Stock (Wholesale Side) -->
+                <td class="py-3.5 px-4 whitespace-nowrap">
+                  <div class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60 font-mono">
+                    {{ p.supplierStock }} in stock
+                  </div>
+                  <div class="text-[10px] text-slate-400 mt-0.5">
+                    Upstream
+                  </div>
+                </td>
+
                 <!-- MMK Retail Price & Clear Positive/Negative Margin -->
-                <td class="py-3.5 px-4">
+                <td class="py-3.5 px-4 whitespace-nowrap">
                   <div class="font-bold text-slate-900 dark:text-white font-mono">
                     {{ p.retailPriceMmk.toLocaleString() }} Ks
                   </div>
@@ -724,25 +749,35 @@ async function executeConfirmAction() {
                   </div>
                 </td>
 
-                <!-- Sellable Stock with Wallet Warning -->
-                <td class="py-3.5 px-4">
-                  <div class="flex items-center gap-2">
+                <!-- Our Sellable Stock (Wallet Affordable - Retail Side) -->
+                <td class="py-3.5 px-4 whitespace-nowrap">
+                  <div class="flex items-center gap-1.5">
                     <span
-                      class="px-2.5 py-0.5 rounded-full text-xs font-semibold"
-                      :class="p.sellableStock > 0 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20'"
+                      class="px-2.5 py-0.5 rounded-full text-xs font-bold font-mono"
+                      :class="getProductSellableStock(p) > 0 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'"
                     >
-                      {{ p.sellableStock }} available
+                      {{ getProductSellableStock(p) }} available
                     </span>
                     <span
-                      v-if="p.isWalletConstrained && p.supplierStock > p.sellableStock"
+                      v-if="getProductWalletCapacity(p) < p.supplierStock && p.supplierStock > 0"
                       class="text-[11px] text-amber-500 cursor-help"
-                      title="Constrained by XPro wallet balance ($1.00 USD)"
+                      :title="`Constrained by XPro wallet balance ($${supplierBalanceUsd} USD). Can only fulfill ${getProductWalletCapacity(p)} units.`"
                     >
                       <i class="pi pi-exclamation-triangle"></i>
                     </span>
                   </div>
-                  <div class="text-[11px] text-slate-400 mt-0.5">
-                    Supplier: {{ p.supplierStock }} in stock
+                  <div v-if="getProductSellableStock(p) === 0 && getProductWalletCapacity(p) === 0" class="text-[11px] text-rose-500 dark:text-rose-400 font-medium mt-0.5 flex items-center gap-1">
+                    <i class="pi pi-wallet text-[10px]"></i>
+                    <span>Wallet low (${{ (parseFloat(supplierBalanceUsd) || 0).toFixed(2) }} vs ${{ p.supplierPriceUsd }})</span>
+                  </div>
+                  <div v-else-if="getProductWalletCapacity(p) < p.supplierStock" class="text-[11px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">
+                    Wallet cap: {{ getProductWalletCapacity(p) }} units
+                  </div>
+                  <div v-else-if="p.localStockLimit !== null" class="text-[11px] text-indigo-400 mt-0.5">
+                    Local limit: {{ p.localStockLimit }}
+                  </div>
+                  <div v-else class="text-[11px] text-slate-400 mt-0.5">
+                    Full supplier stock
                   </div>
                 </td>
 
@@ -968,6 +1003,26 @@ async function executeConfirmAction() {
                   class="w-full px-3.5 py-2.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
                   style="outline: none !important; box-shadow: none !important;"
                 />
+              </div>
+
+              <!-- Live Stock Availability Preview Card -->
+              <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="text-slate-500 dark:text-slate-400">Supplier Warehouse Stock:</span>
+                  <span class="font-mono font-bold text-slate-700 dark:text-slate-300">{{ selectedProduct.supplierStock }} in stock</span>
+                </div>
+                <div class="flex items-center justify-between text-xs">
+                  <span class="text-slate-500 dark:text-slate-400">Wallet Capacity (${{ supplierBalanceUsd }} balance):</span>
+                  <span class="font-mono font-bold" :class="getProductWalletCapacity(selectedProduct) > 0 ? 'text-emerald-500' : 'text-rose-500'">
+                    {{ getProductWalletCapacity(selectedProduct) }} units affordable
+                  </span>
+                </div>
+                <div class="pt-2 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-xs font-semibold">
+                  <span class="text-slate-700 dark:text-slate-200">Current Sellable on Telegram Bot:</span>
+                  <span class="font-mono font-bold" :class="getProductSellableStock(selectedProduct) > 0 ? 'text-emerald-500' : 'text-rose-500'">
+                    {{ getProductSellableStock(selectedProduct) }} available
+                  </span>
+                </div>
               </div>
 
               <!-- Allow Customer Purchases (Storefront Switch) -->

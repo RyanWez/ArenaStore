@@ -153,6 +153,45 @@ class BotCatalogService {
     return { categories, products };
   }
 
+  private lastBalanceFetchedAt = 0;
+  private cachedWalletBalanceUsd = 1.0;
+
+  /**
+   * Fetches the latest Upstream Partner wallet balance to constrain sellable stock.
+   */
+  private async getSupplierWalletBalance(): Promise<number> {
+    const now = Date.now();
+    if (now - this.lastBalanceFetchedAt < this.CACHE_TTL_MS) {
+      return this.cachedWalletBalanceUsd;
+    }
+
+    const baseUrl = botConfig.UPSTREAM_BASE_URL.replace(/\/+$/, "");
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+    };
+    if (botConfig.UPSTREAM_API_KEY) {
+      headers["Authorization"] = `Bearer ${botConfig.UPSTREAM_API_KEY}`;
+    }
+
+    try {
+      const balanceRes = await fetch(`${baseUrl}/balance`, {
+        headers,
+        signal: AbortSignal.timeout(2500),
+      });
+      if (balanceRes.ok) {
+        const balJson: any = await balanceRes.json();
+        if (balJson.ok && balJson.balance !== undefined) {
+          this.cachedWalletBalanceUsd = parseFloat(String(balJson.balance)) || 0;
+          this.lastBalanceFetchedAt = now;
+          return this.cachedWalletBalanceUsd;
+        }
+      }
+    } catch {
+      // Keep cached or default fallback
+    }
+    return this.cachedWalletBalanceUsd;
+  }
+
   /**
    * Fetches catalog directly from PostgreSQL database where admin price overrides live.
    */
@@ -187,6 +226,9 @@ class BotCatalogService {
 
       if (prodRows.length === 0) return null;
 
+      // Query wallet balance from upstream to accurately calculate sellable capacity
+      const walletBalanceUsd = await this.getSupplierWalletBalance();
+
       const catList: BotCategory[] = catRows.map((c) => {
         const parsed = parseCustomEmoji(c.name || `Category ${c.id}`);
         return {
@@ -203,7 +245,15 @@ class BotCatalogService {
         const formattedDesc = p.descriptionMmk
           ? formatTelegramCustomEmoji(p.descriptionMmk, "✨")
           : "";
-        const stock = p.localStockLimit !== null ? p.localStockLimit : (p.supplierStock || 999);
+
+        const stockCalc = calculateSellableStock({
+          supplierStock: p.supplierStock ?? 999,
+          supplierWalletBalanceUsd: walletBalanceUsd,
+          unitCostUsd: p.supplierPriceUsd || "0.00",
+          localLimit: p.localStockLimit,
+        });
+
+        const stock = stockCalc.sellableStock;
 
         return {
           id: p.id,

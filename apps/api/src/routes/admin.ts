@@ -1,5 +1,10 @@
 import { FastifyInstance } from "fastify";
-import { ReviewPaymentSchema, UpdateProductPricingSchema, calculateRetailMmk } from "@arena/shared";
+import {
+  ReviewPaymentSchema,
+  UpdateProductPricingSchema,
+  calculateRetailMmk,
+  calculateSellableStock,
+} from "@arena/shared";
 import {
   getDb,
   orders,
@@ -287,9 +292,25 @@ export async function adminRoutes(server: FastifyInstance) {
       .leftJoin(productSupplierSnapshots, eq(products.id, productSupplierSnapshots.productId))
       .orderBy(products.id);
 
-    return {
-      ok: true,
-      products: productRows.map((p) => ({
+    let walletBalanceUsd = "1.00";
+    try {
+      const balRes = await xproClient.getBalance(1500, 0);
+      if (balRes.ok) {
+        walletBalanceUsd = balRes.balance;
+      }
+    } catch {
+      // Fallback
+    }
+
+    const mappedProducts = productRows.map((p) => {
+      const stockCalc = calculateSellableStock({
+        supplierStock: p.supplierStock ?? 999,
+        supplierWalletBalanceUsd: walletBalanceUsd,
+        unitCostUsd: p.supplierPriceUsd || "0.00",
+        localLimit: p.localStockLimit,
+      });
+
+      return {
         id: p.id,
         supplierProductId: p.upstreamProductId,
         categoryId: p.categoryId,
@@ -302,13 +323,22 @@ export async function adminRoutes(server: FastifyInstance) {
         retailPriceMmk: p.retailPriceMmk,
         pricingMode: "CUSTOM_OVERRIDE",
         supplierStock: p.supplierStock ?? 999,
+        walletCapacity: stockCalc.walletCapacity,
+        sellableStock: stockCalc.sellableStock,
+        isWalletConstrained: stockCalc.isWalletConstrained,
         localStockLimit: p.localStockLimit,
         stockSyncStatus: p.inStock ? "SYNCED" : "OUT_OF_STOCK",
         deliveryType: p.deliveryType || "CREDENTIALS",
         isActive: p.isActive,
         syncStatus: "SYNCED",
         updatedAt: p.updatedAt,
-      })),
+      };
+    });
+
+    return {
+      ok: true,
+      walletBalanceUsd,
+      products: mappedProducts,
     };
   });
 
