@@ -95,6 +95,12 @@ const navGroups: NavGroup[] = [
         icon: 'pi pi-wallet',
         badge: { type: 'pill', text: 'Review', color: 'amber' },
       },
+      {
+        to: '/customers',
+        label: 'Customer Wallets',
+        icon: 'pi pi-users',
+        badge: null,
+      },
     ],
   },
   {

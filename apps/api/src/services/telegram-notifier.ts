@@ -136,3 +136,36 @@ export async function notifyOrderCredentialsResent(params: {
   return sendTelegramMessage(telegramId, text);
 }
 
+/**
+ * Sends a wallet balance adjustment notification to the customer on Telegram.
+ */
+export async function notifyBalanceAdjusted(params: {
+  telegramId: string;
+  action: "CREDIT" | "DEBIT";
+  amountMmk: number;
+  newBalanceMmk: number;
+  notes?: string;
+}): Promise<boolean> {
+  const { telegramId, action, amountMmk, newBalanceMmk, notes } = params;
+  const isCredit = action === "CREDIT";
+  const icon = isCredit
+    ? tgEmoji(BOT_EMOJIS.MONEY, "💰")
+    : tgEmoji(BOT_EMOJIS.WARNING, "⚠️");
+  const sparkles = tgEmoji(BOT_EMOJIS.SPARKLES, "✨");
+  const memo = tgEmoji(BOT_EMOJIS.RECEIPT, "📝");
+
+  const actionTitle = isCredit
+    ? "Wallet လက်ကျန်ငွေ ဖြည့်သွင်းပေးအပ်ပါသည်"
+    : "Wallet လက်ကျန်ငွေ နှုတ်ယူပြင်ဆင်ပါသည်";
+  const amountPrefix = isCredit ? "+" : "-";
+
+  const text =
+    `<blockquote>${icon} <b>${actionTitle}</b> ❞\n` +
+    `ပမာဏ: <b>${amountPrefix}${amountMmk.toLocaleString("en-US")} Ks</b>\n` +
+    `လက်ရှိ Wallet လက်ကျန်: <b>${newBalanceMmk.toLocaleString("en-US")} Ks</b></blockquote>\n\n` +
+    `${memo} <b>အကြောင်းအရာ / မှတ်ချက်:</b>\n<i>${escapeHtml(notes || "System Administrator Adjustment")}</i>\n\n` +
+    `ကျေးဇူးတင်ရှိပါသည်ခင်ဗျာ။ ${sparkles}`;
+
+  return sendTelegramMessage(telegramId, text);
+}
+

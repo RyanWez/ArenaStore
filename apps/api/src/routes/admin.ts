@@ -25,6 +25,7 @@ import {
   notifyTopUpRejected,
   notifyOrderRefunded,
   notifyOrderCredentialsResent,
+  notifyBalanceAdjusted,
 } from "../services/telegram-notifier";
 import { decryptPayload } from "../services/encryption";
 import { fetchTelegramFile, getPlaceholderSlipSvg } from "../services/telegram-file.service";
@@ -42,7 +43,7 @@ export async function adminRoutes(server: FastifyInstance) {
     // 1. Total revenue / sales from completed orders and order counts
     const [salesResult] = await db
       .select({
-        totalSalesMmk: sql<number>`coalesce(sum(${orders.totalAmountMmk}), 0)`,
+        totalSalesMmk: sql<number>`coalesce(sum(case when ${orders.status} = 'DELIVERED' then ${orders.totalAmountMmk} else 0 end), 0)`,
         fulfilledOrders: sql<number>`count(case when ${orders.status} = 'DELIVERED' then 1 end)`,
         pendingOrders: sql<number>`count(case when ${orders.status} in ('PENDING', 'PROCESSING') then 1 end)`,
         totalOrders: sql<number>`count(${orders.id})`,
@@ -925,4 +926,396 @@ export async function adminRoutes(server: FastifyInstance) {
       message: `Successfully recalculated ${updatedCount} products using 1 USD = ${exchangeRate.toLocaleString()} MMK (${marginPct}% margin).`,
     };
   });
+
+  // GET /api/admin/customers (List customers with wallet balances, order counts, stats)
+  server.get<{
+    Querystring: {
+      search?: string;
+      balanceFilter?: string;
+      sortBy?: string;
+    };
+  }>("/api/admin/customers", async (request) => {
+    const db = getDb();
+    const { search, balanceFilter, sortBy = "balance_desc" } = request.query;
+
+    // 1. Overall KPI summary
+    const [kpiResult] = await db
+      .select({
+        totalCustomers: sql<number>`count(${users.id})`,
+        customersWithBalance: sql<number>`count(case when coalesce(${wallets.balanceMmk}, 0) > 0 then 1 end)`,
+        totalWalletBalanceMmk: sql<number>`coalesce(sum(case when ${wallets.balanceMmk} > 0 then ${wallets.balanceMmk} else 0 end), 0)`,
+        totalSpentMmk: sql<number>`coalesce(sum(${wallets.totalSpentMmk}), 0)`,
+      })
+      .from(users)
+      .leftJoin(wallets, eq(users.id, wallets.userId));
+
+    // 2. Subquery for orders aggregated per customer
+    const orderStats = db
+      .select({
+        customerId: orders.customerId,
+        orderCount: sql<number>`count(${orders.id})`.as("order_count"),
+        deliveredSpentMmk: sql<number>`coalesce(sum(case when ${orders.status} = 'DELIVERED' then ${orders.totalAmountMmk} else 0 end), 0)`.as("delivered_spent_mmk"),
+        lastOrderAt: sql<Date | null>`max(${orders.createdAt})`.as("last_order_at"),
+      })
+      .from(orders)
+      .groupBy(orders.customerId)
+      .as("order_stats");
+
+    // 3. Query all users joined with wallets and order stats
+    const rows = await db
+      .select({
+        id: users.id,
+        telegramId: users.telegramId,
+        username: users.username,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        role: users.role,
+        status: users.status,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+        walletId: wallets.id,
+        balanceMmk: sql<number>`coalesce(${wallets.balanceMmk}, 0)`,
+        totalDepositedMmk: sql<number>`coalesce(${wallets.totalDepositedMmk}, 0)`,
+        walletTotalSpentMmk: sql<number>`coalesce(${wallets.totalSpentMmk}, 0)`,
+        orderCount: sql<number>`coalesce(${orderStats.orderCount}, 0)`,
+        deliveredSpentMmk: sql<number>`coalesce(${orderStats.deliveredSpentMmk}, 0)`,
+        lastOrderAt: orderStats.lastOrderAt,
+      })
+      .from(users)
+      .leftJoin(wallets, eq(users.id, wallets.userId))
+      .leftJoin(orderStats, eq(users.id, orderStats.customerId));
+
+    // Transform and map
+    let customerList = rows.map((r) => {
+      const displayName =
+        [r.firstName, r.lastName].filter(Boolean).join(" ") ||
+        r.username ||
+        (r.telegramId ? `User ${r.telegramId}` : `Customer #${r.id}`);
+      const effectiveSpent = Math.max(
+        Number(r.walletTotalSpentMmk || 0),
+        Number(r.deliveredSpentMmk || 0)
+      );
+
+      return {
+        id: r.id,
+        telegramId: r.telegramId,
+        username: r.username,
+        firstName: r.firstName,
+        lastName: r.lastName,
+        displayName,
+        role: r.role,
+        status: r.status,
+        walletBalanceMmk: Number(r.balanceMmk || 0),
+        totalDepositedMmk: Number(r.totalDepositedMmk || 0),
+        totalSpentMmk: effectiveSpent,
+        ordersCount: Number(r.orderCount || 0),
+        lastActive: r.lastOrderAt || r.updatedAt || r.createdAt,
+        createdAt: r.createdAt,
+      };
+    });
+
+    // Search filter
+    if (search && search.trim()) {
+      const term = search.trim().toLowerCase().replace(/^@/, "");
+      customerList = customerList.filter((c) => {
+        const idMatch = c.telegramId?.toLowerCase().includes(term);
+        const userMatch = c.username?.toLowerCase().includes(term);
+        const nameMatch = c.displayName.toLowerCase().includes(term);
+        const numIdMatch = String(c.id).includes(term);
+        return idMatch || userMatch || nameMatch || numIdMatch;
+      });
+    }
+
+    // Balance filter
+    if (balanceFilter === "has_balance") {
+      customerList = customerList.filter((c) => c.walletBalanceMmk > 0);
+    } else if (balanceFilter === "zero_balance") {
+      customerList = customerList.filter((c) => c.walletBalanceMmk === 0);
+    }
+
+    // Sort
+    if (sortBy === "balance_desc") {
+      customerList.sort((a, b) => b.walletBalanceMmk - a.walletBalanceMmk);
+    } else if (sortBy === "balance_asc") {
+      customerList.sort((a, b) => a.walletBalanceMmk - b.walletBalanceMmk);
+    } else if (sortBy === "spent_desc") {
+      customerList.sort((a, b) => b.totalSpentMmk - a.totalSpentMmk);
+    } else if (sortBy === "orders_desc") {
+      customerList.sort((a, b) => b.ordersCount - a.ordersCount);
+    } else if (sortBy === "newest") {
+      customerList.sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+    }
+
+    return {
+      ok: true,
+      stats: {
+        totalCustomers: Number(kpiResult?.totalCustomers || 0),
+        customersWithBalance: Number(kpiResult?.customersWithBalance || 0),
+        totalWalletBalanceMmk: Number(kpiResult?.totalWalletBalanceMmk || 0),
+        totalSpentMmk: Number(kpiResult?.totalSpentMmk || 0),
+      },
+      customers: customerList,
+    };
+  });
+
+  // GET /api/admin/customers/:id (Customer full details, order history, topup slips, ledger)
+  server.get<{
+    Params: { id: string };
+  }>("/api/admin/customers/:id", async (request, reply) => {
+    const customerId = parseInt(request.params.id, 10);
+    if (isNaN(customerId)) {
+      return reply.status(400).send({ ok: false, error: "Invalid customer ID" });
+    }
+
+    const db = getDb();
+    const [user] = await db.select().from(users).where(eq(users.id, customerId));
+    if (!user) {
+      return reply.status(404).send({ ok: false, error: "Customer not found" });
+    }
+
+    // Wallet
+    let [wallet] = await db.select().from(wallets).where(eq(wallets.userId, customerId));
+    if (!wallet) {
+      const [created] = await db
+        .insert(wallets)
+        .values({
+          userId: customerId,
+          balanceMmk: 0,
+          totalDepositedMmk: 0,
+          totalSpentMmk: 0,
+        })
+        .returning();
+      wallet = created;
+    }
+
+    // Orders / Purchases
+    const customerOrders = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.customerId, customerId))
+      .orderBy(desc(orders.createdAt));
+
+    const enrichedOrders = await Promise.all(
+      customerOrders.map(async (o) => {
+        const items = await db
+          .select({
+            id: orderItems.id,
+            productId: orderItems.productId,
+            productName: orderItems.productNameSnapshot,
+            quantity: orderItems.quantity,
+            unitPriceMmk: orderItems.unitPriceMmk,
+            subtotalMmk: orderItems.subtotalMmk,
+          })
+          .from(orderItems)
+          .where(eq(orderItems.orderId, o.id));
+
+        const deliveries = await db
+          .select()
+          .from(orderDeliveries)
+          .where(eq(orderDeliveries.orderId, o.id));
+
+        const decryptedDeliveries = deliveries.map((d) => {
+          let plainCredentials = "";
+          if (d.encryptedPayload) {
+            try {
+              plainCredentials = decryptPayload(d.encryptedPayload);
+            } catch {
+              plainCredentials = "[Encrypted Data]";
+            }
+          }
+          return {
+            id: d.id,
+            deliveryType: d.deliveryType,
+            deliveredAt: d.deliveredAt,
+            customerViewedAt: d.customerViewedAt,
+            credentials: plainCredentials,
+          };
+        });
+
+        return {
+          id: o.id,
+          publicOrderNo: o.publicOrderNo,
+          externalOrderId: o.externalOrderId,
+          status: o.status,
+          totalAmountMmk: o.totalAmountMmk,
+          notes: o.notes,
+          createdAt: o.createdAt,
+          items,
+          deliveries: decryptedDeliveries,
+        };
+      })
+    );
+
+    // Deposit Slips / Top-ups
+    const topUps = await db
+      .select()
+      .from(topUpRequests)
+      .where(eq(topUpRequests.userId, customerId))
+      .orderBy(desc(topUpRequests.createdAt));
+
+    const enrichedTopUps = topUps.map((t) => ({
+      id: t.id,
+      reference: t.reference,
+      amountMmk: t.amountMmk,
+      paymentMethod: t.paymentMethod,
+      transactionRef: t.transactionRef,
+      slipFileId: t.slipFileId,
+      slipUrl: t.slipFileId ? `/api/admin/deposits/${t.id}/slip-image` : null,
+      status: t.status,
+      rejectReason: t.rejectReason,
+      intendedProduct: t.intendedProduct,
+      reviewedAt: t.reviewedAt,
+      createdAt: t.createdAt,
+    }));
+
+    // Wallet Ledger / Audit Trail
+    const ledger = await db
+      .select()
+      .from(walletLedger)
+      .where(eq(walletLedger.walletId, wallet.id))
+      .orderBy(desc(walletLedger.createdAt))
+      .limit(100);
+
+    const displayName =
+      [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+      user.username ||
+      (user.telegramId ? `User ${user.telegramId}` : `Customer #${user.id}`);
+
+    return {
+      ok: true,
+      customer: {
+        id: user.id,
+        telegramId: user.telegramId,
+        username: user.username,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        displayName,
+        role: user.role,
+        status: user.status,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
+      wallet: {
+        id: wallet.id,
+        balanceMmk: wallet.balanceMmk,
+        totalDepositedMmk: wallet.totalDepositedMmk,
+        totalSpentMmk: wallet.totalSpentMmk,
+      },
+      orders: enrichedOrders,
+      topUps: enrichedTopUps,
+      ledger,
+    };
+  });
+
+  // POST /api/admin/customers/:id/adjust-balance (Admin balance credit/debit with audit ledger and Telegram notification)
+  server.post<{
+    Params: { id: string };
+  }>("/api/admin/customers/:id/adjust-balance", async (request, reply) => {
+    const customerId = parseInt(request.params.id, 10);
+    if (isNaN(customerId)) {
+      return reply.status(400).send({ ok: false, error: "Invalid customer ID" });
+    }
+
+    const AdjustBalanceSchema = z.object({
+      action: z.enum(["CREDIT", "DEBIT"]),
+      amountMmk: z.number().int().positive("Amount must be greater than 0"),
+      notes: z.string().min(1, "Reason or note is required"),
+      notifyTelegram: z.boolean().default(true),
+    });
+
+    const parseRes = AdjustBalanceSchema.safeParse(request.body);
+    if (!parseRes.success) {
+      return reply.status(400).send({
+        ok: false,
+        error: "Validation error",
+        issues: parseRes.error.issues,
+      });
+    }
+
+    const { action, amountMmk, notes, notifyTelegram } = parseRes.data;
+
+    const db = getDb();
+    const [user] = await db.select().from(users).where(eq(users.id, customerId));
+    if (!user) {
+      return reply.status(404).send({ ok: false, error: "Customer not found" });
+    }
+
+    let [wallet] = await db.select().from(wallets).where(eq(wallets.userId, customerId));
+    if (!wallet) {
+      const [created] = await db
+        .insert(wallets)
+        .values({
+          userId: customerId,
+          balanceMmk: 0,
+          totalDepositedMmk: 0,
+          totalSpentMmk: 0,
+        })
+        .returning();
+      wallet = created;
+    }
+
+    if (action === "DEBIT" && wallet.balanceMmk < amountMmk) {
+      return reply.status(400).send({
+        ok: false,
+        error: `Cannot debit ${amountMmk.toLocaleString()} MMK. Customer only has ${wallet.balanceMmk.toLocaleString()} MMK in wallet.`,
+      });
+    }
+
+    const newBalanceMmk =
+      action === "CREDIT"
+        ? wallet.balanceMmk + amountMmk
+        : wallet.balanceMmk - amountMmk;
+
+    const newTotalDeposited =
+      action === "CREDIT"
+        ? wallet.totalDepositedMmk + amountMmk
+        : wallet.totalDepositedMmk;
+
+    // Update wallet
+    await db
+      .update(wallets)
+      .set({
+        balanceMmk: newBalanceMmk,
+        totalDepositedMmk: newTotalDeposited,
+        updatedAt: new Date(),
+      })
+      .where(eq(wallets.id, wallet.id));
+
+    // Record ledger entry
+    await db.insert(walletLedger).values({
+      walletId: wallet.id,
+      amountMmk: action === "CREDIT" ? amountMmk : -amountMmk,
+      type: "ADMIN_ADJUSTMENT",
+      referenceId: `ADJ-${Date.now()}`,
+      notes: notes.trim(),
+    });
+
+    // Notify user via Telegram if requested and telegramId exists
+    let telegramNotified = false;
+    if (notifyTelegram && user.telegramId) {
+      try {
+        telegramNotified = await notifyBalanceAdjusted({
+          telegramId: user.telegramId,
+          action,
+          amountMmk,
+          newBalanceMmk,
+          notes: notes.trim(),
+        });
+      } catch (err: any) {
+        console.error("[Adjust Balance] Failed to send Telegram notification:", err.message);
+      }
+    }
+
+    return {
+      ok: true,
+      action,
+      amountMmk,
+      newBalanceMmk,
+      telegramNotified,
+      message: `Successfully ${action === "CREDIT" ? "credited" : "debited"} ${amountMmk.toLocaleString()} MMK. New balance: ${newBalanceMmk.toLocaleString()} MMK.`,
+    };
+  });
 }
+

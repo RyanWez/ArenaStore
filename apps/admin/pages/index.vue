@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useSupplierStatus } from '~/composables/useSupplierStatus'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
@@ -8,6 +8,7 @@ const { supplierBalanceUsd, isSyncing, syncCatalog, lastSyncMessage, fetchStatus
 const { getAuthHeaders } = useAuth()
 const toast = useToast()
 const isLoading = ref(true)
+const isRefreshing = ref(false)
 
 const stats = ref({
   totalSalesMmk: 0,
@@ -19,16 +20,16 @@ const stats = ref({
 })
 
 const recentOrders = ref<any[]>([])
+let dashboardPollInterval: ReturnType<typeof setInterval> | null = null
 
-async function fetchDashboardData() {
-  isLoading.value = true
+async function fetchDashboardData(isSilent = false) {
+  if (!isSilent) isLoading.value = true
   try {
-    const headers = getAuthHeaders()
-    const [statsRes, ordersRes]: [any, any] = await Promise.all([
+    const [statsRes, ordersRes] = (await Promise.all([
       $fetch('/api/admin/stats', { headers }).catch(() => null),
       $fetch('/api/admin/orders', { headers }).catch(() => null),
       fetchStatus().catch(() => {}),
-    ])
+    ])) as [any, any, any]
 
     if (statsRes?.ok && statsRes.stats) {
       stats.value.totalSalesMmk = statsRes.stats.totalSalesMmk || 0
@@ -40,7 +41,7 @@ async function fetchDashboardData() {
     }
 
     if (ordersRes?.ok && Array.isArray(ordersRes.orders)) {
-      recentOrders.value = ordersRes.orders.slice(0, 5).map((o: any) => ({
+      recentOrders.value = ordersRes.orders.slice(0, 6).map((o: any) => ({
         id: o.orderId || o.id,
         publicOrderNo: o.id || o.publicOrderNo,
         productName: o.product || 'Digital Item',
@@ -53,19 +54,34 @@ async function fetchDashboardData() {
   } catch (err: any) {
     console.error('Dashboard data fetch error:', err)
   } finally {
-    isLoading.value = false
+    if (!isSilent) isLoading.value = false
+    isRefreshing.value = false
   }
 }
 
+async function refreshDashboard() {
+  isRefreshing.value = true
+  await fetchDashboardData(true)
+  toast.info('Dashboard metrics updated.', 'Sync Complete')
+}
+
 onMounted(() => {
-  fetchDashboardData()
+  fetchDashboardData(false)
+  // Background live auto-polling every 4 seconds
+  dashboardPollInterval = setInterval(() => {
+    fetchDashboardData(true)
+  }, 4000)
+})
+
+onUnmounted(() => {
+  if (dashboardPollInterval) clearInterval(dashboardPollInterval)
 })
 
 async function handleSync() {
   try {
     await syncCatalog()
     toast.success('XPro Supplier catalog synced successfully!', 'Sync Complete')
-    await fetchDashboardData()
+    await fetchDashboardData(true)
   } catch (err: any) {
     toast.error(`Sync error: ${err.message}`, 'Sync Failed')
   }
@@ -77,12 +93,33 @@ async function handleSync() {
     <!-- Top Welcome Banner -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border border-slate-800 shadow-xl">
       <div>
-        <h1 class="text-2xl font-bold tracking-tight">Overview Dashboard</h1>
+        <div class="flex items-center gap-2.5">
+          <h1 class="text-2xl font-bold tracking-tight">Overview Dashboard</h1>
+          <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <span class="relative flex h-2 w-2">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span>Real-time Sync</span>
+          </div>
+        </div>
         <p class="text-sm text-slate-300 mt-1">
           Welcome back! Manage products, review customer payment slips, and monitor live XPro supplier status.
         </p>
       </div>
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2.5 flex-wrap">
+        <!-- Manual Refresh Button -->
+        <button
+          type="button"
+          @click="refreshDashboard"
+          :disabled="isRefreshing"
+          class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800/80 hover:bg-slate-800 active:scale-95 text-slate-200 border border-slate-700 shadow-sm transition-all disabled:opacity-50"
+          title="Manual refresh"
+        >
+          <i class="pi pi-refresh text-xs" :class="{ 'animate-spin': isRefreshing }"></i>
+          <span>{{ isRefreshing ? 'Syncing...' : 'Refresh' }}</span>
+        </button>
+
         <button
           type="button"
           @click="handleSync"
@@ -243,22 +280,39 @@ async function handleSync() {
               </td>
               <td class="py-3.5 px-4">
                 <span
-                  v-if="order.status === 'PAYMENT_SUBMITTED'"
-                  class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                  v-if="order.status === 'DELIVERED'"
+                  class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
                 >
-                  Submitted
+                  <i class="pi pi-check text-[10px]"></i>
+                  <span>Delivered</span>
                 </span>
                 <span
-                  v-else-if="order.status === 'DELIVERED'"
-                  class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                  v-else-if="order.status === 'PROCESSING' || order.status === 'PROCESSING_SUPPLIER'"
+                  class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
                 >
-                  Delivered
+                  <i class="pi pi-spin pi-spinner text-[10px]"></i>
+                  <span>Processing</span>
+                </span>
+                <span
+                  v-else-if="order.status === 'REFUNDED'"
+                  class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
+                >
+                  <i class="pi pi-replay text-[10px]"></i>
+                  <span>Refunded</span>
+                </span>
+                <span
+                  v-else-if="order.status === 'PAYMENT_SUBMITTED' || order.status === 'PENDING'"
+                  class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                >
+                  <i class="pi pi-clock text-[10px]"></i>
+                  <span>Pending</span>
                 </span>
                 <span
                   v-else
-                  class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-500/10 text-slate-500 border border-slate-500/20"
+                  class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-500/10 text-slate-500 border border-slate-500/20"
                 >
-                  Cancelled
+                  <i class="pi pi-times text-[10px]"></i>
+                  <span>Cancelled</span>
                 </span>
               </td>
               <td class="py-3.5 px-4 text-xs text-slate-400">
