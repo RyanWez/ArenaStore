@@ -36,6 +36,11 @@ export function loadBotConfig(): BotConfig {
     TELEGRAM_BOT_TOKEN:
       process.env.TELEGRAM_BOT_TOKEN ||
       (isTest ? "123456789:ABCdefGHIjklMNOpqrsTUVwxyz_mock_test_token" : ""),
+    UPSTREAM_BASE_URL:
+      process.env.UPSTREAM_BASE_URL ||
+      process.env.UPSTREAM_PARTNER_API_BASE_URL ||
+      process.env.UPSTREAM_API_URL ||
+      "http://paid2.daki.cc:4153/api/partner/v1",
     UPSTREAM_API_KEY:
       process.env.UPSTREAM_API_KEY ||
       process.env.UPSTREAM_PARTNER_API_KEY ||
