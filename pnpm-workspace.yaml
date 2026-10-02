@@ -24,3 +24,6 @@ minimumReleaseAgeExclude:
   - '@sentry/server-runtime-injection@11.3.0'
   - '@sentry/server-utils@11.3.0'
   - '@sentry/vue@11.3.0'
+
+overrides:
+  drizzle-orm: ^0.45.3

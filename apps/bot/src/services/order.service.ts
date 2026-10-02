@@ -12,7 +12,7 @@ import {
   orderItems,
   orderDeliveries,
 } from "@arena/db";
-import { eq, desc, or, and, sql } from "drizzle-orm";
+import { eq, desc, or, and, sql, gte } from "drizzle-orm";
 
 export interface CreateOrderResult {
   orderId: string;
@@ -53,6 +53,7 @@ export class BotOrderService {
   private memoryWallets = new Map<string, number>();
   private memoryOrders = new Map<string, OrderRecord[]>();
   private memoryTopUps = new Map<string, TopUpRecord>();
+  private activePurchases = new Set<string>();
 
   /**
    * Finds or creates a customer user record and associated wallet in Neon DB.
@@ -197,7 +198,9 @@ export class BotOrderService {
   }
 
   /**
-   * Directly credits wallet (for admin manual credit or test credit).
+   * Directly credits a wallet. Test/internal seeding only — no bot command or
+   * route may expose this; wallet credits must go through the Dashboard
+   * (admin adjust-balance / deposit review) exclusively.
    */
   async creditWallet(telegramId: string, amountMmk: number): Promise<number> {
     const memCurrent = this.memoryWallets.get(telegramId) || 0;
@@ -208,15 +211,17 @@ export class BotOrderService {
       const record = await this.getOrCreateUser({ telegramId });
       if (record?.user && record.wallet) {
         const db = getDb();
-        const newBalance = record.wallet.balanceMmk + amountMmk;
-        await db
+        const [updatedWallet] = await db
           .update(wallets)
           .set({
-            balanceMmk: newBalance,
-            totalDepositedMmk: record.wallet.totalDepositedMmk + amountMmk,
+            balanceMmk: sql`${wallets.balanceMmk} + ${amountMmk}`,
+            totalDepositedMmk: sql`${wallets.totalDepositedMmk} + ${amountMmk}`,
             updatedAt: new Date(),
           })
-          .where(eq(wallets.id, record.wallet.id));
+          .where(eq(wallets.id, record.wallet.id))
+          .returning();
+
+        const newBalance = updatedWallet ? updatedWallet.balanceMmk : record.wallet.balanceMmk + amountMmk;
 
         await db.insert(walletLedger).values({
           walletId: record.wallet.id,
@@ -431,12 +436,17 @@ export class BotOrderService {
           .limit(1);
 
         if (wallet) {
-          const newBal = wallet.balanceMmk + topUp.amountMmk;
-          await db
+          const [updatedWallet] = await db
             .update(wallets)
-            .set({ balanceMmk: newBal, totalDepositedMmk: wallet.totalDepositedMmk + topUp.amountMmk })
-            .where(eq(wallets.id, wallet.id));
+            .set({
+              balanceMmk: sql`${wallets.balanceMmk} + ${topUp.amountMmk}`,
+              totalDepositedMmk: sql`${wallets.totalDepositedMmk} + ${topUp.amountMmk}`,
+              updatedAt: new Date(),
+            })
+            .where(eq(wallets.id, wallet.id))
+            .returning();
 
+          const newBal = updatedWallet ? updatedWallet.balanceMmk : wallet.balanceMmk + topUp.amountMmk;
           return { newBalance: newBal, telegramId: "", amountMmk: topUp.amountMmk };
         }
       }
@@ -479,211 +489,278 @@ export class BotOrderService {
     error?: string;
     errorMessage?: string;
   }> {
-    const product = await botCatalog.getProductById(params.productId);
-    if (!product) {
+    // 0. Prevent concurrent multi-clicks from the same user (in-flight mutex)
+    if (this.activePurchases.has(params.telegramId)) {
       return {
         success: false,
-        error: "PRODUCT_NOT_FOUND",
-        errorMessage: "⚠️ ပစ္စည်း ရှာမတွေ့ပါခင်ဗျာ။",
+        error: "OPERATION_IN_PROGRESS",
+        errorMessage: "⚠️ ယခင် အော်ဒါ ဆောင်ရွက်နေဆဲ ဖြစ်ပါသည်ခင်ဗျာ။ ခေတ္တစောင့်ပေးပါ။",
       };
     }
 
-    const totalMmk = product.retailPriceMmk * params.quantity;
-    const publicOrderNo = `ARN-${Date.now().toString().slice(-6)}`;
-    const externalOrderId = publicOrderNo;
-    const targetUpstreamId = product.upstreamProductId || product.id;
+    this.activePurchases.add(params.telegramId);
 
-    // 1. Check customer wallet balance first
-    const memCurrent = this.memoryWallets.get(params.telegramId) || 0;
-    const userRecord = await this.getOrCreateUser({
-      telegramId: params.telegramId,
-      firstName: params.customerName,
-      username: params.telegramUsername,
-    });
-
-    const user = userRecord?.user;
-    const wallet = userRecord?.wallet;
-    const availableBalance = wallet ? Math.max(wallet.balanceMmk, memCurrent) : memCurrent;
-
-    if (availableBalance < totalMmk) {
-      return {
-        success: false,
-        error: "INSUFFICIENT_FUNDS",
-        errorMessage: "⚠️ ပိုက်ဆံအိတ် လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ။ ကျေးဇူးပြု၍ ငွေအရင်ဖြည့်ပေးပါ။",
-      };
-    }
-
-    if (product.stock < params.quantity) {
-      return {
-        success: false,
-        error: "OUT_OF_STOCK",
-        errorMessage: "⚠️ ပစ္စည်းလက်ကျန် မလုံလောက်တော့ပါခင်ဗျာ။",
-      };
-    }
-
-    // 2. Call Upstream XPro Partner API with externalOrderId for strict idempotency
-    let deliveryLines: string[] = [];
-    let deliveryType = product.deliveryType || "CREDENTIALS";
-    let upstreamOrderId: number | null = null;
-    let upstreamUnitPrice = product.supplierPriceUsd;
-
-    const isTest = process.env.NODE_ENV === "test" || process.env.VITEST !== undefined;
-
-    if (!isTest && botConfig.UPSTREAM_API_KEY) {
-      try {
-        const upstreamRes = await placeUpstreamOrder({
-          productId: targetUpstreamId,
-          quantity: params.quantity,
-          externalOrderId,
-        });
-
-        upstreamOrderId = upstreamRes.order.orderId;
-        deliveryType = upstreamRes.delivery.type || deliveryType;
-        deliveryLines = upstreamRes.delivery.lines || [];
-        upstreamUnitPrice = String(upstreamRes.order.unitPrice || product.supplierPriceUsd);
-      } catch (err: any) {
-        console.error("[BotOrderService] Upstream purchase failed:", err.message);
-
-        if (err instanceof XProOrderError) {
-          if (err.code === "INSUFFICIENT_BALANCE") {
-            return {
-              success: false,
-              error: "SUPPLIER_OUTAGE",
-              errorMessage: "⚠️ ဆာဗာတွင် လက်ကျန်ငွေ ယာယီမလုံလောက်သေးပါခင်ဗျာ။ သင့် Wallet မှ ငွေကို နုတ်ယူခြင်း မရှိပါ။ Admin သို့ ဆက်သွယ်ပေးပါ။",
-            };
-          }
-          if (err.code === "OUT_OF_STOCK") {
-            return {
-              success: false,
-              error: "OUT_OF_STOCK",
-              errorMessage: "⚠️ ပစ္စည်းလက်ကျန် ပြတ်လပ်သွားပါပြီခင်ဗျာ။ သင့် Wallet မှ ငွေကို နုတ်ယူခြင်း မရှိပါ။",
-            };
-          }
-          if (err.code === "PRODUCT_NOT_FOUND") {
-            return {
-              success: false,
-              error: "PRODUCT_NOT_FOUND",
-              errorMessage: "⚠️ ဤပစ္စည်း ရောင်းချခြင်း ယာယီရပ်ဆိုင်းထားပါသည်ခင်ဗျာ။",
-            };
-          }
-        }
-
+    try {
+      const product = await botCatalog.getProductById(params.productId);
+      if (!product) {
         return {
           success: false,
-          error: "UPSTREAM_ERROR",
-          errorMessage: `⚠️ ပစ္စည်း ပေးပို့မှု မအောင်မြင်ပါ (${err.message || "Network Error"})။ သင့် Wallet မှ ငွေကို နုတ်ယူခြင်း မရှိပါ။`,
+          error: "PRODUCT_NOT_FOUND",
+          errorMessage: "⚠️ ပစ္စည်း ရှာမတွေ့ပါခင်ဗျာ။",
         };
       }
-    } else {
-      // Mock fallback only in test mode
-      deliveryLines = [
-        product.deliveryType === "LINK"
-          ? `https://partner.arena.store/invite/claim?order=${publicOrderNo}&token=arena_${Date.now()}`
-          : product.deliveryType === "LICENSE"
-          ? `ARN-${Date.now().toString().slice(-4)}-TEST-LICENSE-KEY`
-          : `user.${params.telegramId.slice(-4)}@arenastore.mm:ArenaPass#${Date.now().toString().slice(-4)}`,
-      ];
-    }
 
-    // 3. Format delivered credentials for Telegram chat display
-    const rawDeliveryText = deliveryLines.length > 1
-      ? deliveryLines.map((line, idx) => `#${idx + 1}: ${line}`).join("\n")
-      : deliveryLines[0] || "အကောင့်အချက်အလက်ကို ရယူပြီးပါပြီ။";
-    const credentialsText = formatCredentialsText(rawDeliveryText);
+      if (product.stock < params.quantity) {
+        return {
+          success: false,
+          error: "OUT_OF_STOCK",
+          errorMessage: "⚠️ ပစ္စည်းလက်ကျန် မလုံလောက်တော့ပါခင်ဗျာ။",
+        };
+      }
 
-    const encryptedPayload = encryptPayload(deliveryLines);
-    const remainingBalance = availableBalance - totalMmk;
+      const totalMmk = product.retailPriceMmk * params.quantity;
+      const publicOrderNo = `ARN-${Date.now().toString().slice(-6)}`;
+      const externalOrderId = publicOrderNo;
+      const targetUpstreamId = product.upstreamProductId || product.id;
 
-    // 4. Atomic PostgreSQL Transaction: Deduct wallet & record order
-    if (user && wallet) {
-      try {
-        const db = getDb();
-        await db.transaction(async (tx) => {
-          // A. Deduct wallet
-          await tx
+      // 1. Fetch user & wallet records
+      const memCurrent = this.memoryWallets.get(params.telegramId) || 0;
+      const userRecord = await this.getOrCreateUser({
+        telegramId: params.telegramId,
+        firstName: params.customerName,
+        username: params.telegramUsername,
+      });
+
+      const user = userRecord?.user;
+      const wallet = userRecord?.wallet;
+      const availableBalance = wallet ? Math.max(wallet.balanceMmk, memCurrent) : memCurrent;
+
+      if (availableBalance < totalMmk) {
+        return {
+          success: false,
+          error: "INSUFFICIENT_FUNDS",
+          errorMessage: "⚠️ ပိုက်ဆံအိတ် လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ။ ကျေးဇူးပြု၍ ငွေအရင်ဖြည့်ပေးပါ။",
+        };
+      }
+
+      // 2. Atomic PostgreSQL Conditional Debit: Debit wallet BEFORE upstream order!
+      let remainingBalance = 0;
+      let debitedWalletId: number | null = null;
+
+      if (user && wallet) {
+        try {
+          const db = getDb();
+          const [updated] = await db
             .update(wallets)
             .set({
-              balanceMmk: remainingBalance,
-              totalSpentMmk: wallet.totalSpentMmk + totalMmk,
+              balanceMmk: sql`${wallets.balanceMmk} - ${totalMmk}`,
+              totalSpentMmk: sql`${wallets.totalSpentMmk} + ${totalMmk}`,
               updatedAt: new Date(),
             })
-            .where(eq(wallets.id, wallet.id));
-
-          // B. Insert wallet ledger
-          await tx.insert(walletLedger).values({
-            walletId: wallet.id,
-            amountMmk: -totalMmk,
-            type: "ORDER_DEBIT",
-            referenceId: publicOrderNo,
-            notes: `Purchase: ${product.cleanName} x ${params.quantity} (Upstream #${upstreamOrderId || "direct"})`,
-          });
-
-          // C. Insert order
-          const [insertedOrder] = await tx
-            .insert(orders)
-            .values({
-              publicOrderNo,
-              externalOrderId: upstreamOrderId ? `XPRO-${upstreamOrderId}` : publicOrderNo,
-              customerId: user.id,
-              status: "DELIVERED",
-              totalAmountMmk: totalMmk,
-              notes: `Telegram purchase by @${params.telegramUsername || params.customerName}`,
-            })
+            .where(and(eq(wallets.id, wallet.id), gte(wallets.balanceMmk, totalMmk)))
             .returning();
 
-          // D. Insert order item
-          await tx.insert(orderItems).values({
-            orderId: insertedOrder.id,
-            productId: product.id,
-            productNameSnapshot: product.cleanName,
-            quantity: params.quantity,
-            unitPriceMmk: product.retailPriceMmk,
-            unitCostUsd: upstreamUnitPrice,
-            subtotalMmk: totalMmk,
-          });
+          if (!updated) {
+            return {
+              success: false,
+              error: "INSUFFICIENT_FUNDS",
+              errorMessage: "⚠️ ပိုက်ဆံအိတ် လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ။ ကျေးဇူးပြု၍ ငွေအရင်ဖြည့်ပေးပါ။",
+            };
+          }
 
-          // E. Insert encrypted delivery payload
-          await tx.insert(orderDeliveries).values({
-            orderId: insertedOrder.id,
-            upstreamOrderId: upstreamOrderId || null,
-            deliveryType,
-            encryptedPayload,
-            deliveredAt: new Date(),
-          });
-        });
-      } catch (dbErr: any) {
-        console.error("[BotOrderService] DB transaction failed after upstream order:", dbErr.message);
+          debitedWalletId = updated.id;
+          remainingBalance = updated.balanceMmk;
+        } catch (dbErr: any) {
+          console.error("[BotOrderService] Atomic wallet debit failed:", dbErr.message);
+          return {
+            success: false,
+            error: "DATABASE_ERROR",
+            errorMessage: "⚠️ ငွေစာရင်း စစ်ဆေးမှု မအောင်မြင်ပါခင်ဗျာ။ ခေတ္တစောင့်ပြီး ပြန်လည်ကြိုးစားပေးပါ။",
+          };
+        }
+      } else {
+        // Fallback in-memory wallet debit
+        if (memCurrent < totalMmk) {
+          return {
+            success: false,
+            error: "INSUFFICIENT_FUNDS",
+            errorMessage: "⚠️ ပိုက်ဆံအိတ် လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ။ ကျေးဇူးပြု၍ ငွေအရင်ဖြည့်ပေးပါ။",
+          };
+        }
+        remainingBalance = memCurrent - totalMmk;
       }
+
+      // 3. Call Upstream XPro Partner API with externalOrderId for strict idempotency
+      let deliveryLines: string[] = [];
+      let deliveryType = product.deliveryType || "CREDENTIALS";
+      let upstreamOrderId: number | null = null;
+      let upstreamUnitPrice = product.supplierPriceUsd;
+
+      const isTest = process.env.NODE_ENV === "test" || process.env.VITEST !== undefined;
+
+      if (!isTest && botConfig.UPSTREAM_API_KEY) {
+        try {
+          const upstreamRes = await placeUpstreamOrder({
+            productId: targetUpstreamId,
+            quantity: params.quantity,
+            externalOrderId,
+          });
+
+          upstreamOrderId = upstreamRes.order.orderId;
+          deliveryType = upstreamRes.delivery.type || deliveryType;
+          deliveryLines = upstreamRes.delivery.lines || [];
+          upstreamUnitPrice = String(upstreamRes.order.unitPrice || product.supplierPriceUsd);
+        } catch (err: any) {
+          console.error("[BotOrderService] Upstream purchase failed:", err.message);
+
+          // ATOMIC REFUND: Rollback the debited balance immediately on upstream failure!
+          if (debitedWalletId !== null) {
+            try {
+              const db = getDb();
+              await db
+                .update(wallets)
+                .set({
+                  balanceMmk: sql`${wallets.balanceMmk} + ${totalMmk}`,
+                  totalSpentMmk: sql`GREATEST(0, ${wallets.totalSpentMmk} - ${totalMmk})`,
+                  updatedAt: new Date(),
+                })
+                .where(eq(wallets.id, debitedWalletId));
+            } catch (refundErr: any) {
+              console.error("[BotOrderService] Critical: Wallet refund failed after upstream error:", refundErr.message);
+            }
+          }
+
+          if (err instanceof XProOrderError) {
+            if (err.code === "INSUFFICIENT_BALANCE") {
+              return {
+                success: false,
+                error: "SUPPLIER_OUTAGE",
+                errorMessage: "⚠️ ဆာဗာတွင် လက်ကျန်ငွေ ယာယီမလုံလောက်သေးပါခင်ဗျာ။ သင့် Wallet မှ ငွေကို နုတ်ယူခြင်း မရှိပါ။ Admin သို့ ဆက်သွယ်ပေးပါ။",
+              };
+            }
+            if (err.code === "OUT_OF_STOCK") {
+              return {
+                success: false,
+                error: "OUT_OF_STOCK",
+                errorMessage: "⚠️ ပစ္စည်းလက်ကျန် ပြတ်လပ်သွားပါပြီခင်ဗျာ။ သင့် Wallet မှ ငွေကို နုတ်ယူခြင်း မရှိပါ။",
+              };
+            }
+            if (err.code === "PRODUCT_NOT_FOUND") {
+              return {
+                success: false,
+                error: "PRODUCT_NOT_FOUND",
+                errorMessage: "⚠️ ဤပစ္စည်း ရောင်းချခြင်း ယာယီရပ်ဆိုင်းထားပါသည်ခင်ဗျာ။",
+              };
+            }
+          }
+
+          return {
+            success: false,
+            error: "UPSTREAM_ERROR",
+            errorMessage: `⚠️ ပစ္စည်း ပေးပို့မှု မအောင်မြင်ပါ (${err.message || "Network Error"})။ သင့် Wallet မှ ငွေကို နုတ်ယူခြင်း မရှိပါ။`,
+          };
+        }
+      } else {
+        // Mock fallback only in test mode
+        deliveryLines = [
+          product.deliveryType === "LINK"
+            ? `https://partner.arena.store/invite/claim?order=${publicOrderNo}&token=arena_${Date.now()}`
+            : product.deliveryType === "LICENSE"
+            ? `ARN-${Date.now().toString().slice(-4)}-TEST-LICENSE-KEY`
+            : `user.${params.telegramId.slice(-4)}@arenastore.mm:ArenaPass#${Date.now().toString().slice(-4)}`,
+        ];
+      }
+
+      // 4. Format delivered credentials for Telegram chat display
+      const rawDeliveryText = deliveryLines.length > 1
+        ? deliveryLines.map((line, idx) => `#${idx + 1}: ${line}`).join("\n")
+        : deliveryLines[0] || "အကောင့်အချက်အလက်ကို ရယူပြီးပါပြီ။";
+      const credentialsText = formatCredentialsText(rawDeliveryText);
+      const encryptedPayload = encryptPayload(deliveryLines);
+
+      // 5. Commit Order & Ledger in Atomic PostgreSQL Transaction
+      if (user && debitedWalletId !== null) {
+        try {
+          const db = getDb();
+          await db.transaction(async (tx) => {
+            // A. Insert wallet ledger
+            await tx.insert(walletLedger).values({
+              walletId: debitedWalletId,
+              amountMmk: -totalMmk,
+              type: "ORDER_DEBIT",
+              referenceId: publicOrderNo,
+              notes: `Purchase: ${product.cleanName} x ${params.quantity} (Upstream #${upstreamOrderId || "direct"})`,
+            });
+
+            // B. Insert order
+            const [insertedOrder] = await tx
+              .insert(orders)
+              .values({
+                publicOrderNo,
+                externalOrderId: upstreamOrderId ? `XPRO-${upstreamOrderId}` : publicOrderNo,
+                customerId: user.id,
+                status: "DELIVERED",
+                totalAmountMmk: totalMmk,
+                notes: `Telegram purchase by @${params.telegramUsername || params.customerName}`,
+              })
+              .returning();
+
+            // C. Insert order item
+            await tx.insert(orderItems).values({
+              orderId: insertedOrder.id,
+              productId: product.id,
+              productNameSnapshot: product.cleanName,
+              quantity: params.quantity,
+              unitPriceMmk: product.retailPriceMmk,
+              unitCostUsd: upstreamUnitPrice,
+              subtotalMmk: totalMmk,
+            });
+
+            // D. Insert encrypted delivery payload
+            await tx.insert(orderDeliveries).values({
+              orderId: insertedOrder.id,
+              upstreamOrderId: upstreamOrderId || null,
+              deliveryType,
+              encryptedPayload,
+              deliveredAt: new Date(),
+            });
+          });
+        } catch (dbErr: any) {
+          console.error("[BotOrderService] DB transaction failed recording order details:", dbErr.message);
+        }
+      }
+
+      // 6. Update In-Memory Cache
+      const orderRecord: OrderRecord = {
+        id: publicOrderNo,
+        publicOrderNo,
+        productId: params.productId,
+        productName: product.cleanName,
+        quantity: params.quantity,
+        totalMmk,
+        status: "DELIVERED",
+        createdAt: new Date().toISOString(),
+        credentialsText,
+      };
+
+      const list = this.memoryOrders.get(params.telegramId) || [];
+      list.unshift(orderRecord);
+      this.memoryOrders.set(params.telegramId, list);
+      this.memoryWallets.set(params.telegramId, remainingBalance);
+
+      return {
+        success: true,
+        orderId: publicOrderNo,
+        publicOrderNo,
+        productName: product.cleanName,
+        quantity: params.quantity,
+        totalMmk,
+        credentialsText,
+        remainingBalance,
+      };
+    } finally {
+      this.activePurchases.delete(params.telegramId);
     }
-
-    // 5. Update In-Memory Cache
-    const orderRecord: OrderRecord = {
-      id: publicOrderNo,
-      publicOrderNo,
-      productId: params.productId,
-      productName: product.cleanName,
-      quantity: params.quantity,
-      totalMmk,
-      status: "DELIVERED",
-      createdAt: new Date().toISOString(),
-      credentialsText,
-    };
-
-    const list = this.memoryOrders.get(params.telegramId) || [];
-    list.unshift(orderRecord);
-    this.memoryOrders.set(params.telegramId, list);
-    this.memoryWallets.set(params.telegramId, remainingBalance);
-
-    return {
-      success: true,
-      orderId: publicOrderNo,
-      publicOrderNo,
-      productName: product.cleanName,
-      quantity: params.quantity,
-      totalMmk,
-      credentialsText,
-      remainingBalance,
-    };
   }
 
   /**
@@ -836,14 +913,14 @@ export class BotOrderService {
       if (userRecord?.user && userRecord.wallet) {
         const { user, wallet } = userRecord;
         const db = getDb();
-        const userOrders = await db
-          .select()
+        const [stats] = await db
+          .select({ ordersCount: sql<number>`COUNT(*)::integer` })
           .from(orders)
           .where(eq(orders.customerId, user.id));
 
         return {
           joinedDate: user.createdAt.toISOString().split("T")[0],
-          ordersCount: userOrders.length,
+          ordersCount: stats?.ordersCount ?? 0,
           totalSpentMmk: wallet.totalSpentMmk,
           walletBalanceMmk: wallet.balanceMmk,
           totalDepositsMmk: wallet.totalDepositedMmk,
@@ -910,12 +987,19 @@ export class BotOrderService {
 
   /**
    * Retrieves a single order by public order number or ID, decrypting credentials.
+   * Scoped to the requesting customer — one account can never read another's order.
    */
-  async getOrderById(orderId: string): Promise<OrderRecord | null> {
+  async getOrderById(orderId: string, requesterTelegramId: string): Promise<OrderRecord | null> {
     try {
+      const userRecord = await this.getOrCreateUser({ telegramId: requesterTelegramId });
+      if (!userRecord?.user) return null;
+
       const db = getDb();
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId);
-      const condition = isUuid ? eq(orders.id, orderId) : eq(orders.publicOrderNo, orderId);
+      const condition = and(
+        isUuid ? eq(orders.id, orderId) : eq(orders.publicOrderNo, orderId),
+        eq(orders.customerId, userRecord.user.id)
+      );
 
       const [orderRow] = await db
         .select()
@@ -963,11 +1047,9 @@ export class BotOrderService {
       console.warn("[BotOrderService] DB getOrderById error:", err.message);
     }
 
-    for (const list of this.memoryOrders.values()) {
-      const found = list.find((o) => o.id === orderId || o.publicOrderNo === orderId);
-      if (found) return found;
-    }
-    return null;
+    const ownOrders = this.memoryOrders.get(requesterTelegramId) || [];
+    const found = ownOrders.find((o) => o.id === orderId || o.publicOrderNo === orderId);
+    return found || null;
   }
 }
 

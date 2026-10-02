@@ -22,7 +22,7 @@ import {
   productSupplierSnapshots,
   auditLogs,
 } from "@arena/db";
-import { and, asc, desc, eq, ilike, inArray, or, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, or, ne, sql, gte } from "drizzle-orm";
 import { z } from "zod";
 import { config } from "../config";
 import { xproClient } from "../services/xpro-client";
@@ -654,15 +654,17 @@ export async function adminRoutes(server: FastifyInstance) {
           .limit(1);
 
         if (existingWallet) {
-          newBalance = existingWallet.balanceMmk + topUp.amountMmk;
-          await tx
+          const [updatedWallet] = await tx
             .update(wallets)
             .set({
-              balanceMmk: newBalance,
-              totalDepositedMmk: existingWallet.totalDepositedMmk + topUp.amountMmk,
+              balanceMmk: sql`${wallets.balanceMmk} + ${topUp.amountMmk}`,
+              totalDepositedMmk: sql`${wallets.totalDepositedMmk} + ${topUp.amountMmk}`,
               updatedAt: new Date(),
             })
-            .where(eq(wallets.id, existingWallet.id));
+            .where(eq(wallets.id, existingWallet.id))
+            .returning();
+
+          newBalance = updatedWallet ? updatedWallet.balanceMmk : existingWallet.balanceMmk + topUp.amountMmk;
 
           await tx.insert(walletLedger).values({
             walletId: existingWallet.id,
@@ -895,34 +897,45 @@ export async function adminRoutes(server: FastifyInstance) {
       wallet = newWallet;
     }
 
-    // 3. Atomically update wallet balance, write ledger entry, and update order status
-    const newBalance = wallet.balanceMmk + order.totalAmountMmk;
-    const newTotalSpent = Math.max(0, wallet.totalSpentMmk - order.totalAmountMmk);
+    // 3. Atomically update wallet balance, write ledger entry, and update order status in a single transaction
+    let newBalance = wallet.balanceMmk + order.totalAmountMmk;
 
-    await db
-      .update(wallets)
-      .set({
-        balanceMmk: newBalance,
-        totalSpentMmk: newTotalSpent,
-        updatedAt: new Date(),
-      })
-      .where(eq(wallets.id, wallet.id));
+    const runTransaction =
+      typeof (db as any).transaction === "function"
+        ? (db as any).transaction.bind(db)
+        : async (cb: any) => cb(db);
 
-    await db.insert(walletLedger).values({
-      walletId: wallet.id,
-      amountMmk: order.totalAmountMmk,
-      type: "REFUND_CREDIT",
-      referenceId: order.publicOrderNo,
-      notes: `Refund for ${order.publicOrderNo}: ${reason}`,
+    await runTransaction(async (tx: any) => {
+      const [updatedWallet] = await tx
+        .update(wallets)
+        .set({
+          balanceMmk: sql`${wallets.balanceMmk} + ${order.totalAmountMmk}`,
+          totalSpentMmk: sql`GREATEST(0, ${wallets.totalSpentMmk} - ${order.totalAmountMmk})`,
+          updatedAt: new Date(),
+        })
+        .where(eq(wallets.id, wallet.id))
+        .returning();
+
+      if (updatedWallet) {
+        newBalance = updatedWallet.balanceMmk;
+      }
+
+      await tx.insert(walletLedger).values({
+        walletId: wallet.id,
+        amountMmk: order.totalAmountMmk,
+        type: "REFUND_CREDIT",
+        referenceId: order.publicOrderNo,
+        notes: `Refund for ${order.publicOrderNo}: ${reason}`,
+      });
+
+      await tx
+        .update(orders)
+        .set({
+          status: "REFUNDED",
+          updatedAt: new Date(),
+        })
+        .where(eq(orders.id, order.id));
     });
-
-    await db
-      .update(orders)
-      .set({
-        status: "REFUNDED",
-        updatedAt: new Date(),
-      })
-      .where(eq(orders.id, order.id));
 
     // 4. Send Telegram instant notification to customer
     if (order.customerTelegramId) {
@@ -1514,55 +1527,86 @@ export async function adminRoutes(server: FastifyInstance) {
     const { action, amountMmk, notes, notifyTelegram } = parseRes.data;
     const customerId = user.id;
 
-    let [wallet] = await db.select().from(wallets).where(eq(wallets.userId, customerId));
-    if (!wallet) {
-      const [created] = await db
-        .insert(wallets)
-        .values({
-          userId: customerId,
-          balanceMmk: 0,
-          totalDepositedMmk: 0,
-          totalSpentMmk: 0,
-        })
-        .returning();
-      wallet = created;
-    }
+    const runTransaction =
+      typeof (db as any).transaction === "function"
+        ? (db as any).transaction.bind(db)
+        : async (cb: any) => cb(db);
 
-    if (action === "DEBIT" && wallet.balanceMmk < amountMmk) {
-      return reply.status(400).send({
-        ok: false,
-        error: `Cannot debit ${amountMmk.toLocaleString()} MMK. Customer only has ${wallet.balanceMmk.toLocaleString()} MMK in wallet.`,
+    let finalBalanceMmk = 0;
+
+    try {
+      finalBalanceMmk = await runTransaction(async (tx: any) => {
+        let [wallet] = await tx.select().from(wallets).where(eq(wallets.userId, customerId));
+        if (!wallet) {
+          const [created] = await tx
+            .insert(wallets)
+            .values({
+              userId: customerId,
+              balanceMmk: 0,
+              totalDepositedMmk: 0,
+              totalSpentMmk: 0,
+            })
+            .returning();
+          wallet = created;
+        }
+
+        if (action === "DEBIT") {
+          const [updated] = await tx
+            .update(wallets)
+            .set({
+              balanceMmk: sql`${wallets.balanceMmk} - ${amountMmk}`,
+              updatedAt: new Date(),
+            })
+            .where(and(eq(wallets.id, wallet.id), gte(wallets.balanceMmk, amountMmk)))
+            .returning();
+
+          if (!updated) {
+            throw new Error(`INSUFFICIENT_FUNDS:${wallet.balanceMmk}`);
+          }
+
+          await tx.insert(walletLedger).values({
+            walletId: wallet.id,
+            amountMmk: -amountMmk,
+            type: "ADMIN_ADJUSTMENT",
+            referenceId: `ADJ-${Date.now()}`,
+            notes: notes.trim(),
+          });
+
+          return updated.balanceMmk;
+        } else {
+          const [updated] = await tx
+            .update(wallets)
+            .set({
+              balanceMmk: sql`${wallets.balanceMmk} + ${amountMmk}`,
+              totalDepositedMmk: sql`${wallets.totalDepositedMmk} + ${amountMmk}`,
+              updatedAt: new Date(),
+            })
+            .where(eq(wallets.id, wallet.id))
+            .returning();
+
+          await tx.insert(walletLedger).values({
+            walletId: wallet.id,
+            amountMmk,
+            type: "ADMIN_ADJUSTMENT",
+            referenceId: `ADJ-${Date.now()}`,
+            notes: notes.trim(),
+          });
+
+          return updated ? updated.balanceMmk : wallet.balanceMmk + amountMmk;
+        }
       });
+    } catch (err: any) {
+      if (err?.message?.startsWith("INSUFFICIENT_FUNDS")) {
+        const bal = err.message.split(":")[1];
+        return reply.status(400).send({
+          ok: false,
+          error: `Cannot debit ${amountMmk.toLocaleString()} MMK. Customer only has ${Number(bal).toLocaleString()} MMK in wallet.`,
+        });
+      }
+      throw err;
     }
 
-    const newBalanceMmk =
-      action === "CREDIT"
-        ? wallet.balanceMmk + amountMmk
-        : wallet.balanceMmk - amountMmk;
-
-    const newTotalDeposited =
-      action === "CREDIT"
-        ? wallet.totalDepositedMmk + amountMmk
-        : wallet.totalDepositedMmk;
-
-    // Update wallet
-    await db
-      .update(wallets)
-      .set({
-        balanceMmk: newBalanceMmk,
-        totalDepositedMmk: newTotalDeposited,
-        updatedAt: new Date(),
-      })
-      .where(eq(wallets.id, wallet.id));
-
-    // Record ledger entry
-    await db.insert(walletLedger).values({
-      walletId: wallet.id,
-      amountMmk: action === "CREDIT" ? amountMmk : -amountMmk,
-      type: "ADMIN_ADJUSTMENT",
-      referenceId: `ADJ-${Date.now()}`,
-      notes: notes.trim(),
-    });
+    const newBalanceMmk = finalBalanceMmk;
 
     // Notify user via Telegram if requested and telegramId exists
     let telegramNotified = false;

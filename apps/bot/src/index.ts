@@ -5,6 +5,21 @@ import * as Sentry from "@sentry/node";
 import { closeSentry } from "./instrument";
 import { createBot } from "./bot";
 
+// Last-resort fault handlers, mirroring the API: an uncaught exception means
+// unknown process state (log, flush, exit — Render restarts), while a stray
+// unhandled rejection only gets logged so one bad promise cannot take the
+// bot offline for every customer.
+process.on("uncaughtException", (err) => {
+  console.error("[Bot] Uncaught exception:", err);
+  Sentry.captureException(err);
+  void closeSentry();
+  process.exit(1);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[Bot] Unhandled promise rejection:", reason);
+  Sentry.captureException(reason);
+});
+
 async function main() {
   const bot = createBot();
 

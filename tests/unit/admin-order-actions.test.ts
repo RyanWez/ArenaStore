@@ -99,14 +99,57 @@ const h = vi.hoisted(() => {
         return thenable;
       },
     }),
+    transaction: async (cb: any) => cb(db),
     update: (table: unknown) => ({
       set: (patch: any) => {
         const name = nameOf(table);
         return {
           where: () => {
-            updates.push({ table: name, patch: { ...patch } });
-            for (const row of rows[name] ?? []) Object.assign(row, patch);
-            return Promise.resolve();
+            const evaluateMockSql = (sqlObj: any, row: any): any => {
+              if (!sqlObj || typeof sqlObj !== "object" || !Array.isArray(sqlObj.queryChunks)) {
+                return sqlObj;
+              }
+              let exprStr = "";
+              for (const chunk of sqlObj.queryChunks) {
+                if (typeof chunk === "string") {
+                  exprStr += chunk;
+                } else if (chunk?.value !== undefined && typeof chunk.value === "string") {
+                  exprStr += chunk.value;
+                } else if (Array.isArray(chunk?.value)) {
+                  exprStr += chunk.value.join("");
+                } else if (chunk?.name) {
+                  const colName = chunk.name;
+                  const camelName = colName.replace(/_([a-z])/g, (_: any, c: string) => c.toUpperCase());
+                  const val = row[camelName] ?? row[colName] ?? 0;
+                  exprStr += String(val);
+                } else if (chunk?.value !== undefined) {
+                  exprStr += String(chunk.value);
+                } else {
+                  exprStr += String(chunk);
+                }
+              }
+              const sanitized = exprStr.replace(/GREATEST/gi, "Math.max").replace(/LEAST/gi, "Math.min");
+              try {
+                return Function(`"use strict"; return (${sanitized});`)();
+              } catch {
+                return sqlObj;
+              }
+            };
+
+            const resolvedPatch = { ...patch };
+            const matchedRows = rows[name] ?? [];
+            for (const row of matchedRows) {
+              for (const [k, v] of Object.entries(patch)) {
+                resolvedPatch[k] = evaluateMockSql(v, row);
+              }
+              Object.assign(row, resolvedPatch);
+            }
+            updates.push({ table: name, patch: resolvedPatch });
+            const returned = matchedRows.map((r: any) => ({ ...r }));
+            return {
+              returning: async () => returned,
+              then: (resolve: any, reject: any) => Promise.resolve(returned).then(resolve, reject),
+            };
           },
         };
       },

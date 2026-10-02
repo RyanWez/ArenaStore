@@ -78,18 +78,40 @@ export async function seedCatalog(options: SeedCatalogOptions = {}): Promise<See
   };
   if (options.productId !== undefined) productValues.id = options.productId;
 
-  const [product] = await db.insert(products).values(productValues).returning();
+  const [product] = options.productId !== undefined
+    ? await db
+        .insert(products)
+        .values(productValues)
+        .onConflictDoUpdate({
+          target: products.id,
+          set: {
+            retailPriceMmk: options.retailPriceMmk ?? 3900,
+            updatedAt: new Date(),
+          },
+        })
+        .returning()
+    : await db.insert(products).values(productValues).returning();
 
-  await db.insert(productSupplierSnapshots).values({
-    productId: product.id,
-    upstreamProductId,
-    rawName: `Test Product ${slugCounter}`,
-    rawDescription: "Synthetic test product description",
-    deliveryType: options.deliveryType || "CREDENTIALS",
-    supplierPriceUsd: options.priceUsd || "0.69",
-    supplierStock: options.stock ?? 50,
-    inStock: (options.stock ?? 50) > 0,
-  });
+  await db
+    .insert(productSupplierSnapshots)
+    .values({
+      productId: product.id,
+      upstreamProductId,
+      rawName: `Test Product ${slugCounter}`,
+      rawDescription: "Synthetic test product description",
+      deliveryType: options.deliveryType || "CREDENTIALS",
+      supplierPriceUsd: options.priceUsd || "0.69",
+      supplierStock: options.stock ?? 50,
+      inStock: (options.stock ?? 50) > 0,
+    })
+    .onConflictDoUpdate({
+      target: productSupplierSnapshots.productId,
+      set: {
+        supplierStock: options.stock ?? 50,
+        inStock: (options.stock ?? 50) > 0,
+        syncedAt: new Date(),
+      },
+    });
 
   return { category, product };
 }

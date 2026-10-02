@@ -42,9 +42,11 @@ export async function catalogRoutes(server: FastifyInstance) {
     Params: { id: string };
   }>("/api/catalog/products/:id", async (request, reply) => {
     const productId = parseInt(request.params.id, 10);
-    const products = await catalogService.getSellableProducts({ activeOnly: true });
-    const product = products.find((p) => p.id === productId);
+    if (isNaN(productId)) {
+      return reply.status(400).send({ ok: false, error: "Invalid product id" });
+    }
 
+    const product = await catalogService.getSellableProduct(productId);
     if (!product) {
       return reply.status(404).send({ ok: false, error: "Product not found" });
     }

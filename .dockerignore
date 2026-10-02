@@ -1,0 +1,22 @@
+# Secrets — never bake these into image layers (Dockerfile uses COPY . .)
+.env
+.env.*
+.env.local
+
+# Internal docs that have contained credentials
+Memory/
+.zcode/
+
+# Local tooling & artifacts
+.git
+node_modules
+**/node_modules
+**/dist
+**/.nuxt
+**/.output
+*.log
+
+# Test runtime data
+tests/.pgdata/
+tests/test-results/
+tests/screenshots/

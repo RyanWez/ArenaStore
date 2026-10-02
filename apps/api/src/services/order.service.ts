@@ -14,7 +14,7 @@ import {
 } from "@arena/db";
 import { OrderStatus, PaymentStatus } from "@arena/shared";
 import { xproClient, XProCreateOrderResponse } from "./xpro-client";
-import { encryptPayload, decryptPayload } from "./encryption";
+import { encryptPayload } from "./encryption";
 import { catalogService } from "./catalog.service";
 import { config } from "../config";
 
@@ -356,48 +356,6 @@ export class OrderService {
   }
 
   /**
-   * Fetches full order details including decrypted delivery if completed.
-   */
-  async getOrderDetails(orderId: string) {
-    const db = getDb();
-
-    const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
-    if (!order) return null;
-
-    const items = await db.select().from(orderItems).where(eq(orderItems.orderId, order.id));
-    const [submission] = await db
-      .select()
-      .from(paymentSubmissions)
-      .where(eq(paymentSubmissions.orderId, order.id));
-    const [delivery] = await db
-      .select()
-      .from(orderDeliveries)
-      .where(eq(orderDeliveries.orderId, order.id));
-
-    let decryptedLines: string[] | null = null;
-    if (delivery) {
-      try {
-        decryptedLines = decryptPayload<string[]>(delivery.encryptedPayload, undefined, true);
-      } catch {
-        decryptedLines = ["[Encrypted delivery data]"];
-      }
-    }
-
-    return {
-      order,
-      items,
-      paymentSubmission: submission || null,
-      delivery: delivery
-        ? {
-            deliveredAt: delivery.deliveredAt,
-            type: delivery.deliveryType,
-            lines: decryptedLines,
-          }
-        : null,
-    };
-  }
-
-  /**
    * Retrieves user profile details and purchasing statistics by telegramId.
    */
   async getUserProfile(telegramId: string) {
@@ -414,14 +372,18 @@ export class OrderService {
       };
     }
 
-    const userOrders = await db.select().from(orders).where(eq(orders.customerId, user.id));
-    const deliveredOrders = userOrders.filter((o) => o.status === "DELIVERED");
-    const totalSpent = deliveredOrders.reduce((sum, o) => sum + (o.totalAmountMmk || 0), 0);
+    const [stats] = await db
+      .select({
+        ordersCount: sql<number>`COUNT(*)::integer`,
+        totalSpentMmk: sql<number>`COALESCE(SUM(CASE WHEN ${orders.status} = 'DELIVERED' THEN ${orders.totalAmountMmk} ELSE 0 END), 0)::integer`,
+      })
+      .from(orders)
+      .where(eq(orders.customerId, user.id));
 
     return {
       joinedDate: user.createdAt.toISOString().split("T")[0],
-      ordersCount: userOrders.length,
-      totalSpentMmk: totalSpent,
+      ordersCount: stats?.ordersCount ?? 0,
+      totalSpentMmk: stats?.totalSpentMmk ?? 0,
       walletBalanceMmk: 0,
       totalDepositsMmk: 0,
     };

@@ -1,4 +1,4 @@
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, lt, sql } from "drizzle-orm";
 import { getDb, categories, products, productSupplierSnapshots, stockReservations } from "@arena/db";
 import { calculateRetailMmk, calculateSellableStock, formatMmk, stripCustomEmojiPlaceholders, parseCustomEmoji } from "@arena/shared";
 import { xproClient, XProProduct, XProCategory } from "./xpro-client";
@@ -334,9 +334,11 @@ export class CatalogService {
   /**
    * Gets list of sellable products for customer bot and admin dashboard.
    * Calculates effective sellable stock against real-time wallet capacity and reservations.
+   * Pass productId to fetch a single product instead of the whole catalog.
    */
   async getSellableProducts(options?: {
     categoryId?: number;
+    productId?: number;
     activeOnly?: boolean;
   }): Promise<LocalizedProduct[]> {
     const db = getDb();
@@ -350,7 +352,7 @@ export class CatalogService {
       // Continue with 0 if upstream balance fails
     }
 
-    // Fetch products with snapshots
+    // Fetch products with snapshots (all, or a single one when productId is given)
     const rows = await db
       .select({
         product: products,
@@ -358,9 +360,35 @@ export class CatalogService {
       })
       .from(products)
       .innerJoin(productSupplierSnapshots, eq(products.id, productSupplierSnapshots.productId))
-      .where(options?.activeOnly !== false ? eq(products.isActive, true) : undefined);
+      .where(
+        and(
+          options?.productId ? eq(products.id, options.productId) : undefined,
+          options?.activeOnly !== false ? eq(products.isActive, true) : undefined
+        )
+      );
 
     const now = new Date();
+
+    // One grouped aggregate for every product's active reservations. The old
+    // per-product SUM ran one extra query per product inside the loop below,
+    // which made this endpoint the catalog's N+1 hotspot.
+    const reservationRows = await db
+      .select({
+        productId: stockReservations.productId,
+        totalReserved: sql<number>`COALESCE(SUM(${stockReservations.quantity}), 0)::integer`,
+      })
+      .from(stockReservations)
+      .where(
+        and(
+          options?.productId ? eq(stockReservations.productId, options.productId) : undefined,
+          sql`${stockReservations.expiresAt} > ${now}`
+        )
+      )
+      .groupBy(stockReservations.productId);
+    const reservedByProduct = new Map(
+      reservationRows.map((r) => [r.productId, r.totalReserved])
+    );
+
     const result: LocalizedProduct[] = [];
 
     for (const { product, snapshot } of rows) {
@@ -368,20 +396,7 @@ export class CatalogService {
         continue;
       }
 
-      // Sum active reservations for this product
-      const [reservationSum] = await db
-        .select({
-          totalReserved: sql<number>`COALESCE(SUM(${stockReservations.quantity}), 0)::integer`,
-        })
-        .from(stockReservations)
-        .where(
-          and(
-            eq(stockReservations.productId, product.id),
-            sql`${stockReservations.expiresAt} > ${now}`
-          )
-        );
-
-      const activeReservedUnits = reservationSum?.totalReserved || 0;
+      const activeReservedUnits = reservedByProduct.get(product.id) || 0;
 
       const stockCalc = calculateSellableStock({
         supplierStock: snapshot.supplierStock,
@@ -412,6 +427,34 @@ export class CatalogService {
     }
 
     return result;
+  }
+
+  /**
+   * Single-product variant of getSellableProducts — fetches only that product
+   * instead of scanning the whole catalog.
+   */
+  async getSellableProduct(productId: number): Promise<LocalizedProduct | null> {
+    const rows = await this.getSellableProducts({ productId, activeOnly: true });
+    return rows[0] || null;
+  }
+
+  /**
+   * Deletes expired stock reservations (housekeeping). Their hold windows are
+   * gone, so the rows only bloat the sellable-stock aggregate and the database.
+   * Failures are swallowed — cleanup must never break the sync it runs beside.
+   */
+  async purgeExpiredReservations(): Promise<number> {
+    try {
+      const db = getDb();
+      const deleted = await db
+        .delete(stockReservations)
+        .where(lt(stockReservations.expiresAt, new Date()))
+        .returning({ id: stockReservations.id });
+      return deleted.length;
+    } catch (err: any) {
+      console.warn("[CatalogService] Failed to purge expired reservations:", err.message);
+      return 0;
+    }
   }
 }
 

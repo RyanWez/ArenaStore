@@ -31,7 +31,6 @@ import {
   formatWalletMessage,
   formatTopUpInvoiceMessage,
   formatTopUpSlipReceivedMessage,
-  formatTopUpSuccessMessage,
   formatInsufficientBalanceMessage,
   formatPurchaseConfirmMessage,
   formatWalletDeliveryMessage,
@@ -252,26 +251,16 @@ export function createBot(): Bot<BotContext> {
     );
   });
 
-  // Developer & Instant Test Deposit Command (/deposit <amount>)
+  // Wallet crediting is Dashboard/admin-only — /deposit must never credit from Telegram.
   bot.command("deposit", async (ctx) => {
-    const telegramId = String(ctx.from?.id || "");
-    const text = ctx.message?.text?.split(" ")[1] || "50000";
-    const amount = parseInt(text, 10);
-
-    if (isNaN(amount) || amount <= 0) {
-      await ctx.reply("💡 အသုံးပြုပုံ: <code>/deposit 50000</code>", {
+    await ctx.reply(
+      "🔒 လုံခြုံရေးအကြောင်းပြချက်ဖြင့် တိုက်ရိုက်ငွေသွင်းသည့် command ကို ပိတ်ထားပါသည်။\n\n💰 ငွေသွင်းလိုပါက <b>Wallet → ဘဏ်/အိတ်မှ ငွေသွင်းပါ</b> မှတဆင့် slip တင်ပြီး Admin စစ်ဆေးအတည်ပြုပေးမှုဖြင့်သာ ငွေထည့်သွင်းနိုင်ပါသည်။",
+      {
         parse_mode: "HTML",
+        reply_markup: buildWalletKeyboard(),
         ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
-      });
-      return;
-    }
-
-    const newBalance = await botOrderService.creditWallet(telegramId, amount);
-    await ctx.reply(formatTopUpSuccessMessage({ amountMmk: amount, newBalanceMmk: newBalance }), {
-      parse_mode: "HTML",
-      reply_markup: buildWalletKeyboard(),
-      ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
-    });
+      }
+    );
   });
 
   // 3.1 Force Channel Join Verification Callback
@@ -713,10 +702,12 @@ export function createBot(): Bot<BotContext> {
     });
   });
 
-  // 19. Single Order Detail & Credentials Viewer
+  // 19. Single Order Detail & Credentials Viewer (owner-only — an order is
+  // never readable from another customer's chat)
   bot.callbackQuery(/^view_order_(.+)$/, async (ctx) => {
     const orderId = ctx.match[1];
-    const order = await botOrderService.getOrderById(orderId);
+    const telegramId = String(ctx.from?.id || "");
+    const order = await botOrderService.getOrderById(orderId, telegramId);
 
     if (!order) {
       await ctx.answerCallbackQuery({ text: "အော်ဒါ ရှာမတွေ့ပါခင်ဗျာ။", show_alert: true });

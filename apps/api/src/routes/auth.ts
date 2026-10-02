@@ -16,9 +16,14 @@ export async function authRoutes(server: FastifyInstance) {
     {
       config: {
         rateLimit: {
+          hook: "preHandler",
           max: 5,
           timeWindow: 1000 * 60 * 5, // 5 minutes
-          keyGenerator: (req) => `login_${req.ip}`,
+          keyGenerator: (req) => {
+            const rawEmail = (req.body as any)?.email;
+            const identifier = rawEmail ? String(rawEmail).toLowerCase().trim() : "anon";
+            return `login_${req.ip}_${identifier}`;
+          },
         },
       },
     },

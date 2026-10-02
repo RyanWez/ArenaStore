@@ -14,6 +14,7 @@ import { config } from "./config";
 
 export async function buildServer(): Promise<FastifyInstance> {
   const server = Fastify({
+    trustProxy: config.TRUST_PROXY,
     logger: {
       level: process.env.LOG_LEVEL || "info",
       redact: ["req.headers.authorization", "headers.authorization"],
@@ -21,20 +22,40 @@ export async function buildServer(): Promise<FastifyInstance> {
   });
 
   // Plugins
+  const configuredOrigins = (config.CORS_ORIGIN || "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+
   await server.register(cors, {
-    origin: true,
+    origin: (origin, cb) => {
+      // Allow requests with no origin (e.g. fastify.inject tests, curl, server-to-server, Telegram webhooks)
+      if (!origin) return cb(null, true);
+
+      const isAllowed =
+        configuredOrigins.includes(origin) ||
+        (config.NODE_ENV !== "production" &&
+          (origin.includes("localhost") || origin.includes("127.0.0.1"))) ||
+        /^https:\/\/.*\.vercel\.app$/.test(origin);
+
+      if (isAllowed) {
+        cb(null, true);
+      } else {
+        cb(new Error("CORS origin not allowed"), false);
+      }
+    },
     credentials: true,
   });
   await server.register(sensible);
   await registerRateLimit(server);
 
-  // Authentication preHandler hook for /api/admin/* (excluding login and image proxies)
+  // Authentication preHandler hook for /api/admin/* — login is the only exempt
+  // route. Slip images and Telegram file proxies carry customer PII and require
+  // a session like any other admin route (the admin app's same-origin Nitro
+  // proxy forwards the session cookie for <img> requests).
   server.addHook("preHandler", async (request, reply) => {
     const url = request.url.split("?")[0];
-    const isExemptRoute =
-      url === "/api/admin/auth/login" ||
-      url.startsWith("/api/admin/telegram-file") ||
-      url.endsWith("/slip-image");
+    const isExemptRoute = url === "/api/admin/auth/login";
 
     if (url.startsWith("/api/admin/") && !isExemptRoute) {
       let token: string | null = null;
@@ -89,10 +110,15 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   // Automatic catalog sync: once at startup, then on a fixed cadence
   // (CATALOG_SYNC_INTERVAL_MINUTES; 0 or test environment disables it).
+  // Each tick also purges expired stock reservations so the sellable-stock
+  // aggregate stays small.
   if (config.NODE_ENV !== "test" && config.CATALOG_SYNC_INTERVAL_MINUTES > 0) {
     const scheduler = startCatalogSyncScheduler({
       intervalMinutes: config.CATALOG_SYNC_INTERVAL_MINUTES,
-      sync: () => catalogService.syncFullCatalog(),
+      sync: async () => {
+        await catalogService.purgeExpiredReservations();
+        return catalogService.syncFullCatalog();
+      },
     });
     server.addHook("onClose", async () => {
       scheduler.stop();

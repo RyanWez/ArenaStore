@@ -43,21 +43,6 @@ export async function orderRoutes(server: FastifyInstance) {
     }
   });
 
-  // GET /api/orders/:id (Check order details / status)
-  server.get<{
-    Params: { id: string };
-  }>("/api/orders/:id", async (request, reply) => {
-    const details = await orderService.getOrderDetails(request.params.id);
-    if (!details) {
-      return reply.status(404).send({ ok: false, error: "Order not found" });
-    }
-
-    return {
-      ok: true,
-      data: details,
-    };
-  });
-
   // POST /api/orders/:id/payments (Submit customer payment slip)
   server.post<{
     Params: { id: string };

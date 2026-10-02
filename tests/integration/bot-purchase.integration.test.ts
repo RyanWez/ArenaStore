@@ -131,6 +131,31 @@ describe("Bot instant wallet purchase (Recommendation D money path)", () => {
     );
   });
 
+  it("never returns another customer's order to the order viewer", async () => {
+    const telegramId = syntheticTelegramId();
+    await botOrderService.creditWallet(telegramId, 10000);
+
+    const res = await botOrderService.purchaseWithWallet({
+      telegramId,
+      customerName: "Owner Customer",
+      productId: FALLBACK_PRODUCT_ID,
+      quantity: 1,
+    });
+    expect(res.success).toBe(true);
+    expect(res.publicOrderNo).toBeTruthy();
+
+    // A different Telegram account must not be able to read this order...
+    const strangerId = syntheticTelegramId();
+    const strangerView = await botOrderService.getOrderById(res.publicOrderNo!, strangerId);
+    expect(strangerView).toBeNull();
+
+    // ...while the owner still can, credentials included.
+    const ownerView = await botOrderService.getOrderById(res.publicOrderNo!, telegramId);
+    expect(ownerView).toBeTruthy();
+    expect(ownerView!.publicOrderNo).toBe(res.publicOrderNo);
+    expect(ownerView!.credentialsText).toBeTruthy();
+  });
+
   it("refuses a purchase when the wallet balance is insufficient and stores nothing", async () => {
     const telegramId = syntheticTelegramId();
     await seedCustomer(telegramId, 0);
@@ -175,5 +200,44 @@ describe("Bot instant wallet purchase (Recommendation D money path)", () => {
     const orderRows = await db.select().from(orders).where(eq(orders.customerId, userId));
     expect(orderRows).toHaveLength(0);
     expect((await getWalletBalance(userId)).balanceMmk).toBe(500000);
+  });
+
+  it("prevents double-spend when concurrent purchases arrive simultaneously for the same wallet", async () => {
+    const telegramId = syntheticTelegramId();
+    // Credit exactly enough for ONE purchase
+    await botOrderService.creditWallet(telegramId, FALLBACK_PRICE_MMk);
+
+    const [res1, res2] = await Promise.all([
+      botOrderService.purchaseWithWallet({
+        telegramId,
+        customerName: "Concurrent Buyer 1",
+        productId: FALLBACK_PRODUCT_ID,
+        quantity: 1,
+      }),
+      botOrderService.purchaseWithWallet({
+        telegramId,
+        customerName: "Concurrent Buyer 2",
+        productId: FALLBACK_PRODUCT_ID,
+        quantity: 1,
+      }),
+    ]);
+
+    // Exactly one must succeed, the other must fail (either OPERATION_IN_PROGRESS or INSUFFICIENT_FUNDS)
+    const successCount = (res1.success ? 1 : 0) + (res2.success ? 1 : 0);
+    expect(successCount).toBe(1);
+
+    const failedRes = res1.success ? res2 : res1;
+    expect(["INSUFFICIENT_FUNDS", "OPERATION_IN_PROGRESS"]).toContain(failedRes.error);
+
+    const userId = await getUserIdByTelegramId(telegramId);
+    const db = getDb();
+    const orderRows = await db.select().from(orders).where(eq(orders.customerId, userId));
+    // Exactly 1 order created in database
+    expect(orderRows).toHaveLength(1);
+
+    // Wallet balance cannot be negative or double-spent; must be exactly 0 MMK
+    const wallet = await getWalletBalance(userId);
+    expect(wallet.balanceMmk).toBe(0);
+    expect(wallet.totalSpentMmk).toBe(FALLBACK_PRICE_MMk);
   });
 });
