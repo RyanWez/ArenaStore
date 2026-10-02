@@ -12,7 +12,7 @@ import {
   orderItems,
   orderDeliveries,
 } from "@arena/db";
-import { eq, desc, or, and } from "drizzle-orm";
+import { eq, desc, or, and, sql } from "drizzle-orm";
 
 export interface CreateOrderResult {
   orderId: string;
@@ -83,6 +83,15 @@ export class BotOrderService {
             role: "CUSTOMER",
             status: "ACTIVE",
           })
+          .onConflictDoUpdate({
+            target: users.telegramId,
+            set: {
+              firstName: sql`COALESCE(EXCLUDED.first_name, ${users.firstName})`,
+              lastName: sql`COALESCE(EXCLUDED.last_name, ${users.lastName})`,
+              username: sql`COALESCE(EXCLUDED.username, ${users.username})`,
+              updatedAt: new Date(),
+            },
+          })
           .returning();
         user = newUser;
       } else {
@@ -128,8 +137,9 @@ export class BotOrderService {
             totalDepositedMmk: 0,
             totalSpentMmk: 0,
           })
+          .onConflictDoNothing()
           .returning();
-        wallet = newWallet;
+        wallet = newWallet || (await db.select().from(wallets).where(eq(wallets.userId, user.id)).limit(1))[0];
       }
 
       return { user, wallet };
