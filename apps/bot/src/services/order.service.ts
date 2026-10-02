@@ -1,7 +1,7 @@
 import { botConfig } from "../config";
 import { botCatalog } from "./catalog.service";
 import { placeUpstreamOrder, XProOrderError } from "./xpro-order";
-import { encryptPayload } from "./encryption";
+import { encryptPayload, decryptPayload } from "./encryption";
 import {
   getDb,
   users,
@@ -867,19 +867,23 @@ export class BotOrderService {
       if (userRecord?.user) {
         const db = getDb();
         const dbOrders = await db
-          .select()
+          .select({
+            order: orders,
+            item: orderItems,
+          })
           .from(orders)
+          .leftJoin(orderItems, eq(orderItems.orderId, orders.id))
           .where(eq(orders.customerId, userRecord.user.id))
           .orderBy(desc(orders.createdAt))
           .limit(20);
 
         if (dbOrders.length > 0) {
-          return dbOrders.map((o) => ({
+          return dbOrders.map(({ order: o, item }) => ({
             id: o.publicOrderNo,
             publicOrderNo: o.publicOrderNo,
-            productId: 0,
-            productName: "Digital Product",
-            quantity: 1,
+            productId: item?.productId || 0,
+            productName: item?.productNameSnapshot || "Digital Product",
+            quantity: item?.quantity || 1,
             totalMmk: o.totalAmountMmk,
             status: o.status as any,
             createdAt: o.createdAt.toISOString(),
@@ -894,15 +898,18 @@ export class BotOrderService {
   }
 
   /**
-   * Retrieves a single order by public order number or ID.
+   * Retrieves a single order by public order number or ID, decrypting credentials.
    */
   async getOrderById(orderId: string): Promise<OrderRecord | null> {
     try {
       const db = getDb();
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId);
+      const condition = isUuid ? eq(orders.id, orderId) : eq(orders.publicOrderNo, orderId);
+
       const [orderRow] = await db
         .select()
         .from(orders)
-        .where(eq(orders.publicOrderNo, orderId))
+        .where(condition)
         .limit(1);
 
       if (orderRow) {
@@ -912,16 +919,52 @@ export class BotOrderService {
           .where(eq(orderDeliveries.orderId, orderRow.id))
           .limit(1);
 
+        const [item] = await db
+          .select()
+          .from(orderItems)
+          .where(eq(orderItems.orderId, orderRow.id))
+          .limit(1);
+
+        let credentialsText: string | undefined = undefined;
+        if (deliv?.encryptedPayload) {
+          try {
+            const dec = decryptPayload(deliv.encryptedPayload);
+            if (typeof dec === "string") {
+              try {
+                const parsed = JSON.parse(dec);
+                if (Array.isArray(parsed)) {
+                  credentialsText = parsed.join("\n");
+                } else if (typeof parsed === "object" && parsed !== null) {
+                  credentialsText = JSON.stringify(parsed, null, 2);
+                } else {
+                  credentialsText = String(parsed);
+                }
+              } catch {
+                credentialsText = dec;
+              }
+            } else if (Array.isArray(dec)) {
+              credentialsText = (dec as string[]).join("\n");
+            } else if (typeof dec === "object" && dec !== null) {
+              credentialsText = JSON.stringify(dec, null, 2);
+            } else {
+              credentialsText = String(dec);
+            }
+          } catch (err: any) {
+            console.warn(`[BotOrderService] Decryption failed for order ${orderRow.publicOrderNo}:`, err.message);
+            credentialsText = deliv.encryptedPayload;
+          }
+        }
+
         return {
           id: orderRow.publicOrderNo,
           publicOrderNo: orderRow.publicOrderNo,
-          productId: 0,
-          productName: "Digital Product",
-          quantity: 1,
+          productId: item?.productId || 0,
+          productName: item?.productNameSnapshot || "Digital Product",
+          quantity: item?.quantity || 1,
           totalMmk: orderRow.totalAmountMmk,
           status: orderRow.status as any,
           createdAt: orderRow.createdAt.toISOString(),
-          credentialsText: deliv?.encryptedPayload,
+          credentialsText,
         };
       }
     } catch (err: any) {
