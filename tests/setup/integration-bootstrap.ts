@@ -1,10 +1,11 @@
+/// <reference path="./types.d.ts" />
 import fs from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { promisify } from "node:util";
-import pg from "pg";
+import pg, { Pool } from "pg";
 import { TEST_DB_NAME, TEST_DB_URL } from "./test-env";
 
 /**
@@ -36,7 +37,7 @@ function nativeBinDir(): string {
 async function canReachLocalPostgres(): Promise<boolean> {
   const adminUrl = new URL(TEST_DB_URL);
   adminUrl.pathname = "/postgres";
-  const pool = new pg.Pool({
+  const pool = new Pool({
     connectionString: adminUrl.toString(),
     max: 1,
     connectionTimeoutMillis: 1500,
@@ -158,10 +159,10 @@ async function withBootstrapLock<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-async function adminPool(): Promise<pg.Pool> {
+async function adminPool(): Promise<Pool> {
   const adminUrl = new URL(TEST_DB_URL);
   adminUrl.pathname = "/postgres";
-  return new pg.Pool({ connectionString: adminUrl.toString(), max: 1 });
+  return new Pool({ connectionString: adminUrl.toString(), max: 1 });
 }
 
 async function createTestDatabaseIfMissing(): Promise<void> {
@@ -226,7 +227,7 @@ async function resetTestDatabase(): Promise<void> {
   const { runMigrations } = await import("../../packages/db/src/migrate");
   await runMigrations();
 
-  const pool = new pg.Pool({ connectionString: TEST_DB_URL, max: 1 });
+  const pool = new Pool({ connectionString: TEST_DB_URL, max: 1 });
   try {
     const { rows } = await pool.query(
       `SELECT string_agg(quote_ident(tablename), ', ') AS tables
