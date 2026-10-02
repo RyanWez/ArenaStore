@@ -1,6 +1,6 @@
 import { eq, and, sql } from "drizzle-orm";
 import { getDb, categories, products, productSupplierSnapshots, stockReservations } from "@arena/db";
-import { calculateRetailMmk, calculateSellableStock, formatMmk } from "@arena/shared";
+import { calculateRetailMmk, calculateSellableStock, formatMmk, stripCustomEmojiPlaceholders } from "@arena/shared";
 import { xproClient, XProProduct, XProCategory } from "./xpro-client";
 import { config } from "../config";
 
@@ -36,10 +36,11 @@ export class CatalogService {
     const db = getDb();
 
     const catValues = upstreamCategories.map((cat, index) => {
-      const slug = cat.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      const cleanName = stripCustomEmojiPlaceholders(cat.name) || cat.name;
+      const slug = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
       return {
         upstreamCategoryId: cat.id,
-        name: cat.name,
+        name: cleanName,
         slug: slug || `category-${cat.id}`,
         sortOrder: index * 10,
         isActive: true,
@@ -189,10 +190,11 @@ export class CatalogService {
     // 2. Batch upsert categories
     if (upstreamCategories.length > 0) {
       const catValues = upstreamCategories.map((cat, index) => {
-        const slug = cat.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+        const cleanName = stripCustomEmojiPlaceholders(cat.name) || cat.name;
+        const slug = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
         return {
           upstreamCategoryId: cat.id,
-          name: cat.name,
+          name: cleanName,
           slug: slug || `category-${cat.id}`,
           sortOrder: index * 10,
           isActive: true,

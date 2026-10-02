@@ -38,8 +38,8 @@ Research does not mean blindly following search results. Treat official docs as 
 - Apps: `apps/admin`, `apps/api`, and `apps/bot`.
 - Shared code belongs in `packages/*`; do not import one app directly into another app.
 - Database schema and migrations belong in `packages/db`.
-- The admin UI must use shadcn/ui components. Do not introduce a competing component library.
-- Telegram custom emoji placeholders in supplier text use the form `{pe:<numeric-id>}`. Preserve the original supplier text; render it server-side for Telegram as `<tg-emoji emoji-id="...">fallback</tg-emoji>`. Never strip these placeholders without approval.
+- The admin UI must use Tailwind CSS and bespoke accessible components following shadcn/ui design conventions. PrimeVue has been replaced to maintain lean bundle performance. Do not introduce a competing component library.
+- Telegram custom emoji placeholders in supplier text use the form `{pe:<numeric-id>}`. Preserve the original supplier text for product items and descriptions; render it server-side for Telegram as `<tg-emoji emoji-id="...">fallback</tg-emoji>`. Category names are normalized to clean display names without `{pe:...}` placeholders in database and API responses.
 
 ## 4. Data and order safety
 

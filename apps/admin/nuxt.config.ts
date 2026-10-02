@@ -1,5 +1,4 @@
 import { defineNuxtConfig } from 'nuxt/config'
-import Aura from '@primevue/themes/aura'
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
@@ -38,7 +37,6 @@ export default defineNuxtConfig({
   },
   modules: [
     '@nuxtjs/tailwindcss',
-    '@primevue/nuxt-module',
   ],
   tailwindcss: {
     cssPath: '~/assets/css/main.css',
@@ -48,16 +46,4 @@ export default defineNuxtConfig({
     'primeicons/primeicons.css',
     '~/assets/css/main.css',
   ],
-  primevue: {
-    autoImport: true,
-    options: {
-      ripple: true,
-      theme: {
-        preset: Aura,
-        options: {
-          darkModeSelector: '.dark',
-        },
-      },
-    },
-  },
 })

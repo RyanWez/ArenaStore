@@ -15,6 +15,7 @@ FROM base AS dependencies
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/db/package.json ./packages/db/
+COPY packages/ui/package.json ./packages/ui/
 COPY apps/api/package.json ./apps/api/
 COPY apps/bot/package.json ./apps/bot/
 COPY apps/admin/package.json ./apps/admin/
