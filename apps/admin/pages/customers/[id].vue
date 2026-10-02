@@ -247,10 +247,47 @@ async function handleRestore() {
   }
 }
 
+// Clean credentials for display & copy
+function cleanCredentialsText(raw: any): string {
+  if (!raw) return ''
+  let val = raw
+  if (typeof val === 'string') {
+    const trimmed = val.trim()
+    if (
+      (trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('"') && trimmed.endsWith('"'))
+    ) {
+      try {
+        val = JSON.parse(trimmed)
+      } catch {}
+    }
+  }
+  if (Array.isArray(val)) {
+    return val
+      .map((item) => (typeof item === 'string' ? item.replace(/^"+|"+$/g, '').trim() : JSON.stringify(item)))
+      .filter(Boolean)
+      .join('\n')
+  }
+  if (typeof val === 'object' && val !== null) {
+    return JSON.stringify(val, null, 2)
+  }
+  let res = String(val).trim()
+  if (res.startsWith('"') && res.endsWith('"') && res.length >= 2) {
+    try {
+      res = JSON.parse(res)
+    } catch {
+      res = res.slice(1, -1)
+    }
+  }
+  return res
+}
+
 // Order Actions
 function openCredentials(order: any) {
   const delivery = order.deliveries?.[0]
-  const creds = delivery?.credentials || order.deliveryCredentials || 'No credentials found'
+  const rawCreds = delivery?.credentials || order.deliveryCredentials || 'No credentials found'
+  const creds = cleanCredentialsText(rawCreds)
   const productName = order.items?.[0]?.productName || 'Digital Product'
   selectedOrderCredentials.value = {
     orderNo: order.publicOrderNo || String(order.id),
@@ -530,7 +567,8 @@ function openSlipPreview(topUp: any) {
               :disabled="isRestoring"
               class="w-full py-2 px-4 rounded-xl text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-500/30 transition-colors flex items-center justify-center gap-2"
             >
-              <i class="pi pi-check text-xs" :class="{ 'animate-spin': isRestoring }"></i>
+              <i v-if="isRestoring" class="pi pi-spinner animate-spin text-xs"></i>
+              <i v-else class="pi pi-check text-xs"></i>
               <span>{{ isRestoring ? 'Restoring...' : 'Restore Account' }}</span>
             </button>
           </div>
@@ -661,7 +699,8 @@ function openSlipPreview(topUp: any) {
                         class="p-1 rounded-lg text-slate-500 hover:text-emerald-500 border border-slate-200 dark:border-slate-700/60 transition-colors"
                         title="Re-send credentials to Telegram"
                       >
-                        <i class="pi pi-send text-xs" :class="{ 'animate-spin': isResendingId === (order.publicOrderNo || order.id) }"></i>
+                        <i v-if="isResendingId === (order.publicOrderNo || order.id)" class="pi pi-spinner animate-spin text-xs"></i>
+                        <i v-else class="pi pi-send text-xs"></i>
                       </button>
 
                       <button
@@ -672,7 +711,8 @@ function openSlipPreview(topUp: any) {
                         class="p-1 rounded-lg text-slate-500 hover:text-rose-500 border border-slate-200 dark:border-slate-700/60 transition-colors"
                         title="Refund to Wallet"
                       >
-                        <i class="pi pi-replay text-xs" :class="{ 'animate-spin': isRefundingId === (order.publicOrderNo || order.id) }"></i>
+                        <i v-if="isRefundingId === (order.publicOrderNo || order.id)" class="pi pi-spinner animate-spin text-xs"></i>
+                        <i v-else class="pi pi-replay text-xs"></i>
                       </button>
                     </div>
                   </td>

@@ -1,6 +1,7 @@
 import { BotCategory, BotProduct } from "../services/catalog.service";
 import { botConfig } from "../config";
 import { escapeHtml, BOT_EMOJIS, tgEmoji } from "@arena/shared";
+import { formatCredentialsText } from "../services/encryption";
 
 /**
  * Formats the Welcome /start greeting message with animated custom emojis.
@@ -117,16 +118,14 @@ export function formatDeliveryMessage(params: {
   deliveryType: string;
   credentialsText: string;
 }): string {
+  const cleanCreds = formatCredentialsText(params.credentialsText);
   return `<blockquote>${tgEmoji(BOT_EMOJIS.PARTY, "🎉")} <b>အော်ဒါ အောင်မြင်စွာ ပို့ဆောင်ပြီးပါပြီ!</b> ❞
 အော်ဒါနံပါတ်: <b>${params.publicOrderNo}</b>
 ပစ္စည်း: <b>${escapeHtml(params.productName)}</b>
 ပို့ဆောင်မှု အမျိုးအစား: <b>${params.deliveryType}</b></blockquote>
 
 ${tgEmoji(BOT_EMOJIS.KEY, "🔑")} <b>သင့်အကောင့် အချက်အလက်များ:</b>
-<pre><code>${escapeHtml(params.credentialsText)}</code></pre>
-
-${tgEmoji(BOT_EMOJIS.WARNING, "⚠️")} <b>လုံခြုံရေး သတိပေးချက်:</b>
-မိမိအကောင့်၏ Password သို့မဟုတ် လုံခြုံရေးအချက်အလက်များကို ချက်ချင်း ပြောင်းလဲပြီး သိမ်းဆည်းထားပါရန် အကြံပြုအပ်ပါသည်။
+<pre><code>${escapeHtml(cleanCreds)}</code></pre>
 
 Arena Store ကို အားပေးသည့်အတွက် ကျေးဇူးအထူးတင်ရှိပါသည်! ${tgEmoji(BOT_EMOJIS.SPARKLES, "✨")}`;
 }
@@ -299,6 +298,7 @@ export function formatWalletDeliveryMessage(params: {
   remainingBalanceMmk: number;
   credentialsText: string;
 }): string {
+  const cleanCreds = formatCredentialsText(params.credentialsText);
   return `<blockquote>${tgEmoji(BOT_EMOJIS.PARTY, "🎉")} <b>အော်ဒါ အောင်မြင်စွာ ပို့ဆောင်ပြီးပါပြီ!</b> ❞
 အော်ဒါနံပါတ်: <b>${params.publicOrderNo}</b>
 ပစ္စည်း: <b>${escapeHtml(params.productName)} x ${params.quantity}</b>
@@ -306,10 +306,7 @@ export function formatWalletDeliveryMessage(params: {
 လက်ကျန် Wallet Balance: <b>${params.remainingBalanceMmk.toLocaleString("en-US")} MMK</b></blockquote>
 
 ${tgEmoji(BOT_EMOJIS.KEY, "🔑")} <b>သင့်အကောင့် အချက်အလက်များ:</b>
-<pre><code>${escapeHtml(params.credentialsText)}</code></pre>
-
-${tgEmoji(BOT_EMOJIS.WARNING, "⚠️")} <b>လုံခြုံရေး သတိပေးချက်:</b>
-မိမိအကောင့်၏ Password သို့မဟုတ် လုံခြုံရေးအချက်အလက်များကို ချက်ချင်း ပြောင်းလဲပြီး သိမ်းဆည်းထားပါရန် အကြံပြုအပ်ပါသည်။
+<pre><code>${escapeHtml(cleanCreds)}</code></pre>
 
 Arena Store ကို အားပေးသည့်အတွက် ကျေးဇူးအထူးတင်ရှိပါသည်! ${tgEmoji(BOT_EMOJIS.SPARKLES, "✨")}`;
 }
@@ -354,7 +351,8 @@ export function formatOrderDetailMessage(order: {
 
   let credentialsBlock = "";
   if (order.status === "DELIVERED" && order.credentialsText) {
-    credentialsBlock = `\n\n${tgEmoji(BOT_EMOJIS.KEY, "🔑")} <b>အကောင့် အချက်အလက်များ:</b>\n<pre><code>${escapeHtml(order.credentialsText)}</code></pre>`;
+    const cleanCreds = formatCredentialsText(order.credentialsText);
+    credentialsBlock = `\n\n${tgEmoji(BOT_EMOJIS.KEY, "🔑")} <b>အကောင့် အချက်အလက်များ:</b>\n<pre><code>${escapeHtml(cleanCreds)}</code></pre>`;
   }
 
   return `<blockquote>${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>အော်ဒါ အသေးစိတ် · ${order.publicOrderNo}</b> ❞

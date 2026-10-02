@@ -64,6 +64,41 @@ const isResending = ref(false)
 const ordersList = ref<OrderRecord[]>([])
 let ordersPollInterval: ReturnType<typeof setInterval> | null = null
 
+function cleanCredentialsText(raw: any): string {
+  if (!raw) return ''
+  let val = raw
+  if (typeof val === 'string') {
+    const trimmed = val.trim()
+    if (
+      (trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('"') && trimmed.endsWith('"'))
+    ) {
+      try {
+        val = JSON.parse(trimmed)
+      } catch {}
+    }
+  }
+  if (Array.isArray(val)) {
+    return val
+      .map((item) => (typeof item === 'string' ? item.replace(/^"+|"+$/g, '').trim() : JSON.stringify(item)))
+      .filter(Boolean)
+      .join('\n')
+  }
+  if (typeof val === 'object' && val !== null) {
+    return JSON.stringify(val, null, 2)
+  }
+  let res = String(val).trim()
+  if (res.startsWith('"') && res.endsWith('"') && res.length >= 2) {
+    try {
+      res = JSON.parse(res)
+    } catch {
+      res = res.slice(1, -1)
+    }
+  }
+  return res
+}
+
 async function fetchOrders(isSilent = false) {
   if (!isSilent) {
     if (ordersList.value.length > 0) {
@@ -107,7 +142,7 @@ async function fetchOrders(isSilent = false) {
         delivery: {
           deliveredAt: o.date || 'Instant',
           deliveryType: 'CREDENTIALS',
-          credentialsText: typeof o.delivery === 'string' ? o.delivery : JSON.stringify(o.delivery, null, 2),
+          credentialsText: cleanCredentialsText(o.delivery),
         },
       }))
     }

@@ -1,5 +1,6 @@
 import { config } from "../config";
 import { BOT_EMOJIS, tgEmoji, escapeHtml } from "@arena/shared";
+import { formatCredentialsText } from "./encryption";
 
 export async function sendTelegramMessage(chatId: string, text: string): Promise<boolean> {
   if (!config.TELEGRAM_BOT_TOKEN) {
@@ -120,17 +121,16 @@ export async function notifyOrderCredentialsResent(params: {
   const { telegramId, publicOrderNo, productName, credentialsText } = params;
   const party = tgEmoji(BOT_EMOJIS.PARTY, "🎉");
   const key = tgEmoji(BOT_EMOJIS.KEY, "🔑");
-  const warning = tgEmoji(BOT_EMOJIS.WARNING, "⚠️");
   const sparkles = tgEmoji(BOT_EMOJIS.SPARKLES, "✨");
+
+  const cleanCredentials = formatCredentialsText(credentialsText);
 
   const text =
     `<blockquote>${party} <b>အော်ဒါ အချက်အလက်များ ပြန်လည်ပေးပို့ခြင်း</b> ❞\n` +
     `အော်ဒါနံပါတ်: <b>${escapeHtml(publicOrderNo)}</b>\n` +
     `ပစ္စည်း: <b>${escapeHtml(productName)}</b></blockquote>\n\n` +
     `${key} <b>သင့်အကောင့် / ကုဒ် အချက်အလက်များ:</b>\n` +
-    `<pre><code>${escapeHtml(credentialsText)}</code></pre>\n\n` +
-    `${warning} <b>လုံခြုံရေး သတိပေးချက်:</b>\n` +
-    `မိမိအကောင့်၏ Password သို့မဟုတ် လုံခြုံရေးအချက်အလက်များကို ချက်ချင်း ပြောင်းလဲပြီး သိမ်းဆည်းထားပါရန် အကြံပြုအပ်ပါသည်။\n\n` +
+    `<pre><code>${escapeHtml(cleanCredentials)}</code></pre>\n\n` +
     `Arena Store ကို အားပေးသည့်အတွက် ကျေးဇူးအထူးတင်ရှိပါသည်! ${sparkles}`;
 
   return sendTelegramMessage(telegramId, text);

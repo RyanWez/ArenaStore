@@ -35,7 +35,7 @@ import {
   notifyOrderCredentialsResent,
   notifyBalanceAdjusted,
 } from "../services/telegram-notifier";
-import { decryptPayload } from "../services/encryption";
+import { decryptPayload, formatCredentialsText } from "../services/encryption";
 import { fetchTelegramFile, getPlaceholderSlipSvg } from "../services/telegram-file.service";
 
 const ReviewDepositSchema = z.object({
@@ -804,7 +804,7 @@ export async function adminRoutes(server: FastifyInstance) {
       const decryptedDeliveries = deliveries.map((d) => {
         let payload: any = d.encryptedPayload;
         try {
-          payload = decryptPayload(d.encryptedPayload);
+          payload = formatCredentialsText(decryptPayload(d.encryptedPayload));
         } catch {
           // Raw text or fallback
         }
@@ -979,7 +979,7 @@ export async function adminRoutes(server: FastifyInstance) {
     if (deliveries.length > 0) {
       try {
         const decrypted = decryptPayload(deliveries[0].encryptedPayload);
-        credentialsText = typeof decrypted === "string" ? decrypted : JSON.stringify(decrypted, null, 2);
+        credentialsText = formatCredentialsText(decrypted);
       } catch {
         credentialsText = deliveries[0].encryptedPayload;
       }
@@ -1370,7 +1370,7 @@ export async function adminRoutes(server: FastifyInstance) {
           let plainCredentials = "";
           if (d.encryptedPayload) {
             try {
-              plainCredentials = decryptPayload(d.encryptedPayload);
+              plainCredentials = formatCredentialsText(decryptPayload(d.encryptedPayload));
             } catch {
               plainCredentials = "[Encrypted Data]";
             }

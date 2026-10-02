@@ -233,18 +233,20 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(ackMsg).toContain("စစ်ဆေးနေပါသည်");
     });
 
-    it("formats delivery message with credentials and security advisory", () => {
+    it("formats delivery message with clean credentials and without security advisory", () => {
       const deliveryMsg = formatDeliveryMessage({
         publicOrderNo: "ARN-2026-84920",
         productName: sampleProduct.cleanName,
         deliveryType: "CREDENTIALS",
-        credentialsText: "user: premium@gemini.ai\npass: Secret12345",
+        credentialsText: '["https://serviceactivationgoogle.com/subscription/new/12345"]',
       });
 
       expect(deliveryMsg).toContain("ARN-2026-84920");
       expect(deliveryMsg).toContain("CREDENTIALS");
-      expect(deliveryMsg).toContain("<pre><code>user: premium@gemini.ai\npass: Secret12345</code></pre>");
-      expect(deliveryMsg).toContain("လုံခြုံရေး သတိပေးချက်");
+      expect(deliveryMsg).toContain("<pre><code>https://serviceactivationgoogle.com/subscription/new/12345</code></pre>");
+      expect(deliveryMsg).not.toContain('["');
+      expect(deliveryMsg).not.toContain('"]');
+      expect(deliveryMsg).not.toContain("လုံခြုံရေး သတိပေးချက်");
     });
 
     it("formats profile card matching Screenshot 2 with user details and MMK stats", () => {

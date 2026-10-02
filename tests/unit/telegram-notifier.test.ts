@@ -149,7 +149,7 @@ describe("Telegram Notifier Service", () => {
   });
 
   describe("notifyOrderCredentialsResent", () => {
-    it("sends credentials inside an escaped <pre><code> block with the product name", async () => {
+    it("sends credentials inside an escaped <pre><code> block with the product name and without security advisory", async () => {
       mockTelegramOk();
 
       const sent = await notifyOrderCredentialsResent({
@@ -168,7 +168,23 @@ describe("Telegram Notifier Service", () => {
       expect(text).toContain(
         "<pre><code>user: buyer@example.test\npass: &lt;Secret&gt; &amp; &quot;key&quot;</code></pre>"
       );
-      expect(text).toContain("လုံခြုံရေး သတိပေးချက်");
+      expect(text).not.toContain("လုံခြုံရေး သတိပေးချက်");
+    });
+
+    it("cleans raw JSON array string from credentialsText", async () => {
+      mockTelegramOk();
+
+      await notifyOrderCredentialsResent({
+        telegramId: "111222333",
+        publicOrderNo: "ARN-2026-90002",
+        productName: "Gemini AI 18 MONTH",
+        credentialsText: '["https://serviceactivationgoogle.com/subscription/new/abc123xyz"]',
+      });
+
+      const { text } = lastSentMessage();
+      expect(text).toContain("<pre><code>https://serviceactivationgoogle.com/subscription/new/abc123xyz</code></pre>");
+      expect(text).not.toContain('["');
+      expect(text).not.toContain('"]');
     });
 
     it("escapes HTML-special characters in the product name", async () => {

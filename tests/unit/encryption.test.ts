@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { encryptPayload, decryptPayload } from "../../apps/api/src/services/encryption";
+import { encryptPayload, decryptPayload, formatCredentialsText } from "../../apps/api/src/services/encryption";
 
 describe("AES-256-GCM Delivery Credentials Encryption", () => {
   const secretKey = "test-secret-encryption-key-32bytes-long!";
@@ -74,5 +74,29 @@ describe("AES-256-GCM Delivery Credentials Encryption", () => {
     // Verify new key succeeds and old key fails on new ciphertext
     expect(decryptPayload(newEncrypted, newKey)).toBe(sensitiveCredentials);
     expect(() => decryptPayload(newEncrypted, oldKey)).toThrow();
+  });
+
+  describe("formatCredentialsText", () => {
+    it("strips JSON array brackets and quotes from single-line URL", () => {
+      const raw = '["https://serviceactivationgoogle.com/subscription/new/abc12345"]';
+      expect(formatCredentialsText(raw)).toBe(
+        "https://serviceactivationgoogle.com/subscription/new/abc12345"
+      );
+    });
+
+    it("formats array of multiple lines with newline separation", () => {
+      const raw = '["https://link1.com", "https://link2.com"]';
+      expect(formatCredentialsText(raw)).toBe("https://link1.com\nhttps://link2.com");
+    });
+
+    it("strips wrapping quotes from a raw quoted string", () => {
+      const raw = '"https://serviceactivationgoogle.com/test"';
+      expect(formatCredentialsText(raw)).toBe("https://serviceactivationgoogle.com/test");
+    });
+
+    it("leaves standard plain text credentials intact", () => {
+      const raw = "user: buyer@example.com\npass: Secret123!";
+      expect(formatCredentialsText(raw)).toBe("user: buyer@example.com\npass: Secret123!");
+    });
   });
 });

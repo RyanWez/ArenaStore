@@ -787,7 +787,8 @@ function formatCurrency(amount: number): string {
                       class="p-1.5 rounded-xl text-xs border border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 transition-colors"
                       title="Restore customer"
                     >
-                      <i class="pi pi-check text-xs" :class="{ 'animate-spin': actionInProgressId === c.id }"></i>
+                      <i v-if="actionInProgressId === c.id" class="pi pi-spinner animate-spin text-xs"></i>
+                      <i v-else class="pi pi-check text-xs"></i>
                     </button>
                   </div>
                 </td>

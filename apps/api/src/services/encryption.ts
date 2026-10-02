@@ -68,3 +68,61 @@ export function decryptPayload<T = string>(
 
   return decrypted as unknown as T;
 }
+
+/**
+ * Normalizes credentials into clean, newline-delimited text without JSON brackets,
+ * quotes, or escaping (e.g. converts `["https://..."]` or `"https://..."` into `https://...`).
+ * Makes it directly copyable for end-users to paste into browsers.
+ */
+export function formatCredentialsText(raw: unknown): string {
+  if (!raw) return "";
+  let val = raw;
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (
+      (trimmed.startsWith("[") && trimmed.endsWith("]")) ||
+      (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+      (trimmed.startsWith('"') && trimmed.endsWith('"'))
+    ) {
+      try {
+        val = JSON.parse(trimmed);
+      } catch {
+        // Keep as string
+      }
+    }
+  }
+
+  if (Array.isArray(val)) {
+    return val
+      .map((item) => {
+        if (typeof item === "string") {
+          let s = item.trim();
+          if (s.startsWith('"') && s.endsWith('"') && s.length >= 2) {
+            try {
+              s = JSON.parse(s);
+            } catch {
+              s = s.slice(1, -1);
+            }
+          }
+          return s;
+        }
+        return JSON.stringify(item);
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  if (typeof val === "object" && val !== null) {
+    return JSON.stringify(val, null, 2);
+  }
+
+  let result = String(val).trim();
+  if (result.startsWith('"') && result.endsWith('"') && result.length >= 2) {
+    try {
+      result = JSON.parse(result);
+    } catch {
+      result = result.slice(1, -1);
+    }
+  }
+  return result;
+}

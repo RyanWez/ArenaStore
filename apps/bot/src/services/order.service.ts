@@ -1,7 +1,7 @@
 import { botConfig } from "../config";
 import { botCatalog } from "./catalog.service";
 import { placeUpstreamOrder, XProOrderError } from "./xpro-order";
-import { encryptPayload, decryptPayload } from "./encryption";
+import { encryptPayload, decryptPayload, formatCredentialsText } from "./encryption";
 import {
   getDb,
   users,
@@ -586,9 +586,10 @@ export class BotOrderService {
     }
 
     // 3. Format delivered credentials for Telegram chat display
-    const credentialsText = deliveryLines.length > 1
+    const rawDeliveryText = deliveryLines.length > 1
       ? deliveryLines.map((line, idx) => `#${idx + 1}: ${line}`).join("\n")
       : deliveryLines[0] || "အကောင့်အချက်အလက်ကို ရယူပြီးပါပြီ။";
+    const credentialsText = formatCredentialsText(rawDeliveryText);
 
     const encryptedPayload = encryptPayload(deliveryLines);
     const remainingBalance = availableBalance - totalMmk;
@@ -939,26 +940,7 @@ export class BotOrderService {
         if (deliv?.encryptedPayload) {
           try {
             const dec = decryptPayload(deliv.encryptedPayload);
-            if (typeof dec === "string") {
-              try {
-                const parsed = JSON.parse(dec);
-                if (Array.isArray(parsed)) {
-                  credentialsText = parsed.join("\n");
-                } else if (typeof parsed === "object" && parsed !== null) {
-                  credentialsText = JSON.stringify(parsed, null, 2);
-                } else {
-                  credentialsText = String(parsed);
-                }
-              } catch {
-                credentialsText = dec;
-              }
-            } else if (Array.isArray(dec)) {
-              credentialsText = (dec as string[]).join("\n");
-            } else if (typeof dec === "object" && dec !== null) {
-              credentialsText = JSON.stringify(dec, null, 2);
-            } else {
-              credentialsText = String(dec);
-            }
+            credentialsText = formatCredentialsText(dec);
           } catch (err: any) {
             console.warn(`[BotOrderService] Decryption failed for order ${orderRow.publicOrderNo}:`, err.message);
             credentialsText = deliv.encryptedPayload;

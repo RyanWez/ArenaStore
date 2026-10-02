@@ -180,11 +180,17 @@ async function createTestDatabaseIfMissing(): Promise<void> {
 }
 
 async function ensureLocalPostgres(): Promise<void> {
-  if (await canReachLocalPostgres()) return;
+  if (await canReachLocalPostgres()) {
+    await createTestDatabaseIfMissing();
+    return;
+  }
 
   await withBootstrapLock(async () => {
     // Re-check inside the lock: another worker may have finished starting.
-    if (await canReachLocalPostgres()) return;
+    if (await canReachLocalPostgres()) {
+      await createTestDatabaseIfMissing();
+      return;
+    }
 
     if (!fs.existsSync(path.join(PG_DATA_DIR, "PG_VERSION"))) {
       await killStaleClusterProcesses();
@@ -194,7 +200,10 @@ async function ensureLocalPostgres(): Promise<void> {
     await createTestDatabaseIfMissing();
 
     for (let attempt = 0; attempt < 50; attempt += 1) {
-      if (await canReachLocalPostgres()) return;
+      if (await canReachLocalPostgres()) {
+        await createTestDatabaseIfMissing();
+        return;
+      }
       await sleep(200);
     }
     throw new Error(
