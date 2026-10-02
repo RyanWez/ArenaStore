@@ -2,7 +2,12 @@
 
 ## Status
 
-Planning document only. Provider quotas and free tiers must be verified immediately before deployment.
+**COMPLETED & LIVE IN PRODUCTION (2026-10-03)**
+See [2026-10-03.md](file:///home/zixuan/Projects/Arena%20Store/Memory/2026-10-03.md) for full deployment details, architecture runbook, environment variables, and resolved pitfalls.
+- Backend API & Bot: `https://arenastore-backend.onrender.com/` (Render Free Web Service, Singapore)
+- Database: Neon Serverless PostgreSQL (`ep-steep-wave-b3bec48e-pooler.c-4.ap-southeast-1.aws.neon.tech`)
+- Admin Dashboard: Vercel (`arenastore-admin`)
+- Keep-Alive: UptimeRobot pinging every 10 minutes
 
 ## MVP deployment target
 
