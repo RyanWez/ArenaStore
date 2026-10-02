@@ -447,3 +447,22 @@ export function buildOrderDetailKeyboard(): InlineKeyboard {
       icon_custom_emoji_id: BOT_EMOJIS.BACK,
     });
 }
+
+/**
+ * Builds the Force-Subscription keyboard with Join Channel URL button
+ * and interactive "Joined ပြီးပါပြီ" verification button.
+ */
+export function buildForceJoinKeyboard(channelUrl: string): InlineKeyboard {
+  return new InlineKeyboard()
+    .add({
+      text: "📢 Join Channel",
+      url: channelUrl,
+      icon_custom_emoji_id: BOT_EMOJIS.SPEAKER,
+    })
+    .row()
+    .add({
+      text: "✅ Joined ပြီးပါပြီ",
+      callback_data: "verify_channel_join",
+      icon_custom_emoji_id: BOT_EMOJIS.CHECK,
+    });
+}

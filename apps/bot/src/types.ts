@@ -23,6 +23,10 @@ export interface SessionData {
     productId: number;
     quantity: number;
   };
+
+  // Mandatory Channel Verification state
+  isChannelMember?: boolean;
+  channelMemberCheckedAt?: number;
 }
 
 export type BotContext = Context & SessionFlavor<SessionData>;

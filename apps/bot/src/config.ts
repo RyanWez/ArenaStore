@@ -16,6 +16,8 @@ const envSchema = z.object({
   DEFAULT_MARGIN_PERCENTAGE: z.coerce.number().default(25),
   SUPPORT_USERNAME: z.string().default("ryanwez"),
   CHANNEL_URL: z.string().default("https://t.me/arenasellerstore"),
+  REQUIRED_CHANNEL_USERNAME: z.string().default("@arenasellerstore"),
+  FORCE_CHANNEL_JOIN: z.coerce.boolean().default(true),
   PAYMENT_KPAY_PHONE: z.string().default("09960476738"),
   PAYMENT_WAVEPAY_PHONE: z.string().default("09960476738"),
   PAYMENT_ACCOUNT_NAME: z.string().default("Ryan Wez"),
@@ -53,3 +55,23 @@ export function loadBotConfig(): BotConfig {
 }
 
 export const botConfig = loadBotConfig();
+
+/**
+ * Normalizes any channel representation (@channel, channel, https://t.me/channel)
+ * into a valid Telegram username (@channel) and URL (https://t.me/channel).
+ */
+export function normalizeChannelUsername(raw: string): { username: string; url: string } {
+  let cleaned = (raw || "@arenasellerstore").trim();
+  if (cleaned.startsWith("https://t.me/")) {
+    cleaned = cleaned.replace("https://t.me/", "");
+  } else if (cleaned.startsWith("http://t.me/")) {
+    cleaned = cleaned.replace("http://t.me/", "");
+  } else if (cleaned.startsWith("t.me/")) {
+    cleaned = cleaned.replace("t.me/", "");
+  }
+  const bareName = cleaned.replace(/^@/, "").replace(/\/$/, "");
+  return {
+    username: `@${bareName}`,
+    url: `https://t.me/${bareName}`,
+  };
+}

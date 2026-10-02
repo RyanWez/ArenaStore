@@ -18,6 +18,7 @@ import {
   buildPurchaseConfirmKeyboard,
   buildOrderDetailKeyboard,
   buildUnmatchedPhotoKeyboard,
+  buildForceJoinKeyboard,
 } from "./keyboards/store.keyboards";
 import {
   formatStartMessage,
@@ -37,7 +38,9 @@ import {
   formatOrdersListMessage,
   formatOrderDetailMessage,
   formatAccountSuspendedMessage,
+  formatForceJoinMessage,
 } from "./formatters/messages";
+import { channelVerificationService } from "./services/channel-verification.service";
 import { BOT_EMOJIS, tgEmoji, escapeHtml } from "@arena/shared";
 
 export function createBot(): Bot<BotContext> {
@@ -96,6 +99,66 @@ export function createBot(): Bot<BotContext> {
     return next();
   });
 
+  // 4.1 Channel Membership Verification Helper
+  async function ensureChannelMember(ctx: BotContext): Promise<boolean> {
+    const userId = ctx.from?.id;
+    if (!userId || !botConfig.FORCE_CHANNEL_JOIN || process.env.NODE_ENV === "test") {
+      return true;
+    }
+
+    const now = Date.now();
+    if (
+      ctx.session.isChannelMember === true &&
+      ctx.session.channelMemberCheckedAt &&
+      now - ctx.session.channelMemberCheckedAt < 10 * 60 * 1000
+    ) {
+      return true;
+    }
+
+    const check = await channelVerificationService.checkMembership(ctx.api, userId);
+    if (!check.isMember) {
+      ctx.session.isChannelMember = false;
+      await ctx.reply(formatForceJoinMessage(check.channelUsername), {
+        parse_mode: "HTML",
+        reply_markup: buildForceJoinKeyboard(check.channelUrl),
+        ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
+      });
+      return false;
+    }
+
+    ctx.session.isChannelMember = true;
+    ctx.session.channelMemberCheckedAt = now;
+    return true;
+  }
+
+  // 4.2 Callback Query Channel Join Guard
+  bot.use(async (ctx, next) => {
+    if (ctx.callbackQuery && ctx.callbackQuery.data !== "verify_channel_join") {
+      const userId = ctx.from?.id;
+      if (userId && botConfig.FORCE_CHANNEL_JOIN && process.env.NODE_ENV !== "test") {
+        const now = Date.now();
+        if (
+          !ctx.session.isChannelMember ||
+          !ctx.session.channelMemberCheckedAt ||
+          now - ctx.session.channelMemberCheckedAt >= 10 * 60 * 1000
+        ) {
+          const check = await channelVerificationService.checkMembership(ctx.api, userId);
+          if (!check.isMember) {
+            ctx.session.isChannelMember = false;
+            await ctx.answerCallbackQuery({
+              text: `⚠️ ကျေးဇူးပြု၍ ကျွန်ုပ်တို့၏ Channel (${check.channelUsername}) ကို အရင် Join ပေးပါခင်ဗျာ။`,
+              show_alert: true,
+            });
+            return;
+          }
+          ctx.session.isChannelMember = true;
+          ctx.session.channelMemberCheckedAt = now;
+        }
+      }
+    }
+    return next();
+  });
+
   // 5. Command Handlers (quoting user's message)
   bot.command(["start", "menu", "help"], async (ctx) => {
     ctx.session.awaitingCustomQuantity = false;
@@ -115,6 +178,8 @@ export function createBot(): Bot<BotContext> {
         .catch(() => {});
     }
 
+    if (!(await ensureChannelMember(ctx))) return;
+
     await ctx.reply(formatStartMessage(firstName), {
       parse_mode: "HTML",
       reply_markup: buildMainMenuKeyboard(),
@@ -125,6 +190,7 @@ export function createBot(): Bot<BotContext> {
   bot.command("orders", async (ctx) => {
     ctx.session.awaitingCustomQuantity = false;
     ctx.session.awaitingCustomTopUp = false;
+    if (!(await ensureChannelMember(ctx))) return;
     const telegramId = String(ctx.from?.id || "");
     const orders = await botOrderService.getUserOrders(telegramId);
 
@@ -138,6 +204,7 @@ export function createBot(): Bot<BotContext> {
   bot.command("wallet", async (ctx) => {
     ctx.session.awaitingCustomQuantity = false;
     ctx.session.awaitingCustomTopUp = false;
+    if (!(await ensureChannelMember(ctx))) return;
     const telegramId = String(ctx.from?.id || "");
     const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || "Customer";
     const stats = await botOrderService.getUserProfile(telegramId);
@@ -159,6 +226,7 @@ export function createBot(): Bot<BotContext> {
   bot.command("profile", async (ctx) => {
     ctx.session.awaitingCustomQuantity = false;
     ctx.session.awaitingCustomTopUp = false;
+    if (!(await ensureChannelMember(ctx))) return;
     const telegramId = String(ctx.from?.id || "");
     const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || "Customer";
     const username = ctx.from?.username;
@@ -203,6 +271,46 @@ export function createBot(): Bot<BotContext> {
       parse_mode: "HTML",
       reply_markup: buildWalletKeyboard(),
       ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
+    });
+  });
+
+  // 3.1 Force Channel Join Verification Callback
+  bot.callbackQuery("verify_channel_join", async (ctx) => {
+    const userId = ctx.from?.id;
+    if (!userId) {
+      await ctx.answerCallbackQuery({ text: "အသုံးပြုသူ ရှာမတွေ့ပါ" });
+      return;
+    }
+
+    const check = await channelVerificationService.checkMembership(ctx.api, userId);
+
+    if (!check.isMember) {
+      if (check.error === "BOT_NOT_ADMIN_OR_CHAT_NOT_FOUND") {
+        await ctx.answerCallbackQuery({
+          text: `⚠️ Bot သည် ${check.channelUsername} တွင် Admin ခန့်ထားခြင်း မရှိသေးပါ သို့မဟုတ် Channel ရှာမတွေ့ပါ။\nကျေးဇူးပြု၍ Bot ကို Channel Admin ခန့်ပေးပါရန် လိုအပ်ပါသည်။`,
+          show_alert: true,
+        });
+      } else {
+        await ctx.answerCallbackQuery({
+          text: `❌ ${check.channelUsername} ကို မ Join ရသေးပါခင်ဗျာ!\n\nကျေးဇူးပြု၍ "📢 Join Channel" ခလုတ်ကို နှိပ်၍ အရင် Join ပြီးမှ ပြန်လည်နှိပ်ပေးပါရန်။`,
+          show_alert: true,
+        });
+      }
+      return;
+    }
+
+    // Successfully verified!
+    ctx.session.isChannelMember = true;
+    ctx.session.channelMemberCheckedAt = Date.now();
+
+    await ctx.answerCallbackQuery({
+      text: "🎉 Channel Join ထားရှိမှု အတည်ပြုပြီးပါပြီ! Arena Store မှ ကြိုဆိုပါသည်ခင်ဗျာ ✨",
+    });
+
+    const firstName = ctx.from?.first_name || "Customer";
+    await ctx.editMessageText(formatStartMessage(firstName), {
+      parse_mode: "HTML",
+      reply_markup: buildMainMenuKeyboard(),
     });
   });
 
