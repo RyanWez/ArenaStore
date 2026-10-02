@@ -95,7 +95,7 @@ export function useSupplierStatus() {
       if (res.ok) {
         lastSyncMessage.value = `Synced ${res.synced.categories} categories & ${res.synced.products} products.`
       }
-      await fetchStatus()
+      fetchStatus().catch(() => {})
       return res
     } catch (err: any) {
       lastSyncMessage.value = `Sync failed: ${err.message}`

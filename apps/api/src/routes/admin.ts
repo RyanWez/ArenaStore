@@ -247,15 +247,11 @@ export async function adminRoutes(server: FastifyInstance) {
   // POST /api/admin/supplier/sync (Sync catalog from XPro)
   server.post("/api/admin/supplier/sync", async (_request, reply) => {
     try {
-      const categoriesCount = await catalogService.syncCategories();
-      const productsCount = await catalogService.syncProducts();
+      const result = await catalogService.syncFullCatalog();
 
       return {
         ok: true,
-        synced: {
-          categories: categoriesCount,
-          products: productsCount,
-        },
+        synced: result,
       };
     } catch (err: any) {
       return reply.status(500).send({
@@ -296,7 +292,7 @@ export async function adminRoutes(server: FastifyInstance) {
     try {
       const balRes = await xproClient.getBalance(1500, 0);
       if (balRes.ok) {
-        walletBalanceUsd = balRes.balance;
+        walletBalanceUsd = String(balRes.balance);
       }
     } catch {
       // Fallback
@@ -1451,6 +1447,7 @@ export async function adminRoutes(server: FastifyInstance) {
 
   // POST /api/admin/customers/:id/adjust-balance (Admin balance credit/debit with audit ledger and Telegram notification)
   server.post<{
+    Params: { id: string };
   }>("/api/admin/customers/:id/adjust-balance", async (request, reply) => {
     const rawId = request.params.id;
     const db = getDb();

@@ -133,7 +133,7 @@ async function handleSyncCatalog() {
   try {
     await runSync()
     toast.success('Catalog synced successfully from upstream!', 'Sync Complete')
-    await fetchProducts()
+    await fetchProducts(true)
   } catch (err: any) {
     toast.error('Sync failed: ' + (err.message || 'Unknown error'))
   }
