@@ -27,7 +27,7 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     public: {
-      apiBaseUrl: process.env.API_BASE_URL || 'http://localhost:4000',
+      apiBaseUrl: process.env.API_BASE_URL || process.env.NUXT_PUBLIC_API_URL || 'http://localhost:4000',
       // Sentry DSN — the SDK stays a no-op unless this is non-empty.
       sentry: {
         dsn: process.env.NUXT_PUBLIC_SENTRY_DSN || '',
@@ -36,7 +36,9 @@ export default defineNuxtConfig({
   },
   nitro: {
     routeRules: {
-      '/api/**': { proxy: 'http://localhost:4000/api/**' },
+      '/api/**': {
+        proxy: `${(process.env.API_BASE_URL || process.env.NUXT_PUBLIC_API_URL || 'http://localhost:4000').replace(/\/+$/, '')}/api/**`,
+      },
     },
   },
   modules: [
