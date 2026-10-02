@@ -31,6 +31,8 @@ const envSchema = z.object({
   ADMIN_API_KEY: z.string().default("dev_admin_secret_key_change_in_production"),
   DEFAULT_EXCHANGE_RATE_MMK: z.coerce.number().default(4500),
   DEFAULT_MARGIN_PERCENTAGE: z.coerce.number().default(25),
+  /** Automatic catalog sync cadence in minutes; 0 disables the scheduler. */
+  CATALOG_SYNC_INTERVAL_MINUTES: z.coerce.number().int().min(0).default(10),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

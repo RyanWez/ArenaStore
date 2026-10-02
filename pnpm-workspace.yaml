@@ -6,3 +6,5 @@ packages:
 allowBuilds:
   esbuild: true
   msgpackr-extract: true
+  embedded-postgres: true
+  "@embedded-postgres/linux-x64": true

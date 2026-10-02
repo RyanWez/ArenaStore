@@ -16,6 +16,33 @@ import { OrderStatus, PaymentStatus } from "@arena/shared";
 import { xproClient, XProCreateOrderResponse } from "./xpro-client";
 import { encryptPayload, decryptPayload } from "./encryption";
 import { catalogService } from "./catalog.service";
+import { config } from "../config";
+
+const LOCAL_HOSTS = ["localhost", "127.0.0.1", "::1"];
+
+/**
+ * Test-environment safety guard (mirrors the bot-side guard): in test runs the
+ * upstream base URL must point at localhost so a real supplier order can never
+ * be placed from a test. Tests simulate the supplier by mocking the
+ * xpro-client module or by running a local mock server.
+ */
+function assertUpstreamSafeForTests(): void {
+  const isTestEnv = process.env.NODE_ENV === "test" || process.env.VITEST !== undefined;
+  if (!isTestEnv) return;
+
+  let upstreamHost = "";
+  try {
+    upstreamHost = new URL(config.UPSTREAM_BASE_URL).hostname;
+  } catch {
+    throw new Error("SAFETY GUARD: UPSTREAM_BASE_URL is not a valid URL.");
+  }
+  if (!LOCAL_HOSTS.includes(upstreamHost)) {
+    throw new Error(
+      "SAFETY GUARD: refusing to place an upstream order from a test environment " +
+        `with a non-local UPSTREAM_BASE_URL ("${upstreamHost}"). Mock the xpro-client module instead.`
+    );
+  }
+}
 
 export interface CreateOrderParams {
   telegramId: string;
@@ -218,6 +245,8 @@ export class OrderService {
       .where(eq(orders.id, order.id));
 
     // 4. Place upstream order with strict idempotency (same externalOrderId)
+    assertUpstreamSafeForTests();
+
     let upstreamRes: XProCreateOrderResponse;
     try {
       upstreamRes = await xproClient.createOrder({

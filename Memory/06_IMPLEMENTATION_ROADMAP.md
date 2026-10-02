@@ -100,6 +100,7 @@ Create the high-performance Fastify backend service that interfaces with the ups
 4. **BullMQ / Redis Asynchronous Queue:**
    - Background worker processes catalog sync (every 5-15 minutes).
    - Order fulfillment worker handles upstream order placement and notifies Telegram bot upon completion.
+   - > **Status (2026-10-02):** Catalog sync scheduling is DONE as a lightweight `setInterval` scheduler inside the API process (`apps/api/src/services/catalog-scheduler.ts`, env `CATALOG_SYNC_INTERVAL_MINUTES`, default 10) — deliberately NOT BullMQ/Redis: the sync is a single idempotent batch upsert and this app must run without Redis. Order fulfillment remains inline (instant wallet purchase, see Phase 4) so no fulfillment worker is currently needed.
 
 ### Verification Gate for Phase 2
 - Integration tests verify catalog sync, idempotency retry logic, and simulated delivery encryption/decryption using test fixtures.
@@ -201,6 +202,8 @@ Deliver a localized, intuitive, and high-conversion storefront bot for Myanmar c
 ---
 
 ## Phase 5: End-to-End Testing, Security Hardening & Deployment Setup
+
+> **Status (2026-10-02):** Security hardening done (encryption re-key, rate limiting, production key guards — see 2026-10-02 entry 6). Integration tests DONE: money-flow suite with real Postgres test DB, safety guards, embedded Postgres fallback, CI Postgres service — see `Memory/08_TESTING_ARCHITECTURE.md`. Remaining: Playwright admin E2E specs (planned as "Phase 2" of testing work), actual production deployment, error tracking/uptime alerts.
 
 ### Objective
 Validate full system integration across all apps, enforce strict security standards, and establish production-ready containerized deployment pipelines.

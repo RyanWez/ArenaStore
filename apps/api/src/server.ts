@@ -9,6 +9,8 @@ import { adminRoutes } from "./routes/admin";
 import { authRoutes } from "./routes/auth";
 import { authService } from "./services/auth.service";
 import { catalogService } from "./services/catalog.service";
+import { startCatalogSyncScheduler } from "./services/catalog-scheduler";
+import { config } from "./config";
 
 export async function buildServer(): Promise<FastifyInstance> {
   const server = Fastify({
@@ -85,12 +87,17 @@ export async function buildServer(): Promise<FastifyInstance> {
     server.log.warn(`Admin seed deferred: ${err.message}`);
   });
 
-  // Synchronize categories and products on server start to ensure foreign key and mapping alignment
-  catalogService
-    .syncCategories()
-    .then(() => catalogService.syncProducts())
-    .then((count) => server.log.info(`Catalog synchronized on startup: ${count} products aligned`))
-    .catch((err) => server.log.warn(`Startup catalog sync error: ${err.message}`));
+  // Automatic catalog sync: once at startup, then on a fixed cadence
+  // (CATALOG_SYNC_INTERVAL_MINUTES; 0 or test environment disables it).
+  if (config.NODE_ENV !== "test" && config.CATALOG_SYNC_INTERVAL_MINUTES > 0) {
+    const scheduler = startCatalogSyncScheduler({
+      intervalMinutes: config.CATALOG_SYNC_INTERVAL_MINUTES,
+      sync: () => catalogService.syncFullCatalog(),
+    });
+    server.addHook("onClose", async () => {
+      scheduler.stop();
+    });
+  }
 
   return server;
 }

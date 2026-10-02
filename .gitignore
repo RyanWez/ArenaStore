@@ -40,3 +40,6 @@ test-results/
 .nyc_output/
 
 
+
+# Embedded PostgreSQL data directory used by integration tests
+tests/.pgdata/

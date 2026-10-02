@@ -3,16 +3,33 @@
 ## Layout
 
 - `unit/` — pure domain logic: money, price, stock, parsers, state transitions
-- `integration/` — database repositories, API routes, supplier client with mock HTTP server
-- `e2e/` — admin dashboard and customer journey flows once apps exist
-- `fixtures/` — synthetic catalog/order/payment fixtures only
-- `mocks/` — upstream API and payment provider mock responses
+- `integration/` — money-flow tests against a real throwaway local Postgres (`arena_store_test`): wallet top-up review, bot purchase, API order fulfillment, catalog sync
+- `e2e/` — admin dashboard and customer journey flows (Playwright; Phase 2, currently no specs)
+- `fixtures/` — synthetic catalog/order/payment fixture builders (`seed.ts`)
+- `mocks/` — upstream XPro Partner API mock payloads (`upstream.ts`)
+- `setup/` — vitest test environment (`test-env.ts`), integration DB bootstrap (`integration-global-setup.ts`), safety guard (`integration-safety.ts`), in-memory Redis fake (`in-memory-redis.ts`)
 
-## Current browser coverage
+## Running
 
-`e2e/catalog-api.spec.ts` verifies that the server-side catalog route fails closed without an upstream key. `e2e/products-demo.spec.ts` verifies catalog search/filter, local selling-settings saves, the compact desktop icon rail/mobile drawer width and alignment, and deduplicated rapid product-status feedback. `e2e/sandbox-preview.spec.ts` verifies that opening a product's selling settings works inside the same kind of sandboxed iframe used by Arena preview.
+```bash
+pnpm test                      # unit + integration
+pnpm test:unit                 # unit only — no Postgres required
+pnpm test:integration          # integration only
+```
 
-The Playwright configuration intentionally runs a production `next build` + `next start` server. Next.js development mode blocks client chunks requested from an opaque sandbox iframe, which would otherwise create a visible but non-interactive preview.
+Integration tests automatically use a local PostgreSQL if one is reachable (e.g. `docker compose up -d postgres`); if none is running, a user-space embedded instance (Postgres 17 via `embedded-postgres`) is started from `tests/.pgdata` (gitignored) — no Docker or system install required. No Redis is needed (in-memory fake).
+
+## Integration test safety model
+
+- Every test file rebuilds a pristine `arena_store_test` database (DROP + CREATE + migrations) — the development/production database is never touched.
+- `tests/setup/integration-safety.ts` refuses to run unless `DATABASE_URL` points at a local database named `*_test`, `UPSTREAM_BASE_URL` points at localhost, and no upstream API key is present.
+- The vitest config injects all safe env values (empty upstream keys, unroutable `http://127.0.0.1:9` upstream URL, empty Telegram token, test-only encryption keys) before any app module import, so the developer's `.env` can never leak into a test run.
+- `apps/api/src/services/order.service.ts` carries an additional runtime guard that refuses to place an upstream order from a test environment with a non-local upstream URL (mirrors the bot-side guard).
+- Redis is replaced by an in-memory fake (`setup/in-memory-redis.ts`); the upstream supplier and Telegram are always mocked.
+
+## Browser coverage (Phase 2, planned)
+
+Playwright configuration exists (`playwright.config.ts`, production admin build on port 3100) but no specs are written yet. Planned: admin login, products table rendering, deposit slip review.
 
 ## Rules
 
