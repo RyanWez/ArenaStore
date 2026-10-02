@@ -4,6 +4,7 @@ import {
   installAdminApiMocks,
   loginAsAdminViaUi,
   openSidebarIfHidden,
+  sidebarLogoutButton,
   waitForCapturedCall,
 } from "./helpers/mock-admin-api";
 
@@ -32,7 +33,11 @@ test.describe("admin auth flow", () => {
     });
 
     await openSidebarIfHidden(page);
-    await expect(page.getByRole("link", { name: "Products", exact: true })).toBeVisible();
+    // Accessible names carry a PrimeIcons glyph before the label, so avoid
+    // exact matching (and "Product Orders" also contains "Product").
+    await expect(
+      page.locator("aside:visible").getByRole("link", { name: "Products" }).first()
+    ).toBeVisible();
   });
 
   test("shows an inline error for invalid credentials", async ({ page }) => {
@@ -55,7 +60,7 @@ test.describe("admin auth flow", () => {
     await loginAsAdminViaUi(page);
 
     await openSidebarIfHidden(page);
-    await page.locator('button[title="Sign out of Admin Portal"]').click();
+    await sidebarLogoutButton(page).click();
 
     await page.waitForURL((url) => url.pathname === "/login");
     await waitForCapturedCall(

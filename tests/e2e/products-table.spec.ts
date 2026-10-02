@@ -54,7 +54,8 @@ test.describe("products table", () => {
     await netflixRow.locator('button[title="Active on Bot (Click to pause)"]').click();
 
     await expect(page.getByText("Pause Product from Telegram Store?")).toBeVisible();
-    await page.getByRole("button", { name: "Pause Product", exact: true }).click();
+    // Non-exact: the button's accessible name carries an icon glyph first.
+    await page.getByRole("button", { name: "Pause Product" }).click();
 
     const putCall = await waitForCapturedCall(
       mock,

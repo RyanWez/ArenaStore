@@ -185,13 +185,25 @@ export async function loginAsAdminViaUi(page: Page): Promise<void> {
   await page.waitForURL((url) => url.pathname === "/");
 }
 
+/**
+ * The sidebar renders twice (desktop rail + mobile overlay), so scope every
+ * lookup to whichever aside is actually on screen.
+ */
+const visibleSidebar = (page: Page) => page.locator("aside:visible");
+
 /** The sidebar is hidden behind a hamburger on viewports below `lg`. */
 export async function openSidebarIfHidden(page: Page): Promise<void> {
-  const aside = page.locator("aside");
-  if (!(await aside.isVisible())) {
+  // The layout swap uses an out-in transition, so the aside appears a moment
+  // after the URL changes — wait for it before deciding the viewport needs
+  // the mobile hamburger.
+  const asideVisible = await visibleSidebar(page)
+    .waitFor({ state: "visible", timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!asideVisible) {
     await page.getByRole("button", { name: "Toggle Navigation" }).click();
+    await expect(visibleSidebar(page)).toBeVisible();
   }
-  await expect(aside).toBeVisible();
 }
 
 /** Navigate client-side via a sidebar link, mirroring real admin usage. */
@@ -201,6 +213,13 @@ export async function navigateToAdminPage(
   path: string
 ): Promise<void> {
   await openSidebarIfHidden(page);
-  await page.getByRole("link", { name: linkName }).first().click();
+  // Accessible names carry a PrimeIcons glyph before the label, so match by
+  // substring instead of exact.
+  await visibleSidebar(page).getByRole("link", { name: linkName }).first().click();
   await page.waitForURL((url) => url.pathname === path);
+}
+
+/** The logout icon button in the sidebar footer. */
+export function sidebarLogoutButton(page: Page) {
+  return visibleSidebar(page).locator('button[title="Sign out of Admin Portal"]');
 }
