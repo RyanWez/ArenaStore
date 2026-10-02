@@ -60,7 +60,29 @@ export function loadConfig(): AppConfig {
     console.error("Invalid configuration:", parsed.error.format());
     throw new Error("Configuration validation failed.");
   }
-  return parsed.data;
+
+  const data = parsed.data;
+
+  // Strict production security guards
+  if (data.NODE_ENV === "production") {
+    if (data.DELIVERY_ENCRYPTION_KEY === "arena-store-default-dev-encryption-key-32bytes!") {
+      throw new Error(
+        "CRITICAL SECURITY ERROR: DELIVERY_ENCRYPTION_KEY is using the insecure default key in production! Set a custom key in .env."
+      );
+    }
+    if (data.ADMIN_SESSION_SECRET === "VxyyoXyS9@Mg1c4POHuXjoUVrhhP") {
+      throw new Error(
+        "CRITICAL SECURITY ERROR: ADMIN_SESSION_SECRET is using the insecure default secret in production! Set a custom secret in .env."
+      );
+    }
+    if (data.ADMIN_API_KEY === "dev_admin_secret_key_change_in_production") {
+      throw new Error(
+        "CRITICAL SECURITY ERROR: ADMIN_API_KEY is using the insecure default key in production! Set a custom key in .env."
+      );
+    }
+  }
+
+  return data;
 }
 
 export const config = loadConfig();

@@ -1,0 +1,121 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: arena_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-arena_store}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - arena_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: arena_redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - arena_network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    container_name: arena_api
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      HOST: 0.0.0.0
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/arena_store}
+      DIRECT_URL: ${DIRECT_URL:-postgres://postgres:postgres@postgres:5432/arena_store}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      DELIVERY_ENCRYPTION_KEY: ${DELIVERY_ENCRYPTION_KEY}
+      ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET}
+      ADMIN_API_KEY: ${ADMIN_API_KEY}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@arenastore.mm}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD}
+      UPSTREAM_PARTNER_API_BASE_URL: ${UPSTREAM_PARTNER_API_BASE_URL}
+      UPSTREAM_PARTNER_API_KEY: ${UPSTREAM_PARTNER_API_KEY}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - arena_network
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: bot
+    container_name: arena_bot
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_BASE_URL: http://api:4000
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/arena_store}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      DELIVERY_ENCRYPTION_KEY: ${DELIVERY_ENCRYPTION_KEY}
+      REQUIRED_CHANNEL_USERNAME: ${REQUIRED_CHANNEL_USERNAME:-@arenasellerstore}
+      FORCE_CHANNEL_JOIN: ${FORCE_CHANNEL_JOIN:-true}
+    depends_on:
+      - api
+      - redis
+    networks:
+      - arena_network
+
+  admin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: admin
+    container_name: arena_admin
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+      NUXT_PUBLIC_API_URL: http://api:4000
+    depends_on:
+      - api
+    networks:
+      - arena_network
+
+networks:
+  arena_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local

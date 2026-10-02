@@ -57,4 +57,22 @@ describe("AES-256-GCM Delivery Credentials Encryption", () => {
 
     expect(() => decryptPayload(encrypted, wrongKey)).toThrow();
   });
+
+  it("successfully migrates payload from old key to new key without data loss", () => {
+    const oldKey = "arena-store-default-dev-encryption-key-32bytes!";
+    const newKey = "new-random-secure-encryption-key-32bytes-hex!!";
+    const sensitiveCredentials = "netflix_user@arena.mm:SuperSecretPass2026!";
+
+    // Encrypt with old key
+    const oldEncrypted = encryptPayload(sensitiveCredentials, oldKey);
+    expect(decryptPayload(oldEncrypted, oldKey)).toBe(sensitiveCredentials);
+
+    // Re-encrypt to new key
+    const decryptedWithOld = decryptPayload(oldEncrypted, oldKey);
+    const newEncrypted = encryptPayload(decryptedWithOld, newKey);
+
+    // Verify new key succeeds and old key fails on new ciphertext
+    expect(decryptPayload(newEncrypted, newKey)).toBe(sensitiveCredentials);
+    expect(() => decryptPayload(newEncrypted, oldKey)).toThrow();
+  });
 });

@@ -3,8 +3,23 @@ import { CreateOrderSchema, SubmitPaymentProofSchema } from "@arena/shared";
 import { orderService } from "../services/order.service";
 
 export async function orderRoutes(server: FastifyInstance) {
-  // POST /api/orders (Create pending order from Telegram Bot)
-  server.post("/api/orders", async (request, reply) => {
+  // POST /api/orders (Create pending order from Telegram Bot — rate limit: 10 orders/min per telegramId/IP)
+  server.post(
+    "/api/orders",
+    {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: 1000 * 60, // 10 orders per minute
+          hook: "preValidation",
+          keyGenerator: (req) => {
+            const tgId = (req.body as any)?.telegramId;
+            return tgId ? `order_tg_${tgId}` : `order_ip_${req.ip}`;
+          },
+        },
+      },
+    },
+    async (request, reply) => {
     const parseRes = CreateOrderSchema.safeParse(request.body);
     if (!parseRes.success) {
       return reply.status(400).send({

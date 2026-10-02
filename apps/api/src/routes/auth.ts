@@ -10,8 +10,19 @@ const LoginSchema = z.object({
 });
 
 export async function authRoutes(server: FastifyInstance) {
-  // POST /api/admin/auth/login
-  server.post("/api/admin/auth/login", async (request, reply) => {
+  // POST /api/admin/auth/login (Brute-force protection: max 5 attempts per 5 minutes per IP)
+  server.post(
+    "/api/admin/auth/login",
+    {
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: 1000 * 60 * 5, // 5 minutes
+          keyGenerator: (req) => `login_${req.ip}`,
+        },
+      },
+    },
+    async (request, reply) => {
     const parseRes = LoginSchema.safeParse(request.body);
     if (!parseRes.success) {
       return reply.status(400).send({

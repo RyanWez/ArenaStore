@@ -51,7 +51,17 @@ export function loadBotConfig(): BotConfig {
     console.error("Invalid bot configuration:", parsed.error.format());
     throw new Error("Bot configuration validation failed.");
   }
-  return parsed.data;
+
+  const data = parsed.data;
+
+  // Strict production security guard
+  if (data.NODE_ENV === "production" && data.DELIVERY_ENCRYPTION_KEY === "arena-store-default-dev-encryption-key-32bytes!") {
+    throw new Error(
+      "CRITICAL SECURITY ERROR: DELIVERY_ENCRYPTION_KEY is using the insecure default key in production! Set a custom key in .env."
+    );
+  }
+
+  return data;
 }
 
 export const botConfig = loadBotConfig();

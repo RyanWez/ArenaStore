@@ -1,6 +1,7 @@
 import Fastify, { FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import sensible from "@fastify/sensible";
+import { registerRateLimit } from "./plugins/rate-limit";
 import { healthRoutes } from "./routes/health";
 import { catalogRoutes } from "./routes/catalog";
 import { orderRoutes } from "./routes/orders";
@@ -23,6 +24,7 @@ export async function buildServer(): Promise<FastifyInstance> {
     credentials: true,
   });
   await server.register(sensible);
+  await registerRateLimit(server);
 
   // Authentication preHandler hook for /api/admin/* (excluding login and image proxies)
   server.addHook("preHandler", async (request, reply) => {

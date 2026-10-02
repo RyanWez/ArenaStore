@@ -11,7 +11,9 @@
     "@arena/shared": "workspace:*"
   },
   "devDependencies": {
+    "@fastify/rate-limit": "^11.2.0",
     "@playwright/test": "^1.63.0",
+    "fastify": "^5.12.5",
     "vitest": "^3.0.7"
   }
 }
