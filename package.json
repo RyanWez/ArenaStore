@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@12.8.1",
   "scripts": {
     "dev:admin": "pnpm --filter @arena/admin dev",
     "dev:api": "pnpm --filter @arena/api dev",
