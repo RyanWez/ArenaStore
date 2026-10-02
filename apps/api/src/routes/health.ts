@@ -4,6 +4,15 @@ import { sql } from "drizzle-orm";
 import { xproClient } from "../services/xpro-client";
 
 export async function healthRoutes(server: FastifyInstance) {
+  server.get("/", async () => {
+    return {
+      status: "ok",
+      service: "Arena Store API & Telegram Bot",
+      healthEndpoint: "/health",
+      timestamp: new Date().toISOString(),
+    };
+  });
+
   server.get("/health", async (_request, reply) => {
     let dbStatus = "unknown";
     let dbHealthy = false;
