@@ -1,38 +1,40 @@
-# Scheduled Catalog Sync — အကောင်အထည်ဖော်ရေး အစီအစဉ်
+# Playwright E2E (Testing Phase 2) + Monitoring Setup — အစီအစဉ်
 
-## ရည်မှန်းချက်
-Catalog ကို manual button (Sync Catalog) မှတပါး **အလိုအလျောက် ၅-၁၅ မိနစ်တစ်ခါ sync** လုပ်ပေးမယ် — admin မမေ့မိရင်တောင် products/prices/stock တွေ fresh ဖြစ်နေမယ်။
+## Phase A: Playwright E2E — Mocked API UI tests
 
-## နည်းလမ်း ဆုံးဖြတ်ချက်: BullMQ အစား lightweight interval scheduler
-Roadmap Phase 2 မှာ BullMQ/Redis worker ညွှန်းထားပေမယ့် — လက်ရှိ အခြေအနေနဲ့ BullMQ က **overkill** ဖြစ်နေတယ် (sync က single idempotent call တစ်ခုပဲ ဖြစ်ပြီး `syncFullCatalog()` batch upserts ကြောင့် ထပ်ခါထပ်ခါ run လို့ လုံခြုံတယ်၊ Redis မပါရင်လည်း app က လည်းနေတယ်)။ ဒါကြောင့် **API process ထဲမှာပဲ `setInterval` scheduler** — dependency အသစ် မလို၊ Redis မလို၊ AGENT.md ရဲ့ "smallest safe change" စည်းမျဉ်းအတိုင်း။ Deviation ကို Memory မှာ မှတ်မယ်။
+### ရှာဖွေတွေ့ရှိချက် အရေးကြီး
+- **`tests/playwright.config.ts` ဟောင်းက stale** — `next start` (Next.js) ကို ရည်ရွှန်းနေပေမယ့် admin က အခု **Nuxt 3** — config ကို အသစ်ပြန်ရေးရမယ် (`node apps/admin/.output/server/index.mjs` port 3100)။
+- Admin page တွေက same-origin `/api/...` ကို ခေါ်တာမို့ **`page.route()` နဲ့ `**/api/admin/**` ကို browser အတွင်း ဖမ်း mock လုပ်လို့ရတယ်** (Nitro proxy ထဲ မရောက်တော့ backend မလို)။
+- Auth: cookie `arena_admin_token` + `GET /api/admin/auth/me` mock — login မလုပ်ဘဲ authenticated ဖြစ်နေဟန် စမ်းနိုင်မယ်။ Response envelope: `{ ok: true, ... }`။
 
-## အကောင်အထည်ဖော်ရေး အဆင့်များ
+### အဆင့်တွေ
+1. **`tests/playwright.config.ts` ပြန်ရေး** — Nuxt production build + start (port 3100, upstream env empty ထား၊ `reuseExistingServer: !CI`)၊ desktop + mobile chromium projects ထားမယ်။
+2. **Mock helper + fixtures** — `tests/e2e/helpers/mock-admin-api.ts` (route installation + call capture) + `tests/mocks/admin-api.ts` (admin API payload builders: products, slips, stats, settings, supplier status)။
+3. **Spec ၃ ခု**:
+   - `admin-auth.spec.ts` — unauthenticated → /login redirect; login form → dashboard; wrong password → error; logout
+   - `products-table.spec.ts` — table render (names/prices/stock badges), filter, pause toggle → confirm modal → PUT captured → row update, sync button → POST sync
+   - `deposits-review.spec.ts` — slips list render, approve → `POST {action:APPROVE}` captured + status update, reject → reason dialog, slip image mock (1px PNG)
+4. **CI** — `.github/workflows/ci.yml` မှာ `e2e` job အသစ် (chromium install + desktop project ပဲ run — time ချုံ့ဖို့)
+5. Root script `test:e2e` + `tests/README.md` update
 
-### ၁။ Config (`apps/api/src/config.ts`)
-- `CATALOG_SYNC_INTERVAL_MINUTES: z.coerce.number().int().min(0).default(10)` — **0 ဆိုရင် disabled**
+**Local run အကြောင်း**: ပထမအကြိမ် `npx playwright install chromium` (~150MB download လိုမယ်)။
 
-### ၂။ Scheduler module အသစ် (`apps/api/src/services/catalog-scheduler.ts`)
-- `startCatalogSyncScheduler({ intervalMinutes, sync, log })` → `{ stop(): void }`
-- စတင်တာနှင့် တပြိုင်နက် ပထမဆုံး sync (လက်ရှိ startup sync လုပ်ဆောင်ချက်ကို အစားထိုးမယ်)၊ ပြီးရင် interval တိုင်း
-- **Overlap guard** — အရင် sync ပြီးမနေရင် နောက် tick ကို ချန်လှပ်မယ်
-- Error ဖြစ်ရင် log လုပ်ပြီး timer မသေစေဘဲ ဆက်လည်းမယ် (uptime အရေးကြီး)
-- `stop()` — interval ရှင်းလင်းမယ် (idempotent)
+## Phase B: Monitoring — Sentry (env-gated scaffold) + uptime hardening
 
-### ၃။ Server wiring (`apps/api/src/server.ts`)
-- လက်ရှိ fire-and-forget startup sync (lines 88-93) ကို အစားထိုးပြီး scheduler စတင်မယ်
-- `NODE_ENV=test` (သို့) interval = 0 ဆိုရင် schedule မလုပ်ဘူး
-- `server.addHook("onClose")` မှာ `stop()` ခေါ်မယ် — graceful shutdown
+### နည်းလမ်း
+Sentry SDK တွေ ထည့်ပြီး **DSN မရှိရင် လုံးဝ အလုပ်မလုပ် (no-op)** — မင်း sentry.io မှာ free account ဖွင့်ပြီး DSN ထည့်တာကို စာရွက်စာတမ်းနဲ့ ချန်ထားပေးမယ်။ UptimeRobot (free: 50 monitors, 5-min interval) က `/health` ကို ping လုပ်မယ်။
 
-### ၄။ Env plumbing
-- `.env.example` + `docker-compose.yml` (api service): `CATALOG_SYNC_INTERVAL_MINUTES=10`
-- `tests/setup/test-env.ts`: test env မှာ `"0"` (disabled) — test တွေ သီးသန့် ဖြစ်နေဖို့
+### အဆင့်တွေ
+1. **API** — `@sentry/node` + `apps/api/src/instrument.ts` (`SENTRY_DSN` ရှိမှ init; empty ဆို skip = zero overhead)။ `index.ts` ရဲ့ **ပထမဆုံး import** အဖြစ် ထည့်ရမယ် (Fastify instrumentation က init ကို ရှေ့ထွက်လို့) — ဒီ invariant ကို comment နဲ့ မှတ်မယ်။ Signal handler မှာ `Sentry.close(2000)` (long-running process event flush)။
+2. **Bot** — `@sentry/node` + ထိုက်တန်းတဲ့နေရာမှာ init; `bot.catch` handler မှာ `Sentry.captureException(err.error)`; shutdown မှာ flush။
+3. **Admin (Nuxt)** — `@sentry/nuxt` module + `sentry.client.config.ts` / `sentry.server.config.ts` + `NUXT_PUBLIC_SENTRY_DSN` runtime config — DSN မရှိရင် init ချန်လှပ်။
+4. **Health hardening** — `/health` မှာ DB ပျက်နေရင် **503 + status:"degraded"** ပြန်အောင် ပြင် (upstream ပြတ်ရင်တော့ 200 + degraded field) — UptimeRobot HTTP monitor က ဒါနဲ့ DB outage ကိုပါ ဖမ်းမယ်။ Health route အတွက် အသေးစား unit test အသစ်။
+5. **Env plumbing** — `.env.example` + docker-compose: `SENTRY_DSN`, `NUXT_PUBLIC_SENTRY_DSN` (value-free)။
+6. **Deployment plan update** — [Memory/04](/home/zixuan/Projects/Arena Store/Memory/04_FREE_DEPLOYMENT_PLAN.md) မှာ "Monitoring setup" အပိုင်းအသစ်: Sentry account ဖွင့်ပုံ + DSN တွေ ဘယ်မှာထည့်ရမလဲ + UptimeRobot monitor ၃ ခု setup အဆင့်တွေ (API /health HTTP monitor, Admin URL monitor, keyword check)။
 
-### ၅။ Unit tests (`tests/unit/catalog-scheduler.test.ts`) — fake timers နဲ့ ~6 tests
-- interval 0 → disabled; စတင်တာနှင့် ပထမ sync; interval တိုင်း run; overlap ဖြစ်ရင် skip; `stop()` နောက် run မလုပ်တော့; error ဖြစ်လည်း timer ရှင်သန်
+## စစ်ဆေးခြင်း + မှတ်တမ်း
+- `pnpm test` (unit + integration green), `pnpm build`, local `pnpm test:e2e` (chromium install ပြီး ၃ spec အားလုံး pass), tsc clean
+- Memory: daily entry 10 + 04 deployment plan monitoring section + tests/README e2e section update
 
-### ၆။ စစ်ဆေးခြင်း + မှတ်တမ်း
-- `pnpm test` (127 + ~6 = ~133 green မျှော်မှန်း), `pnpm build`, tsc clean
-- Memory: daily log entry 9 + roadmap 06 Phase 2 မှာ BullMQ deviation မှတ်တမ်း + 08 spec env table ထဲ row အသစ်
-
-## ထိခိုက်မည့် ဖိုင်များ
-`config.ts`, အသစ် `catalog-scheduler.ts`, `server.ts`, `.env.example`, `docker-compose.yml`, `tests/setup/test-env.ts`, အသစ် unit test, Memory docs — bot/admin တွေကို ထိစရာ မလို (bot က DB catalog ကို ၁၅စက်တန်း cache နဲ့ ဖတ်ပြီးသားမို့ sync fresh ဖြစ်ရင် အလိုအလျောက် အကျိုးခံစားမယ်)
+## ဖိုင်ပမာဏ
+Phase A: ~7 ဖိုင် (config rewrite, 4 new e2e/mocks, CI, README) · Phase B: ~10 ဖိုင် (3 apps + env + docs) — Sentry က **DSN မထည့်ခင် ဘာသ不起作用 effect မရှိ** (no-op) ဖြစ်နေမယ်။

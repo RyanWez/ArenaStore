@@ -8,3 +8,19 @@ allowBuilds:
   msgpackr-extract: true
   embedded-postgres: true
   "@embedded-postgres/linux-x64": true
+
+minimumReleaseAgeExclude:
+  - '@sentry/browser-utils@11.3.0'
+  - '@sentry/browser@11.3.0'
+  - '@sentry/bundler-plugins@11.3.0'
+  - '@sentry/cloudflare@11.3.0'
+  - '@sentry/core@11.3.0'
+  - '@sentry/feedback@11.3.0'
+  - '@sentry/node@11.3.0'
+  - '@sentry/nuxt@11.3.0'
+  - '@sentry/opentelemetry@11.3.0'
+  - '@sentry/replay-canvas@11.3.0'
+  - '@sentry/replay@11.3.0'
+  - '@sentry/server-runtime-injection@11.3.0'
+  - '@sentry/server-utils@11.3.0'
+  - '@sentry/vue@11.3.0'

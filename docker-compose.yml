@@ -62,6 +62,7 @@ services:
       UPSTREAM_PARTNER_API_KEY: ${UPSTREAM_PARTNER_API_KEY}
       CATALOG_SYNC_INTERVAL_MINUTES: ${CATALOG_SYNC_INTERVAL_MINUTES:-10}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      SENTRY_DSN: ${SENTRY_DSN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,6 +87,7 @@ services:
       DELIVERY_ENCRYPTION_KEY: ${DELIVERY_ENCRYPTION_KEY}
       REQUIRED_CHANNEL_USERNAME: ${REQUIRED_CHANNEL_USERNAME:-@arenasellerstore}
       FORCE_CHANNEL_JOIN: ${FORCE_CHANNEL_JOIN:-true}
+      SENTRY_DSN: ${SENTRY_DSN:-}
     depends_on:
       - api
       - redis
@@ -97,6 +99,10 @@ services:
       context: .
       dockerfile: Dockerfile
       target: admin
+      args:
+        # The Nuxt Sentry module is wired at build time — pass the DSN in as
+        # a build arg so the SDK is bundled, and again at runtime below.
+        NUXT_PUBLIC_SENTRY_DSN: ${NUXT_PUBLIC_SENTRY_DSN:-}
     container_name: arena_admin
     restart: unless-stopped
     ports:
@@ -106,6 +112,7 @@ services:
       PORT: 3000
       HOST: 0.0.0.0
       NUXT_PUBLIC_API_URL: http://api:4000
+      NUXT_PUBLIC_SENTRY_DSN: ${NUXT_PUBLIC_SENTRY_DSN:-}
     depends_on:
       - api
     networks:

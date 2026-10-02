@@ -24,6 +24,10 @@ RUN pnpm install --frozen-lockfile
 
 # 3. Builder Stage
 FROM base AS builder
+# Sentry for the Nuxt admin is wired at build time (see apps/admin/nuxt.config.ts),
+# so the DSN must be present as a build arg for the SDK to be bundled at all.
+ARG NUXT_PUBLIC_SENTRY_DSN=""
+ENV NUXT_PUBLIC_SENTRY_DSN=$NUXT_PUBLIC_SENTRY_DSN
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=dependencies /app/packages ./packages
 COPY --from=dependencies /app/apps ./apps

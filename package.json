@@ -11,6 +11,7 @@
     "test": "pnpm --filter @arena-store/tests test",
     "test:unit": "pnpm --filter @arena-store/tests test:unit",
     "test:integration": "pnpm --filter @arena-store/tests test:integration",
+    "test:e2e": "pnpm --filter @arena-store/tests test:e2e",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint"
   },

@@ -13,6 +13,7 @@
   "dependencies": {
     "@arena/shared": "workspace:*",
     "@nuxtjs/tailwindcss": "^6.13.1",
+    "@sentry/nuxt": "11.3.0",
     "nuxt": "^3.15.4",
     "primeicons": "^7.0.0",
     "vue": "^3.5.13",

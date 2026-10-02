@@ -28,6 +28,10 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       apiBaseUrl: process.env.API_BASE_URL || 'http://localhost:4000',
+      // Sentry DSN — the SDK stays a no-op unless this is non-empty.
+      sentry: {
+        dsn: process.env.NUXT_PUBLIC_SENTRY_DSN || '',
+      },
     },
   },
   nitro: {
@@ -37,7 +41,14 @@ export default defineNuxtConfig({
   },
   modules: [
     '@nuxtjs/tailwindcss',
+    '@sentry/nuxt/module',
   ],
+  sentry: {
+    // Fully inert build (no SDK wiring, no sourcemap work) unless a DSN is
+    // configured at build time. Runtime values are read by
+    // sentry.client.config.ts / sentry.server.config.ts.
+    enabled: !!process.env.NUXT_PUBLIC_SENTRY_DSN,
+  },
   tailwindcss: {
     cssPath: '~/assets/css/main.css',
     configPath: '~/tailwind.config.ts',

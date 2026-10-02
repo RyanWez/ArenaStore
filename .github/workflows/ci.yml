@@ -52,3 +52,43 @@ jobs:
           NODE_ENV: test
           DELIVERY_ENCRYPTION_KEY: "test-encryption-key-32bytes-ci-mock!!"
           ADMIN_SESSION_SECRET: "test-admin-session-secret-32bytes-ci!!"
+
+  e2e:
+    name: E2E (Admin, mocked UI)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.8.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter @arena-store/tests exec playwright install --with-deps chromium
+
+      # The webServer in tests/playwright.config.ts builds the Nuxt admin app
+      # and serves it on 127.0.0.1:3100; all /api/admin/** calls are mocked in
+      # the browser, so no API/Postgres service is needed here. Desktop project
+      # only to keep CI time down — mobile covers the same flows.
+      - name: Run Playwright E2E
+        run: pnpm --filter @arena-store/tests exec playwright test --project=desktop-chromium
+
+      - name: Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: tests/playwright-report/
+          retention-days: 7

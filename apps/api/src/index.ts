@@ -1,3 +1,7 @@
+// Must stay the first import: Sentry instrumentation has to initialize
+// before Fastify and its diagnostics-channel hooks load (see instrument.ts).
+import "./instrument";
+import { closeSentry } from "./instrument";
 import { buildServer } from "./server";
 import { config } from "./config";
 import { closeDb } from "@arena/db";
@@ -22,6 +26,7 @@ async function main() {
       console.log(`\nReceived ${signal}, gracefully shutting down...`);
       await server.close();
       await closeDb();
+      await closeSentry();
       process.exit(0);
     });
   }

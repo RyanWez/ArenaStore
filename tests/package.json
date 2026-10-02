@@ -6,7 +6,8 @@
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
-    "test:ui": "playwright test --config playwright.config.ts"
+    "test:e2e": "playwright test --config playwright.config.ts",
+    "test:ui": "playwright test --ui --config playwright.config.ts"
   },
   "dependencies": {
     "@arena/db": "workspace:*",

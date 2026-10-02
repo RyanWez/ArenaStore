@@ -4,12 +4,14 @@ import { sql } from "drizzle-orm";
 import { xproClient } from "../services/xpro-client";
 
 export async function healthRoutes(server: FastifyInstance) {
-  server.get("/health", async () => {
+  server.get("/health", async (_request, reply) => {
     let dbStatus = "unknown";
+    let dbHealthy = false;
     try {
       const db = getDb();
       await db.execute(sql`SELECT 1`);
       dbStatus = "connected";
+      dbHealthy = true;
     } catch (err: any) {
       dbStatus = `error: ${err.message}`;
     }
@@ -22,8 +24,26 @@ export async function healthRoutes(server: FastifyInstance) {
       upstreamStatus = `error: ${err.message}`;
     }
 
+    // A dead database means the API cannot serve requests: answer 503 so HTTP
+    // uptime monitors (e.g. UptimeRobot) treat it as an outage. A degraded
+    // upstream partner API alone stays 200 with `degraded: true` — the store
+    // keeps serving from local catalog state.
+    if (!dbHealthy) {
+      reply.code(503);
+      return {
+        status: "degraded",
+        degraded: true,
+        timestamp: new Date().toISOString(),
+        services: {
+          database: dbStatus,
+          upstreamPartnerApi: upstreamStatus,
+        },
+      };
+    }
+
     return {
       status: "ok",
+      degraded: upstreamStatus !== "healthy",
       timestamp: new Date().toISOString(),
       services: {
         database: dbStatus,
