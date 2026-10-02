@@ -82,8 +82,14 @@ export function formatCheckoutMessage(params: {
 <b>Reservation Timer:</b> ${tgEmoji(BOT_EMOJIS.HOURGLASS, "⏳")} 15 မိနစ်အတွင်း ငွေလွှဲပေးပါရန်</blockquote>
 
 ${tgEmoji(BOT_EMOJIS.BUY_NOW, "💳")} <b>ငွေလွှဲလက်ခံမည့် အကောင့်များ:</b>
-• ${tgEmoji(BOT_EMOJIS.KBZPAY, "🏧")} <b>KBZ Pay:</b> <code>${kpayPhone}</code> (${kpayAccount})
-• ${tgEmoji(BOT_EMOJIS.WAVEPAY, "🆗")} <b>WavePay:</b> <code>${wavepayPhone}</code> (${wavepayAccount})
+
+${tgEmoji(BOT_EMOJIS.KBZPAY, "🏧")} <b>KBZ Pay:</b>
+├ ဖုန်းနံပါတ်: <code>${kpayPhone}</code> <i>(နှိပ်၍ ကူးယူပါ)</i>
+└ အကောင့်အမည်: <b>${kpayAccount}</b>
+
+${tgEmoji(BOT_EMOJIS.WAVEPAY, "🆗")} <b>WavePay:</b>
+├ ဖုန်းနံပါတ်: <code>${wavepayPhone}</code> <i>(နှိပ်၍ ကူးယူပါ)</i>
+└ အကောင့်အမည်: <b>${wavepayAccount}</b>
 
 📲 <b>ငွေလွှဲပြီးပါက:</b>
 ငွေလွှဲပြီးကြောင်း ပြေစာ Screenshot ပုံကို <b>ဤ Chat ထဲသို့ ဓာတ်ပုံ (Photo) အဖြစ် တိုက်ရိုက် ပေးပို့ပေးပါရန်</b> ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}
@@ -195,8 +201,14 @@ export function formatTopUpInvoiceMessage(params: {
 ကိုးကားနံပါတ်: <code>${params.reference}</code></blockquote>
 
 ${tgEmoji(BOT_EMOJIS.BUY_NOW, "💳")} <b>ငွေလွှဲလက်ခံမည့် အကောင့်များ:</b>
-• ${tgEmoji(BOT_EMOJIS.KBZPAY, "🏧")} <b>KBZ Pay:</b> <code>${kpayPhone}</code> (${kpayAccount})
-• ${tgEmoji(BOT_EMOJIS.WAVEPAY, "🆗")} <b>WavePay:</b> <code>${wavepayPhone}</code> (${wavepayAccount})
+
+${tgEmoji(BOT_EMOJIS.KBZPAY, "🏧")} <b>KBZ Pay:</b>
+├ ဖုန်းနံပါတ်: <code>${kpayPhone}</code> <i>(နှိပ်၍ ကူးယူပါ)</i>
+└ အကောင့်အမည်: <b>${kpayAccount}</b>
+
+${tgEmoji(BOT_EMOJIS.WAVEPAY, "🆗")} <b>WavePay:</b>
+├ ဖုန်းနံပါတ်: <code>${wavepayPhone}</code> <i>(နှိပ်၍ ကူးယူပါ)</i>
+└ အကောင့်အမည်: <b>${wavepayAccount}</b>
 
 ${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>ငွေလွှဲပြီးပါက:</b>
 ငွေလွှဲပြေစာ Screenshot ပုံကို <b>ဤ Chat ထဲသို့ ဓာတ်ပုံ (Photo) အဖြစ် တိုက်ရိုက် ပေးပို့ပေးပါရန်</b> ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}
