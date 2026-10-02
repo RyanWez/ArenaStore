@@ -13,6 +13,8 @@
     "test:integration": "pnpm --filter @arena-store/tests test:integration",
     "test:e2e": "pnpm --filter @arena-store/tests test:e2e",
     "build": "pnpm -r build",
+    "start": "pnpm --filter @arena/api start & pnpm --filter @arena/bot start",
+    "start:backend": "pnpm --filter @arena/api start & pnpm --filter @arena/bot start",
     "lint": "pnpm -r lint"
   },
   "devDependencies": {

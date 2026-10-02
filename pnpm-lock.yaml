@@ -233,6 +233,9 @@ importers:
       ioredis:
         specifier: ^5.6.0
         version: 5.11.1(supports-color@10.2.2)
+      tsx:
+        specifier: ^4.19.3
+        version: 4.23.15
       zod:
         specifier: ^3.24.2
         version: 3.25.76
@@ -240,9 +243,6 @@ importers:
       '@types/node':
         specifier: ^22.13.9
         version: 22.20.4
-      tsx:
-        specifier: ^4.19.3
-        version: 4.23.15
       typescript:
         specifier: ^5.8.2
         version: 5.9.3
@@ -273,6 +273,9 @@ importers:
       grammy:
         specifier: ^1.35.0
         version: 1.46.0(supports-color@10.2.2)
+      tsx:
+        specifier: ^4.19.3
+        version: 4.23.15
       zod:
         specifier: ^3.24.2
         version: 3.25.76
@@ -280,9 +283,6 @@ importers:
       '@types/node':
         specifier: ^22.13.9
         version: 22.20.4
-      tsx:
-        specifier: ^4.19.3
-        version: 4.23.15
       typescript:
         specifier: ^5.8.2
         version: 5.9.3
