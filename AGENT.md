@@ -39,7 +39,7 @@ Research does not mean blindly following search results. Treat official docs as 
 - Shared code belongs in `packages/*`; do not import one app directly into another app.
 - Database schema and migrations belong in `packages/db`.
 - The admin UI must use Tailwind CSS and bespoke accessible components following shadcn/ui design conventions. PrimeVue has been replaced to maintain lean bundle performance. Do not introduce a competing component library.
-- Telegram custom emoji placeholders in supplier text use the form `{pe:<numeric-id>}`. Preserve the original supplier text for product items and descriptions; render it server-side for Telegram as `<tg-emoji emoji-id="...">fallback</tg-emoji>`. Category names are normalized to clean display names without `{pe:...}` placeholders in database and API responses.
+- Telegram custom emoji placeholders in supplier text use the form `{pe:<numeric-id>}`. Preserve the original supplier text for product items, descriptions, and category names; store the extracted numeric ID in `iconEmoji` so Telegram inline buttons render animated custom emoji icons (`icon_custom_emoji_id`). Slugs, admin dashboard views, and public client representations use clean display names via `stripCustomEmojiPlaceholders()`.
 
 ## 4. Data and order safety
 

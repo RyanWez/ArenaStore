@@ -232,11 +232,12 @@ class BotCatalogService {
 
       const catList: BotCategory[] = catRows.map((c) => {
         const parsed = parseCustomEmoji(c.name || `Category ${c.id}`);
+        const emojiId = parsed.emojiId || (c.iconEmoji && c.iconEmoji !== "📁" ? c.iconEmoji : null);
         return {
           id: c.id,
           name: c.name,
           cleanName: parsed.cleanText,
-          emojiId: parsed.emojiId,
+          emojiId,
         };
       });
 

@@ -1,6 +1,6 @@
 import { eq, and, sql } from "drizzle-orm";
 import { getDb, categories, products, productSupplierSnapshots, stockReservations } from "@arena/db";
-import { calculateRetailMmk, calculateSellableStock, formatMmk, stripCustomEmojiPlaceholders } from "@arena/shared";
+import { calculateRetailMmk, calculateSellableStock, formatMmk, stripCustomEmojiPlaceholders, parseCustomEmoji } from "@arena/shared";
 import { xproClient, XProProduct, XProCategory } from "./xpro-client";
 import { config } from "../config";
 
@@ -36,12 +36,14 @@ export class CatalogService {
     const db = getDb();
 
     const catValues = upstreamCategories.map((cat, index) => {
-      const cleanName = stripCustomEmojiPlaceholders(cat.name) || cat.name;
+      const parsed = parseCustomEmoji(cat.name);
+      const cleanName = parsed.cleanText || cat.name;
       const slug = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
       return {
         upstreamCategoryId: cat.id,
-        name: cleanName,
+        name: cat.name,
         slug: slug || `category-${cat.id}`,
+        iconEmoji: parsed.emojiId || "📁",
         sortOrder: index * 10,
         isActive: true,
       };
@@ -55,6 +57,7 @@ export class CatalogService {
         set: {
           name: sql`EXCLUDED.name`,
           upstreamCategoryId: sql`EXCLUDED.upstream_category_id`,
+          iconEmoji: sql`EXCLUDED.icon_emoji`,
           updatedAt: new Date(),
         },
       });
@@ -190,12 +193,14 @@ export class CatalogService {
     // 2. Batch upsert categories
     if (upstreamCategories.length > 0) {
       const catValues = upstreamCategories.map((cat, index) => {
-        const cleanName = stripCustomEmojiPlaceholders(cat.name) || cat.name;
+        const parsed = parseCustomEmoji(cat.name);
+        const cleanName = parsed.cleanText || cat.name;
         const slug = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
         return {
           upstreamCategoryId: cat.id,
-          name: cleanName,
+          name: cat.name,
           slug: slug || `category-${cat.id}`,
+          iconEmoji: parsed.emojiId || "📁",
           sortOrder: index * 10,
           isActive: true,
         };
@@ -209,6 +214,7 @@ export class CatalogService {
           set: {
             name: sql`EXCLUDED.name`,
             upstreamCategoryId: sql`EXCLUDED.upstream_category_id`,
+            iconEmoji: sql`EXCLUDED.icon_emoji`,
             updatedAt: new Date(),
           },
         });
@@ -223,6 +229,7 @@ export class CatalogService {
         catByUpstreamId.set(c.upstreamCategoryId, c.id);
       }
       catByName.set(c.name.trim().toLowerCase(), c.id);
+      catByName.set(stripCustomEmojiPlaceholders(c.name).trim().toLowerCase(), c.id);
     }
 
     // 4. Batch prepare products

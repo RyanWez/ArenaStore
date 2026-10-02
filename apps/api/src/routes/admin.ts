@@ -4,6 +4,7 @@ import {
   UpdateProductPricingSchema,
   calculateRetailMmk,
   calculateSellableStock,
+  stripCustomEmojiPlaceholders,
 } from "@arena/shared";
 import {
   getDb,
@@ -310,7 +311,7 @@ export async function adminRoutes(server: FastifyInstance) {
         id: p.id,
         supplierProductId: p.upstreamProductId,
         categoryId: p.categoryId,
-        categoryName: p.categoryName || "Uncategorized",
+        categoryName: stripCustomEmojiPlaceholders(p.categoryName || "") || "Uncategorized",
         name: p.supplierRawName || p.nameMmk,
         nameMmk: p.nameMmk,
         description: p.descriptionMmk || "",
@@ -401,7 +402,10 @@ export async function adminRoutes(server: FastifyInstance) {
 
     return {
       ok: true,
-      categories: catList,
+      categories: catList.map((c) => ({
+        ...c,
+        cleanName: stripCustomEmojiPlaceholders(c.name),
+      })),
     };
   });
 

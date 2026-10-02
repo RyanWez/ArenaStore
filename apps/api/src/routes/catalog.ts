@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { getDb, categories } from "@arena/db";
 import { eq } from "drizzle-orm";
+import { stripCustomEmojiPlaceholders } from "@arena/shared";
 import { catalogService } from "../services/catalog.service";
 
 export async function catalogRoutes(server: FastifyInstance) {
@@ -15,7 +16,10 @@ export async function catalogRoutes(server: FastifyInstance) {
 
     return {
       ok: true,
-      categories: allCategories,
+      categories: allCategories.map((c) => ({
+        ...c,
+        cleanName: stripCustomEmojiPlaceholders(c.name),
+      })),
     };
   });
 
