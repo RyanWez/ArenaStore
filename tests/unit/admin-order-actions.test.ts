@@ -150,10 +150,14 @@ vi.mock("../../apps/api/src/services/telegram-notifier", () => ({
   notifyOrderCredentialsResent: h.notifyOrderCredentialsResent,
 }));
 
-vi.mock("../../apps/api/src/services/encryption", () => ({
-  encryptPayload: h.encryptPayload,
-  decryptPayload: h.decryptPayload,
-}));
+vi.mock("../../apps/api/src/services/encryption", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    encryptPayload: h.encryptPayload,
+    decryptPayload: h.decryptPayload,
+  };
+});
 
 type RouteHandler = (request: any, reply: any) => Promise<any>;
 

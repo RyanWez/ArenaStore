@@ -74,7 +74,7 @@ interface CachedSupplierStatus {
 }
 
 let supplierStatusCache: CachedSupplierStatus = {
-  balanceUsd: "1.00",
+  balanceUsd: "0.00",
   currency: "USD",
   health: "ONLINE",
   version: "1.0.0",
@@ -84,7 +84,7 @@ let supplierStatusCache: CachedSupplierStatus = {
   updatedAt: 0,
 };
 
-let isUpdatingSupplierStatus = false;
+let inFlightSupplierRefresh: Promise<CachedSupplierStatus> | null = null;
 
 async function refreshSupplierStatus(force = false): Promise<CachedSupplierStatus> {
   const now = Date.now();
@@ -93,65 +93,71 @@ async function refreshSupplierStatus(force = false): Promise<CachedSupplierStatu
     return supplierStatusCache;
   }
 
-  // Prevent multiple concurrent network probes
-  if (isUpdatingSupplierStatus) {
-    return supplierStatusCache;
+  // Deduplicate concurrent in-flight requests
+  if (inFlightSupplierRefresh) {
+    return inFlightSupplierRefresh;
   }
 
-  isUpdatingSupplierStatus = true;
-  const startPing = Date.now();
-  try {
-    const [balanceResult, healthResult] = await Promise.allSettled([
-      xproClient.getBalance(2500, 0),
-      xproClient.getHealth(2500, 0),
-    ]);
-    const latency = Math.max(1, Date.now() - startPing);
+  inFlightSupplierRefresh = (async () => {
+    const startPing = Date.now();
+    try {
+      const [balanceResult, healthResult] = await Promise.allSettled([
+        xproClient.getBalance(4000, 1),
+        xproClient.getHealth(4000, 1),
+      ]);
+      const latency = Math.max(1, Date.now() - startPing);
 
-    let balance = supplierStatusCache.balanceUsd;
-    let currency = supplierStatusCache.currency;
-    let health = "OFFLINE";
-    let version = supplierStatusCache.version;
-    let userId = supplierStatusCache.userId;
+      let balance = supplierStatusCache.balanceUsd;
+      let currency = supplierStatusCache.currency;
+      let health = "OFFLINE";
+      let version = supplierStatusCache.version;
+      let userId = supplierStatusCache.userId;
 
-    if (balanceResult.status === "fulfilled" && balanceResult.value?.ok) {
-      balance = balanceResult.value.balance;
-      currency = balanceResult.value.currency || "USD";
-      if (balanceResult.value.userId) {
-        userId = balanceResult.value.userId;
+      if (balanceResult.status === "fulfilled" && balanceResult.value?.ok) {
+        balance = String(balanceResult.value.balance);
+        currency = balanceResult.value.currency || "USD";
+        if (balanceResult.value.userId) {
+          userId = balanceResult.value.userId;
+        }
       }
+
+      if (healthResult.status === "fulfilled" && healthResult.value?.ok) {
+        health = "ONLINE";
+        version = healthResult.value.version || version;
+      } else if (balanceResult.status === "fulfilled" && balanceResult.value?.ok) {
+        health = "ONLINE";
+      }
+
+      supplierStatusCache = {
+        balanceUsd: balance,
+        currency,
+        health,
+        version,
+        userId,
+        endpoint: config.UPSTREAM_BASE_URL.replace(/\/api\/partner\/v1\/?$/, ""),
+        latencyMs: latency,
+        updatedAt: Date.now(),
+      };
+      return supplierStatusCache;
+    } catch {
+      supplierStatusCache = {
+        ...supplierStatusCache,
+        health: "OFFLINE",
+        updatedAt: Date.now(),
+      };
+      return supplierStatusCache;
+    } finally {
+      inFlightSupplierRefresh = null;
     }
+  })();
 
-    if (healthResult.status === "fulfilled" && healthResult.value?.ok) {
-      health = "ONLINE";
-      version = healthResult.value.version || version;
-    } else if (balanceResult.status === "fulfilled") {
-      health = "ONLINE";
-    }
-
-    supplierStatusCache = {
-      balanceUsd: balance,
-      currency,
-      health,
-      version,
-      userId,
-      endpoint: config.UPSTREAM_BASE_URL.replace(/\/api\/partner\/v1\/?$/, ""),
-      latencyMs: latency,
-      updatedAt: Date.now(),
-    };
-  } catch {
-    supplierStatusCache = {
-      ...supplierStatusCache,
-      health: "OFFLINE",
-      updatedAt: Date.now(),
-    };
-  } finally {
-    isUpdatingSupplierStatus = false;
-  }
-
-  return supplierStatusCache;
+  return inFlightSupplierRefresh;
 }
 
 export async function adminRoutes(server: FastifyInstance) {
+  // Proactively warm up supplier status in background on server startup
+  refreshSupplierStatus(true).catch(() => {});
+
   // GET /api/admin/stats (Dashboard overview summary stats)
   server.get("/api/admin/stats", async () => {
     const db = getDb();
@@ -289,14 +295,14 @@ export async function adminRoutes(server: FastifyInstance) {
       .leftJoin(productSupplierSnapshots, eq(products.id, productSupplierSnapshots.productId))
       .orderBy(products.id);
 
-    let walletBalanceUsd = "1.00";
+    let walletBalanceUsd = String(supplierStatusCache.balanceUsd || "0.00");
     try {
-      const balRes = await xproClient.getBalance(1500, 0);
+      const balRes = await xproClient.getBalance(2500, 1);
       if (balRes.ok) {
         walletBalanceUsd = String(balRes.balance);
       }
     } catch {
-      // Fallback
+      // Fallback to cache if available
     }
 
     const mappedProducts = productRows.map((p) => {

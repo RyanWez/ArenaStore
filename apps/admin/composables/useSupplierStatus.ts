@@ -13,12 +13,12 @@ export interface SupplierDetails {
   productsCount: number
 }
 
-const supplierBalanceUsd = ref<string>('1.00')
+const supplierBalanceUsd = ref<string>('0.00')
 const isOnline = ref<boolean>(true)
 const isSyncing = ref<boolean>(false)
 const lastSyncMessage = ref<string>('')
 const supplierDetails = ref<SupplierDetails>({
-  balanceUsd: '1.00',
+  balanceUsd: '0.00',
   currency: 'USD',
   health: 'ONLINE',
   version: '1.0.0',
@@ -54,7 +54,7 @@ export function useSupplierStatus() {
           }
         }>('/api/admin/supplier/status', {
           headers: getAuthHeaders(),
-          timeout: 4000,
+          timeout: 8000,
         })
 
         if (res.ok && res.supplier) {
