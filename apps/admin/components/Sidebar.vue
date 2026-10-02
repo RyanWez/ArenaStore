@@ -135,12 +135,16 @@ const navGroups: NavGroup[] = [
         <button
           type="button"
           @click="isCollapsed && !isMobile ? toggleCollapse() : null"
-          class="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/25 text-white transition-all hover:scale-105 active:scale-95"
+          class="w-9 h-9 shrink-0 rounded-xl bg-slate-800/90 border border-slate-700/60 p-1 flex items-center justify-center shadow-lg shadow-black/30 transition-all hover:scale-105 active:scale-95 group overflow-hidden"
           :class="isCollapsed && !isMobile ? 'cursor-pointer' : 'cursor-default'"
           :title="isCollapsed && !isMobile ? 'Expand Sidebar' : undefined"
           aria-label="Arena Store Brand Logo"
         >
-          <i class="pi pi-bolt text-lg"></i>
+          <img
+            src="/logo.png"
+            alt="Arena Store Logo"
+            class="w-full h-full object-contain drop-shadow transition-transform duration-300 group-hover:scale-110"
+          />
         </button>
 
         <!-- Brand Title (Smooth max-w & opacity transition) -->

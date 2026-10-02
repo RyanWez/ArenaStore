@@ -478,22 +478,39 @@ export async function adminRoutes(server: FastifyInstance) {
 
     return {
       ok: true,
-      slips: slips.map((s) => ({
-        id: s.id,
-        reference: s.reference,
-        user: s.user.username ? `@${s.user.username}` : `${s.user.firstName} ${s.user.lastName || ""}`.trim(),
-        telegramId: s.user.telegramId,
-        amount: s.amountMmk,
-        method: s.paymentMethod,
-        txnRef: s.transactionRef || "-",
-        slipUrl: s.slipFileId
-          ? `/api/admin/telegram-file/${encodeURIComponent(s.slipFileId)}`
-          : `/api/admin/deposits/${s.id}/slip-image`,
-        intendedProduct: s.intendedProduct || "General Wallet Topup",
-        status: s.status,
-        date: s.createdAt ? new Date(s.createdAt).toISOString() : new Date().toISOString(),
-        rejectReason: s.rejectReason,
-      })),
+      slips: slips.map((s) => {
+        const displayName = buildCustomerDisplayName(s.user);
+        const username = s.user.username ? `@${s.user.username}` : null;
+        return {
+          id: s.id,
+          reference: s.reference,
+          user: displayName,
+          displayName,
+          firstName: s.user.firstName,
+          lastName: s.user.lastName,
+          username,
+          telegramUsername: username,
+          telegramId: s.user.telegramId,
+          customer: {
+            id: s.user.id,
+            displayName,
+            firstName: s.user.firstName,
+            lastName: s.user.lastName,
+            username: s.user.username,
+            telegramId: s.user.telegramId,
+          },
+          amount: s.amountMmk,
+          method: s.paymentMethod,
+          txnRef: s.transactionRef || "-",
+          slipUrl: s.slipFileId
+            ? `/api/admin/telegram-file/${encodeURIComponent(s.slipFileId)}`
+            : `/api/admin/deposits/${s.id}/slip-image`,
+          intendedProduct: s.intendedProduct || "General Wallet Topup",
+          status: s.status,
+          date: s.createdAt ? new Date(s.createdAt).toISOString() : new Date().toISOString(),
+          rejectReason: s.rejectReason,
+        };
+      }),
     };
   });
 

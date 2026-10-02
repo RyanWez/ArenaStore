@@ -35,8 +35,13 @@ async function handleLogin() {
 
       <!-- Header & Branding -->
       <div class="text-center mb-8">
-        <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 mb-4 shadow-lg shadow-cyan-500/10">
-          <i class="pi pi-bolt text-2xl animate-pulse"></i>
+        <div class="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-slate-800/80 border border-slate-700/80 p-3 mb-4 shadow-xl shadow-cyan-500/10 relative group">
+          <div class="absolute -inset-0.5 bg-gradient-to-r from-emerald-500 via-purple-500 to-indigo-500 rounded-3xl blur opacity-30 group-hover:opacity-60 transition duration-500"></div>
+          <img
+            src="/logo.png"
+            alt="Arena Store Logo"
+            class="w-full h-full object-contain relative z-10 drop-shadow-md"
+          />
         </div>
         <h1 class="text-2xl font-bold text-white tracking-tight">ArenaStore</h1>
         <p class="text-xs uppercase tracking-widest font-semibold text-cyan-400 mt-1">Management Portal</p>
