@@ -8,6 +8,7 @@
     "dev:admin": "pnpm --filter @arena/admin dev",
     "dev:api": "pnpm --filter @arena/api dev",
     "dev:bot": "pnpm --filter @arena/bot dev",
+    "totp:enroll": "node scripts/generate-totp.mjs",
     "test": "pnpm --filter @arena-store/tests test",
     "test:unit": "pnpm --filter @arena-store/tests test:unit",
     "test:integration": "pnpm --filter @arena-store/tests test:integration",
@@ -18,6 +19,7 @@
     "lint": "pnpm -r lint"
   },
   "devDependencies": {
+    "qrcode": "^1.5.4",
     "typescript": "^5.8.2"
   }
 }

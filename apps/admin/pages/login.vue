@@ -10,6 +10,7 @@ const { login, isLoading } = useAuth()
 
 const email = ref('admin@arenastore.mm')
 const password = ref('')
+const totpCode = ref('')
 const showPassword = ref(false)
 const errorMessage = ref('')
 
@@ -20,7 +21,7 @@ async function handleLogin() {
   }
 
   errorMessage.value = ''
-  const result = await login(email.value, password.value)
+  const result = await login(email.value, password.value, totpCode.value.trim())
   if (!result.success) {
     errorMessage.value = result.error || 'Invalid credentials. Please try again.'
   }
@@ -100,6 +101,27 @@ async function handleLogin() {
             >
               <i :class="showPassword ? 'pi pi-eye-slash' : 'pi pi-eye'" class="text-sm"></i>
             </button>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">2FA Code</label>
+            <span class="text-[11px] text-slate-500 font-mono">6 digits — if enabled</span>
+          </div>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <i class="pi pi-shield text-sm"></i>
+            </span>
+            <input
+              v-model="totpCode"
+              type="text"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              maxlength="6"
+              placeholder="••••••"
+              class="w-full pl-10 pr-4 py-2.5 bg-slate-950/60 border border-slate-700/60 rounded-xl text-white text-sm placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-colors font-mono tracking-[0.4em]"
+            />
           </div>
         </div>
 

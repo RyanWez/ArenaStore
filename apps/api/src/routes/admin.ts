@@ -1121,7 +1121,7 @@ export async function adminRoutes(server: FastifyInstance) {
           upstreamUsdCost: usdPrice,
           exchangeRateMmk: exchangeRate,
           marginPercentage: marginPct,
-          roundToNearest: 500,
+          roundToNearest: 100,
         });
 
         await db

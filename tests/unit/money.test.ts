@@ -60,30 +60,62 @@ describe("Money Utilities", () => {
       expect(result.profitMmk).toBe(3900 - 3105);
     });
 
-    it("rounds up to nearest 500 MMK by default (e.g. 440 -> 500, 650 -> 1000, 5500 -> 5500)", () => {
-      // 440 MMK raw cost -> rounds up to 500 MMK
-      const res440 = calculateRetailMmk({
+    it("rounds up to nearest 100 MMK by default (e.g. 450 -> 500, 600 -> 600, 1250 -> 1300, 1490 -> 1500, 9890 -> 9900)", () => {
+      // 450 MMK raw cost -> rounds up to 500 MMK
+      const res450 = calculateRetailMmk({
         upstreamUsdCost: 0.1, // 10 cents
-        exchangeRateMmk: 4400, // 440 MMK
+        exchangeRateMmk: 4500, // 450 MMK
         marginPercentage: 0,
       });
-      expect(res440.retailPriceMmk).toBe(500);
+      expect(res450.retailPriceMmk).toBe(500);
 
-      // 650 MMK raw cost -> rounds up to 1000 MMK
-      const res650 = calculateRetailMmk({
-        upstreamUsdCost: 0.1, // 10 cents
-        exchangeRateMmk: 6500, // 650 MMK
+      // 600 MMK raw cost -> stays 600 MMK
+      const res600 = calculateRetailMmk({
+        upstreamUsdCost: 0.1,
+        exchangeRateMmk: 6000,
         marginPercentage: 0,
       });
-      expect(res650.retailPriceMmk).toBe(1000);
+      expect(res600.retailPriceMmk).toBe(600);
 
-      // 5500 MMK raw cost -> stays 5500 MMK
-      const res5500 = calculateRetailMmk({
-        upstreamUsdCost: 1.0,
-        exchangeRateMmk: 5500,
+      // 900 MMK raw cost -> stays 900 MMK
+      const res900 = calculateRetailMmk({
+        upstreamUsdCost: 0.1,
+        exchangeRateMmk: 9000,
         marginPercentage: 0,
       });
-      expect(res5500.retailPriceMmk).toBe(5500);
+      expect(res900.retailPriceMmk).toBe(900);
+
+      // 1250 MMK raw cost -> rounds up to 1300 MMK
+      const res1250 = calculateRetailMmk({
+        upstreamUsdCost: 0.25,
+        exchangeRateMmk: 5000, // 1250 MMK
+        marginPercentage: 0,
+      });
+      expect(res1250.retailPriceMmk).toBe(1300);
+
+      // 1300 MMK raw cost -> stays 1300 MMK
+      const res1300 = calculateRetailMmk({
+        upstreamUsdCost: 0.26,
+        exchangeRateMmk: 5000, // 1300 MMK
+        marginPercentage: 0,
+      });
+      expect(res1300.retailPriceMmk).toBe(1300);
+
+      // 1490 MMK raw cost -> rounds up to 1500 MMK
+      const res1490 = calculateRetailMmk({
+        upstreamUsdCost: 1.49,
+        exchangeRateMmk: 1000, // 1490 MMK
+        marginPercentage: 0,
+      });
+      expect(res1490.retailPriceMmk).toBe(1500);
+
+      // 9890 MMK raw cost -> rounds up to 9900 MMK
+      const res9890 = calculateRetailMmk({
+        upstreamUsdCost: 9.89,
+        exchangeRateMmk: 1000, // 9890 MMK
+        marginPercentage: 0,
+      });
+      expect(res9890.retailPriceMmk).toBe(9900);
     });
 
     it("handles fixed fees correctly", () => {

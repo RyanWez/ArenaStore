@@ -26,12 +26,12 @@ export function useAuth() {
     };
   }
 
-  async function login(email: string, password: string) {
+  async function login(email: string, password: string, totpCode?: string) {
     isLoading.value = true;
     try {
       const res: any = await $fetch('/api/admin/auth/login', {
         method: 'POST',
-        body: { email, password },
+        body: { email, password, ...(totpCode ? { totpCode } : {}) },
       });
 
       if (res.ok && res.token) {
@@ -40,10 +40,24 @@ export function useAuth() {
         await navigateTo('/');
         return { success: true };
       } else {
-        return { success: false, error: res.error || 'Authentication failed' };
+        return {
+          success: false,
+          error: typeof res.error === 'string' && res.error ? res.error : 'Authentication failed.',
+        };
       }
     } catch (err: any) {
-      const msg = err.data?.error || err.message || 'Login failed. Please check credentials.';
+      // The server always sends a string `error`, but a stale/misconfigured
+      // proxy can return anything — never render a non-string raw.
+      const serverError = err?.data?.error;
+      const errorCode = err?.data?.code;
+      let msg: string;
+      if (typeof serverError === 'string' && serverError) {
+        msg = serverError;
+      } else if (errorCode === 'TOTP_REQUIRED') {
+        msg = 'Please enter your 6-digit 2FA code.';
+      } else {
+        msg = 'Login failed. Please check your credentials and try again.';
+      }
       return { success: false, error: msg };
     } finally {
       isLoading.value = false;

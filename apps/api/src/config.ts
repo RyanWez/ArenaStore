@@ -40,6 +40,14 @@ const envSchema = z.object({
     .transform((val) => (typeof val === "string" ? val.toLowerCase() === "true" || val === "1" : val)),
   /** Allowed CORS origins (comma-separated domains) */
   CORS_ORIGIN: z.string().default("http://localhost:3000,http://127.0.0.1:3000"),
+  /**
+   * Base32 TOTP shared secret for admin 2FA (Google Authenticator & compatible).
+   * Unset or empty disables 2FA; when set, admin logins must supply a valid
+   * 6-digit code. Generate with `pnpm totp:enroll`.
+   */
+  ADMIN_TOTP_SECRET: z
+    .union([z.literal(""), z.string().regex(/^[A-Z2-7=]{16,}$/i)])
+    .optional(),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

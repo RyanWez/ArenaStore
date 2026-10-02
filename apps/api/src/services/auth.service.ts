@@ -90,6 +90,38 @@ export class AuthService {
   }
 
   /**
+   * Revokes every active admin session — optionally scoped to one user. Used
+   * after a password change so a stolen session token cannot outlive the
+   * rotated credential.
+   */
+  async destroyAllSessions(userId?: number): Promise<number> {
+    const redis = getRedis();
+    let cursor = "0";
+    let destroyed = 0;
+
+    do {
+      const [next, keys] = await redis.scan(cursor, "MATCH", "arena:admin_session:*", "COUNT", 100);
+      cursor = next;
+
+      for (const key of keys) {
+        if (userId) {
+          const raw = await redis.get(key);
+          if (raw) {
+            try {
+              if ((JSON.parse(raw) as AdminSession).userId !== userId) continue;
+            } catch {
+              // Unparsable session data — clear it anyway.
+            }
+          }
+        }
+        destroyed += await redis.del(key);
+      }
+    } while (cursor !== "0");
+
+    return destroyed;
+  }
+
+  /**
    * Updates an admin user's password after verifying their current password.
    */
   async changePassword(
@@ -125,6 +157,9 @@ export class AuthService {
         updatedAt: new Date(),
       })
       .where(eq(users.id, userId));
+
+    // The rotated password must not leave old session tokens valid.
+    await this.destroyAllSessions(userId);
 
     return { success: true };
   }

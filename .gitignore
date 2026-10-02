@@ -44,3 +44,6 @@ test-results/
 
 # Embedded PostgreSQL data directory used by integration tests
 tests/.pgdata/
+
+# TOTP enrollment artifacts (the QR encodes the 2FA secret)
+scripts/totp-qr.png

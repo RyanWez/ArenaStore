@@ -46,7 +46,7 @@ export interface PricingOptions {
   marginPercentage?: number;
   /** Optional fixed handling fee in MMK (e.g., 500) */
   fixedFeeMmk?: number;
-  /** Round up to nearest (default: 500, e.g., 440 -> 500, 650 -> 1000) */
+  /** Round up to nearest (default: 100, e.g., 450 -> 500, 1490 -> 1500) */
   roundToNearest?: 1 | 10 | 50 | 100 | 500 | 1000;
 }
 
@@ -63,7 +63,7 @@ export function calculateRetailMmk(options: PricingOptions): {
     exchangeRateMmk,
     marginPercentage = 0,
     fixedFeeMmk = 0,
-    roundToNearest = 500,
+    roundToNearest = 100,
   } = options;
 
   if (exchangeRateMmk <= 0) {

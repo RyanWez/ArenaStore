@@ -268,8 +268,8 @@ function recalculatePrice() {
   const costMmk = usdCost * exchangeRate
   const marginMultiplier = 1 + editForm.value.marginPct / 100
   const rawPrice = costMmk * marginMultiplier
-  // Round up to nearest 500 MMK (e.g., 440 -> 500, 650 -> 1000)
-  editForm.value.retailPriceMmk = Math.ceil(rawPrice / 500) * 500
+  // Round up to nearest 100 MMK (e.g., 450 -> 500, 1490 -> 1500)
+  editForm.value.retailPriceMmk = Math.ceil(rawPrice / 100) * 100
 }
 
 async function saveProductChanges() {

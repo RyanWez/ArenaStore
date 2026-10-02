@@ -22,6 +22,7 @@
     "drizzle-orm": "^0.45.3",
     "embedded-postgres": "17.9.0-beta.17",
     "fastify": "^5.12.5",
+    "otpauth": "^9.4.1",
     "pg": "^8.13.3",
     "vitest": "^3.0.7"
   }

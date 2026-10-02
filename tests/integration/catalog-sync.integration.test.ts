@@ -96,7 +96,7 @@ describe("Catalog sync (batch upserts with admin customization preservation)", (
     expect(categoryRow.slug).toBe("duolingo");
     expect(categoryRow.iconEmoji).toBe("4963072209334567688");
 
-    // Product A: 0.69 USD → 3,105 MMK cost → +25% margin → 4,000 Ks (rounded to 500).
+    // Product A: 0.69 USD → 3,105 MMK cost → +25% margin → 3,900 Ks (rounded to 100).
     const [productA] = await db
       .select()
       .from(products)
@@ -104,7 +104,7 @@ describe("Catalog sync (batch upserts with admin customization preservation)", (
     expect(productA).toBeTruthy();
     expect(productA.nameMmk).toBe(MOCK_PE_PRODUCT_NAME);
     expect(productA.descriptionMmk).toBe(MOCK_PE_DESCRIPTION);
-    expect(productA.retailPriceMmk).toBe(4000);
+    expect(productA.retailPriceMmk).toBe(3900);
     expect(productA.categoryId).toBe(categoryRow.id);
     expect(productA.isActive).toBe(true);
 

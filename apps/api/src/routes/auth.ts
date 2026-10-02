@@ -3,10 +3,12 @@ import { z } from "zod";
 import { eq, or } from "drizzle-orm";
 import { getDb, users } from "@arena/db";
 import { authService } from "../services/auth.service";
+import { totpService } from "../services/totp.service";
 
 const LoginSchema = z.object({
   email: z.string().min(1, "Email or username is required"),
   password: z.string().min(1, "Password is required"),
+  totpCode: z.string().optional(),
 });
 
 export async function authRoutes(server: FastifyInstance) {
@@ -72,6 +74,27 @@ export async function authRoutes(server: FastifyInstance) {
         ok: false,
         error: "Invalid credentials.",
       });
+    }
+
+    // 2FA gate: when ADMIN_TOTP_SECRET is configured, a valid 6-digit code is
+    // required after the password. Attempts are already capped by the login
+    // rate limiter above (5 per 5 min per IP+account).
+    if (totpService.isEnabled()) {
+      const code = parseRes.data.totpCode || "";
+      if (!code) {
+        return reply.status(401).send({
+          ok: false,
+          error: "Two-factor authentication code required.",
+          code: "TOTP_REQUIRED",
+        });
+      }
+      if (!totpService.verifyCode(code, user.email || user.username || "")) {
+        return reply.status(401).send({
+          ok: false,
+          error: "Invalid two-factor authentication code.",
+          code: "TOTP_INVALID",
+        });
+      }
     }
 
     // Create session in Redis
