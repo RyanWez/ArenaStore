@@ -3,12 +3,16 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
+import { usePermission } from '~/composables/usePermission'
 import { formatMyanmarDateTime, formatMyanmarDate } from '~/utils/date'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const { getAuthHeaders } = useAuth()
+const { can } = usePermission()
+const canAdjust = computed(() => can('customers.balance'))
+const canStatus = computed(() => can('customers.status'))
 
 const customerIdParam = computed(() => String(route.params.id || ''))
 
@@ -543,6 +547,7 @@ function openSlipPreview(topUp: any) {
           <div class="w-full mt-6 space-y-2">
             <!-- Adjust Balance (Solid Green Button matching Screenshot 2) -->
             <button
+              v-if="canAdjust"
               type="button"
               @click="openAdjustModal"
               class="w-full py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-emerald-500 hover:bg-emerald-600 active:scale-[0.99] transition-all flex items-center justify-center gap-2 shadow-sm shadow-emerald-500/20"
@@ -553,7 +558,7 @@ function openSlipPreview(topUp: any) {
 
             <!-- Deactivate or Restore Button -->
             <button
-              v-if="customer.status === 'ACTIVE'"
+              v-if="canStatus && customer.status === 'ACTIVE'"
               type="button"
               @click="isDeactivateModalOpen = true"
               class="w-full py-2 px-4 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 bg-slate-100 hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-rose-950/20 border border-slate-200 dark:border-slate-700 transition-colors flex items-center justify-center gap-2"
@@ -562,7 +567,7 @@ function openSlipPreview(topUp: any) {
               <span>Deactivate Account</span>
             </button>
             <button
-              v-else
+              v-else-if="canStatus"
               type="button"
               @click="handleRestore"
               :disabled="isRestoring"

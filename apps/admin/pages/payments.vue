@@ -3,11 +3,14 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
+import { usePermission } from '~/composables/usePermission'
 import { formatMyanmarDateTime } from '~/utils/date'
 
 const router = useRouter()
 const toast = useToast()
 const { getAuthHeaders } = useAuth()
+const { can } = usePermission()
+const canReview = computed(() => can('payments.review'))
 
 const isLoading = ref(true)
 const isRefreshing = ref(false)
@@ -705,7 +708,7 @@ async function confirmReject() {
 
                 <!-- Actions -->
                 <td class="py-2.5 px-3 text-right whitespace-nowrap">
-                  <div v-if="slip.status === 'SUBMITTED'" class="inline-flex items-center gap-1.5">
+                  <div v-if="slip.status === 'SUBMITTED' && canReview" class="inline-flex items-center gap-1.5">
                     <button
                       type="button"
                       @click="approveDeposit(slip, $event)"
@@ -886,7 +889,7 @@ async function confirmReject() {
             <!-- Modal Bottom Actions -->
             <div class="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-800">
               <button
-                v-if="selectedSlip.status === 'SUBMITTED'"
+                v-if="selectedSlip.status === 'SUBMITTED' && canReview"
                 type="button"
                 @click="openRejectDialog(selectedSlip)"
                 class="px-4 py-2 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors"
@@ -904,7 +907,7 @@ async function confirmReject() {
                   Close
                 </button>
                 <button
-                  v-if="selectedSlip.status === 'SUBMITTED'"
+                  v-if="selectedSlip.status === 'SUBMITTED' && canReview"
                   type="button"
                   @click="approveDeposit(selectedSlip)"
                   :disabled="isProcessing"

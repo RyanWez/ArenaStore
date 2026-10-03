@@ -3,11 +3,15 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
+import { usePermission } from '~/composables/usePermission'
 import { formatMyanmarDate, formatMyanmarTime } from '~/utils/date'
 
 const router = useRouter()
 const toast = useToast()
 const { getAuthHeaders } = useAuth()
+const { can } = usePermission()
+const canAdjust = computed(() => can('customers.balance'))
+const canStatus = computed(() => can('customers.status'))
 
 interface CustomerItem {
   id: number
@@ -763,6 +767,7 @@ function formatCurrency(amount: number): string {
                     </button>
 
                     <button
+                      v-if="canAdjust"
                       type="button"
                       @click="openAdjustModal(c, $event)"
                       class="p-1.5 rounded-xl text-xs border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
@@ -772,7 +777,7 @@ function formatCurrency(amount: number): string {
                     </button>
 
                     <button
-                      v-if="c.status === 'ACTIVE'"
+                      v-if="canStatus && c.status === 'ACTIVE'"
                       type="button"
                       @click="openDeactivateModal(c, $event)"
                       class="p-1.5 rounded-xl text-xs border border-slate-200 dark:border-slate-700/60 text-slate-500 hover:text-rose-500 hover:border-rose-500/30 dark:hover:border-rose-500/30 transition-colors"
@@ -781,7 +786,7 @@ function formatCurrency(amount: number): string {
                       <i class="pi pi-ban text-xs"></i>
                     </button>
                     <button
-                      v-else
+                      v-else-if="canStatus"
                       type="button"
                       @click="restoreCustomer(c, false, $event)"
                       :disabled="actionInProgressId === c.id"

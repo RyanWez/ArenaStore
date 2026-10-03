@@ -1,4 +1,5 @@
-import { pgTable, serial, varchar, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, varchar, boolean, timestamp, index } from "drizzle-orm/pg-core";
+import { roles } from "./roles";
 
 export const users = pgTable(
   "users",
@@ -11,6 +12,8 @@ export const users = pgTable(
     firstName: varchar("first_name", { length: 255 }).notNull(),
     lastName: varchar("last_name", { length: 255 }),
     role: varchar("role", { length: 32 }).notNull().default("CUSTOMER"), // CUSTOMER, ADMIN, SUPERADMIN
+    roleId: integer("role_id").references(() => roles.id), // staff-only: FK to custom role
+    mustChangePassword: boolean("must_change_password").notNull().default(false),
     status: varchar("status", { length: 32 }).notNull().default("ACTIVE"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),

@@ -3,11 +3,15 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
+import { usePermission } from '~/composables/usePermission'
 import { formatMyanmarDateTime } from '~/utils/date'
 
 const router = useRouter()
 const toast = useToast()
 const { getAuthHeaders } = useAuth()
+const { can } = usePermission()
+const canRefund = computed(() => can('orders.refund'))
+const canResend = computed(() => can('orders.resend'))
 
 const isLoading = ref(true)
 const isRefreshing = ref(false)
@@ -886,7 +890,7 @@ async function refundToWallet(order: OrderRecord) {
             <!-- Modal Footer Actions -->
             <div class="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-800">
               <button
-                v-if="selectedOrder.status === 'DELIVERED'"
+                v-if="selectedOrder.status === 'DELIVERED' && canRefund"
                 type="button"
                 @click="refundToWallet(selectedOrder)"
                 :disabled="isRefunding || isResending"
@@ -904,7 +908,7 @@ async function refundToWallet(order: OrderRecord) {
 
               <div class="flex items-center gap-2.5">
                 <button
-                  v-if="selectedOrder.delivery && selectedOrder.status === 'DELIVERED'"
+                  v-if="selectedOrder.delivery && selectedOrder.status === 'DELIVERED' && canResend"
                   type="button"
                   @click="resendCredentials(selectedOrder)"
                   :disabled="isResending || isRefunding"

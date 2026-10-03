@@ -6,8 +6,10 @@ import { healthRoutes } from "./routes/health";
 import { catalogRoutes } from "./routes/catalog";
 import { orderRoutes } from "./routes/orders";
 import { adminRoutes } from "./routes/admin";
+import { adminUsersRoutes } from "./routes/admin-users";
 import { authRoutes } from "./routes/auth";
 import { authService } from "./services/auth.service";
+import { rbacService } from "./services/rbac.service";
 import { catalogService } from "./services/catalog.service";
 import { startCatalogSyncScheduler } from "./services/catalog-scheduler";
 import { config } from "./config";
@@ -92,6 +94,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await server.register(orderRoutes);
   await server.register(authRoutes);
   await server.register(adminRoutes);
+  await server.register(adminUsersRoutes);
 
   // Custom global error handler
   server.setErrorHandler((error: any, _request, reply) => {
@@ -106,6 +109,11 @@ export async function buildServer(): Promise<FastifyInstance> {
   // Seed default admin in database if not present
   await authService.seedDefaultAdmin().catch((err) => {
     server.log.warn(`Admin seed deferred: ${err.message}`);
+  });
+
+  // Seed the default roles + permission sets (idempotent)
+  await rbacService.seedDefaultRoles().catch((err) => {
+    server.log.warn(`RBAC seed deferred: ${err.message}`);
   });
 
   // Automatic catalog sync: once at startup, then on a fixed cadence

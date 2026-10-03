@@ -154,6 +154,7 @@ export class AuthService {
       .update(users)
       .set({
         passwordHash: newHash,
+        mustChangePassword: false,
         updatedAt: new Date(),
       })
       .where(eq(users.id, userId));
@@ -165,41 +166,79 @@ export class AuthService {
   }
 
   /**
-   * Ensures a default superadmin user exists in the database.
+   * Ensures exactly one SUPERADMIN exists, driven by ADMIN_EMAIL /
+   * ADMIN_INITIAL_PASSWORD. Deployments created before the SUPERADMIN role
+   * existed get a one-time promotion of their seeded admin; customer accounts
+   * are never hijacked.
    */
   async seedDefaultAdmin(): Promise<void> {
     try {
       const db = getDb();
-      const existing = await db
+
+      const [byEmail] = await db
         .select()
         .from(users)
-        .where(
-          or(
-            eq(users.email, config.ADMIN_EMAIL),
-            eq(users.role, "ADMIN")
-          )
-        )
+        .where(eq(users.email, config.ADMIN_EMAIL))
         .limit(1);
 
-      if (existing.length === 0) {
+      if (byEmail && byEmail.role !== "ADMIN" && byEmail.role !== "SUPERADMIN") {
+        console.warn(
+          `[Auth] ADMIN_EMAIL belongs to a ${byEmail.role} user; admin seed skipped.`
+        );
+        return;
+      }
+
+      let target = byEmail ?? null;
+
+      if (!target) {
+        const staff = await db
+          .select()
+          .from(users)
+          .where(or(eq(users.role, "ADMIN"), eq(users.role, "SUPERADMIN")));
+
+        if (staff.some((u) => u.role === "SUPERADMIN")) {
+          console.log("[Auth] SUPERADMIN already exists; admin seed skipped.");
+          return;
+        }
+        if (staff.length > 1) {
+          console.warn(
+            `[Auth] ${staff.length} admins exist without a SUPERADMIN; promote one manually.`
+          );
+          return;
+        }
+        target = staff[0] ?? null;
+      }
+
+      if (!target) {
         const passwordHash = this.hashPassword(config.ADMIN_INITIAL_PASSWORD);
         await db.insert(users).values({
           email: config.ADMIN_EMAIL,
           username: "admin",
           firstName: "Arena",
           lastName: "Superadmin",
-          role: "ADMIN",
+          role: "SUPERADMIN",
           status: "ACTIVE",
           passwordHash,
         });
-        console.log(`[Auth] Default admin initialized: ${config.ADMIN_EMAIL}`);
-      } else if (process.env.ADMIN_FORCE_RESET_PASSWORD === "true") {
+        console.log(`[Auth] Default SUPERADMIN initialized: ${config.ADMIN_EMAIL}`);
+        return;
+      }
+
+      if (target.role === "ADMIN") {
+        await db
+          .update(users)
+          .set({ role: "SUPERADMIN", updatedAt: new Date() })
+          .where(eq(users.id, target.id));
+        console.log(`[Auth] Admin promoted to SUPERADMIN: ${target.email}`);
+      }
+
+      if (process.env.ADMIN_FORCE_RESET_PASSWORD === "true") {
         const passwordHash = this.hashPassword(config.ADMIN_INITIAL_PASSWORD);
         await db
           .update(users)
           .set({ passwordHash, updatedAt: new Date() })
-          .where(eq(users.id, existing[0].id));
-        console.log(`[Auth] Default admin password force-reset from .env: ${config.ADMIN_EMAIL}`);
+          .where(eq(users.id, target.id));
+        console.log(`[Auth] SUPERADMIN password force-reset from .env: ${target.email}`);
       }
     } catch (err: any) {
       console.warn("[Auth] Admin seed skipped or error:", err.message);

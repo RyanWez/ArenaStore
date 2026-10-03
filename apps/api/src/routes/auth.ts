@@ -4,6 +4,7 @@ import { eq, or } from "drizzle-orm";
 import { getDb, users } from "@arena/db";
 import { authService } from "../services/auth.service";
 import { totpService } from "../services/totp.service";
+import { rbacService } from "../services/rbac.service";
 
 const LoginSchema = z.object({
   email: z.string().min(1, "Email or username is required"),
@@ -111,6 +112,7 @@ export async function authRoutes(server: FastifyInstance) {
         lastName: user.lastName,
         role: user.role,
       },
+      mustChangePassword: user.mustChangePassword,
     };
   });
 
@@ -134,9 +136,22 @@ export async function authRoutes(server: FastifyInstance) {
       });
     }
 
+    // Resolve effective permissions fresh from the DB so the admin panel's
+    // sidebar/actions always reflect the current role definition.
+    const ctx = await rbacService.getContext(session.userId).catch(() => null);
+
     return {
       ok: true,
       user: session,
+      role: ctx
+        ? {
+            id: ctx.roleId,
+            name: ctx.roleName,
+            isSuperadmin: ctx.isSuperadmin,
+          }
+        : null,
+      permissions: ctx?.permissions ?? [],
+      mustChangePassword: ctx?.mustChangePassword ?? false,
     };
   });
 

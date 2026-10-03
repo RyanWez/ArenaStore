@@ -4,11 +4,21 @@ import { useSupplierStatus } from '~/composables/useSupplierStatus'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
 import { useStoreSettings } from '~/composables/useStoreSettings'
+import { usePermission } from '~/composables/usePermission'
 
 const { supplierBalanceUsd, isSyncing, syncCatalog: runSync } = useSupplierStatus()
 const { getAuthHeaders } = useAuth()
 const { settings: storeSettings, fetchSettings: fetchStoreSettings } = useStoreSettings()
 const toast = useToast()
+const { can } = usePermission()
+
+// View-only gating — the API strips the data server-side too; this only
+// controls what the UI renders (columns, buttons, edit drawer).
+const canSeeCost = computed(() => can('products.show_cost'))
+const canSeeMargin = computed(() => can('products.show_margin'))
+const canEditProducts = computed(() => can('products.edit'))
+const canSyncSupplier = computed(() => can('supplier.sync'))
+const canSeeSupplierWallet = computed(() => can('supplier.view'))
 
 const isLoading = ref(true)
 const isFiltering = ref(false)
@@ -487,6 +497,7 @@ async function executeConfirmAction() {
 
       <div class="flex items-center gap-2.5 flex-wrap">
         <button
+          v-if="canSyncSupplier"
           type="button"
           @click="handleSyncCatalog"
           :disabled="isSyncing"
@@ -610,14 +621,14 @@ async function executeConfirmAction() {
                 <span class="text-slate-400">{{ pausedCount }} paused</span>
               </span>
             </div>
-            <span class="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
-            <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-medium">
+            <span v-if="canSeeSupplierWallet" class="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
+            <div v-if="canSeeSupplierWallet" class="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-medium">
               <i class="pi pi-wallet text-[11px]"></i>
               <span>Supplier Wallet: <strong class="font-mono">${{ supplierBalanceUsd }}</strong></span>
             </div>
           </div>
 
-          <div class="flex items-center gap-2">
+          <div v-if="canEditProducts" class="flex items-center gap-2">
             <button
               type="button"
               @click="promptBulkStatus(false)"
@@ -656,7 +667,7 @@ async function executeConfirmAction() {
           <thead class="sticky top-0 z-10 bg-slate-50 dark:bg-[#0e172a] shadow-sm border-b border-slate-200 dark:border-slate-800">
             <tr class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               <th class="py-3 px-4">Product Name & Category</th>
-              <th class="py-3 px-4">USD Cost</th>
+              <th v-if="canSeeCost" class="py-3 px-4">USD Cost</th>
               <th class="py-3 px-4">Supplier Stock</th>
               <th class="py-3 px-4">MMK Retail Price</th>
               <th class="py-3 px-4">Our Sellable Stock</th>
@@ -683,7 +694,7 @@ async function executeConfirmAction() {
 
             <!-- Empty state -->
             <tr v-else-if="paginatedProducts.length === 0">
-              <td colspan="7" class="py-14 text-center">
+              <td :colspan="canSeeCost ? 7 : 6" class="py-14 text-center">
                 <div class="flex flex-col items-center justify-center max-w-sm mx-auto">
                   <div class="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 text-2xl mb-3">
                     <i class="pi pi-box"></i>
@@ -708,8 +719,8 @@ async function executeConfirmAction() {
               <tr
                 v-for="p in paginatedProducts"
                 :key="p.id"
-                @click="openEditDrawer(p, $event)"
-                class="transition-colors cursor-pointer group"
+                @click="canEditProducts && openEditDrawer(p, $event)"
+                class="transition-colors group"
                 :class="!p.isActive ? 'bg-slate-50/50 dark:bg-slate-950/40 text-slate-400' : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'"
               >
                 <!-- Product Name & Category Pill -->
@@ -733,8 +744,8 @@ async function executeConfirmAction() {
                   </div>
                 </td>
 
-                <!-- Upstream USD Cost -->
-                <td class="py-3.5 px-4 font-mono font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                <!-- Upstream USD Cost (hidden without products.show_cost) -->
+                <td v-if="canSeeCost" class="py-3.5 px-4 font-mono font-medium text-slate-700 dark:text-slate-300 whitespace-nowrap">
                   ${{ p.supplierPriceUsd }}
                 </td>
 
@@ -754,6 +765,7 @@ async function executeConfirmAction() {
                     {{ p.retailPriceMmk.toLocaleString() }} Ks
                   </div>
                   <div
+                    v-if="canSeeMargin && p.supplierPriceUsd"
                     class="text-[11px] font-semibold"
                     :class="calculateMargin(p.retailPriceMmk, p.supplierPriceUsd).isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'"
                   >
@@ -797,6 +809,7 @@ async function executeConfirmAction() {
                 <td class="py-3.5 px-4" @click.stop>
                   <div class="flex items-center gap-2">
                     <button
+                      v-if="canEditProducts"
                       type="button"
                       @click="promptToggleProductStatus(p, $event)"
                       :disabled="togglingId === p.id"
@@ -821,9 +834,10 @@ async function executeConfirmAction() {
                   </div>
                 </td>
 
-                <!-- Action Edit Button -->
+                <!-- Action Edit Button (view-only roles see the status only) -->
                 <td class="py-3.5 px-4 text-right">
                   <button
+                    v-if="canEditProducts"
                     type="button"
                     @click="openEditDrawer(p, $event)"
                     class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 transition-colors"
@@ -831,6 +845,7 @@ async function executeConfirmAction() {
                     <i class="pi pi-pencil text-[11px]"></i>
                     <span>Edit</span>
                   </button>
+                  <span v-else class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">View only</span>
                 </td>
               </tr>
             </template>
@@ -924,8 +939,8 @@ async function executeConfirmAction() {
             </div>
 
             <div class="space-y-4 text-xs">
-              <!-- Upstream Cost Info Card -->
-              <div class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between">
+              <!-- Upstream Cost Info Card (hidden without products.show_cost) -->
+              <div v-if="canSeeCost && selectedProduct.supplierPriceUsd" class="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between">
                 <div>
                   <span class="text-slate-500 dark:text-slate-400">Upstream Cost:</span>
                   <span class="font-mono font-bold text-slate-800 dark:text-white text-sm ml-2">
@@ -964,10 +979,10 @@ async function executeConfirmAction() {
                 ></textarea>
               </div>
 
-              <!-- Profit Margin & Price Grid -->
+              <!-- Profit Margin & Price Grid (margin slider only with products.show_margin) -->
               <div class="grid grid-cols-2 gap-3">
                 <!-- Desired Profit Margin -->
-                <div>
+                <div v-if="canSeeMargin && selectedProduct.supplierPriceUsd">
                   <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                     Profit Margin (%)
                   </label>

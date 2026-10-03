@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useSupplierStatus } from '~/composables/useSupplierStatus'
+import { usePermission } from '~/composables/usePermission'
 
 const { supplierBalanceUsd, supplierDetails, isOnline, isSyncing, syncCatalog, fetchStatus } = useSupplierStatus()
+const { can } = usePermission()
+const canSync = computed(() => can('supplier.sync'))
 
 const isPinging = ref(false)
 const isTopUpModalOpen = ref(false)
@@ -124,6 +127,7 @@ async function handlePing() {
         </button>
 
         <button
+          v-if="canSync"
           type="button"
           @click="handleSync"
           :disabled="isSyncing"

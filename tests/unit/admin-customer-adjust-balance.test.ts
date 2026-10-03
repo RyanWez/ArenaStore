@@ -206,6 +206,8 @@ const testUser = {
   telegramId: "123456789",
   username: "tester",
   displayName: "Test Customer",
+  role: "CUSTOMER",
+  status: "ACTIVE",
 };
 
 const testWallet = {

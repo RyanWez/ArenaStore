@@ -39,6 +39,10 @@ export function useStoreSettings() {
   const isLoading = useState<boolean>('arena_store_settings_loading', () => false)
   const isSaving = useState<boolean>('arena_store_settings_saving', () => false)
   const hasLoaded = useState<boolean>('arena_store_settings_loaded', () => false)
+  // Keys the server actually returned for this role (settings GET is filtered
+  // by permission). Saves only include these, so a role without, say,
+  // settings.payments never echoes payment-account keys back in a PUT.
+  const visibleKeys = useState<Set<string>>('arena_store_settings_visible_keys', () => new Set())
 
   async function fetchSettings(force = false) {
     if (hasLoaded.value && !force) return
@@ -63,6 +67,7 @@ export function useStoreSettings() {
           uabpayAccountName: res.settings.uabpayAccountName || defaultSettings.uabpayAccountName,
           uabpayPhone: res.settings.uabpayPhone || defaultSettings.uabpayPhone,
         }
+        visibleKeys.value = new Set(Object.keys(res.settings))
         hasLoaded.value = true
       }
     } catch (err: any) {
@@ -77,6 +82,8 @@ export function useStoreSettings() {
     try {
       const payload: Record<string, string> = {}
       for (const [key, val] of Object.entries(newSettings)) {
+        // Never send keys this role could not even see (the API would 403).
+        if (visibleKeys.value.size > 0 && !visibleKeys.value.has(key)) continue
         payload[key] = String(val)
       }
       const res: any = await $fetch('/api/admin/settings', {

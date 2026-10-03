@@ -3,10 +3,19 @@ import { ref, computed, onMounted } from 'vue'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
 import { useStoreSettings } from '~/composables/useStoreSettings'
+import { usePermission } from '~/composables/usePermission'
 
 const toast = useToast()
 const { getAuthHeaders } = useAuth()
 const { settings, fetchSettings, saveSettings, isSaving, isLoading } = useStoreSettings()
+const { can } = usePermission()
+
+// Each settings section is only editable with its matching permission — the
+// API enforces the same split on GET (field filtering) and PUT (whitelist).
+const canEditPricing = computed(() => can('settings.pricing'))
+const canEditPayments = computed(() => can('settings.payments'))
+const canEditOperations = computed(() => can('settings.operations'))
+const canEditAnySettings = computed(() => canEditPricing.value || canEditPayments.value || canEditOperations.value)
 
 const showSuccessBanner = ref(false)
 const isRecalculating = ref(false)
@@ -173,6 +182,7 @@ async function handleChangePassword() {
         </button>
 
         <button
+          v-if="canEditAnySettings"
           type="button"
           @click="handleSave"
           :disabled="isSaving"
@@ -201,7 +211,7 @@ async function handleChangePassword() {
 
     <form @submit.prevent="handleSave" class="space-y-6">
       <!-- Section 1: Exchange Rate & Margins -->
-      <div class="rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-6">
+      <fieldset :disabled="!canEditPricing" class="rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-6 min-w-0 disabled:opacity-75">
         <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
           <div class="flex items-center gap-3">
             <div class="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center font-bold text-sm">
@@ -315,10 +325,10 @@ async function handleChangePassword() {
             <span>{{ isRecalculating ? 'Recalculating Catalog...' : 'Recalculate All Product Prices' }}</span>
           </button>
         </div>
-      </div>
+      </fieldset>
 
       <!-- Section 2: Myanmar Payment Accounts -->
-      <div class="rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-6">
+      <fieldset :disabled="!canEditPayments" class="rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-6 min-w-0 disabled:opacity-75">
         <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
           <div class="flex items-center gap-3">
             <div class="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center font-bold text-sm">
@@ -448,10 +458,10 @@ async function handleChangePassword() {
             </div>
           </div>
         </div>
-      </div>
+      </fieldset>
 
       <!-- Section 3: Telegram Support & Operating Rules -->
-      <div class="rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-6">
+      <fieldset :disabled="!canEditOperations" class="rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-6 min-w-0 disabled:opacity-75">
         <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
           <div class="flex items-center gap-3">
             <div class="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-bold text-sm">
@@ -501,10 +511,10 @@ async function handleChangePassword() {
             <p class="text-[11px] text-slate-400">Time window allowed for customers to upload payment slip receipts</p>
           </div>
         </div>
-      </div>
+      </fieldset>
 
       <!-- Save Button Row -->
-      <div class="flex justify-end pt-2">
+      <div v-if="canEditAnySettings" class="flex justify-end pt-2">
         <button
           type="submit"
           :disabled="isSaving"

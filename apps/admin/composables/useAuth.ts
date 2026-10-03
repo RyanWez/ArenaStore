@@ -7,6 +7,12 @@ export interface AdminUser {
   role: string;
 }
 
+export interface AdminRoleInfo {
+  id: number | null;
+  name: string | null;
+  isSuperadmin: boolean;
+}
+
 export function useAuth() {
   const token = useCookie<string | null>('arena_admin_token', {
     maxAge: 60 * 60 * 24 * 7, // 7 days
@@ -16,6 +22,11 @@ export function useAuth() {
 
   const user = useState<AdminUser | null>('admin_user', () => null);
   const isLoading = useState<boolean>('admin_auth_loading', () => false);
+  // Effective permissions resolved from the current role — drives every
+  // sidebar/action gate in the panel. Kept empty until /me fills them.
+  const permissions = useState<string[]>('admin_permissions', () => []);
+  const roleInfo = useState<AdminRoleInfo | null>('admin_role_info', () => null);
+  const mustChangePassword = useState<boolean>('admin_must_change_password', () => false);
 
   const isAuthenticated = computed(() => !!token.value && !!user.value);
 
@@ -37,7 +48,11 @@ export function useAuth() {
       if (res.ok && res.token) {
         token.value = res.token;
         user.value = res.user;
-        await navigateTo('/');
+        mustChangePassword.value = !!res.mustChangePassword;
+        // Load role/permissions immediately so sidebar + page gates render
+        // correctly on the first paint after login.
+        await fetchUser();
+        await navigateTo(mustChangePassword.value ? '/change-password' : '/');
         return { success: true };
       } else {
         return {
@@ -67,6 +82,9 @@ export function useAuth() {
   async function fetchUser() {
     if (!token.value) {
       user.value = null;
+      permissions.value = [];
+      roleInfo.value = null;
+      mustChangePassword.value = false;
       return null;
     }
 
@@ -77,15 +95,24 @@ export function useAuth() {
 
       if (res.ok && res.user) {
         user.value = res.user;
+        permissions.value = Array.isArray(res.permissions) ? res.permissions : [];
+        roleInfo.value = res.role ?? null;
+        mustChangePassword.value = !!res.mustChangePassword;
         return res.user;
       } else {
         token.value = null;
         user.value = null;
+        permissions.value = [];
+        roleInfo.value = null;
+        mustChangePassword.value = false;
         return null;
       }
     } catch {
       token.value = null;
       user.value = null;
+      permissions.value = [];
+      roleInfo.value = null;
+      mustChangePassword.value = false;
       return null;
     }
   }
@@ -101,6 +128,9 @@ export function useAuth() {
     } finally {
       token.value = null;
       user.value = null;
+      permissions.value = [];
+      roleInfo.value = null;
+      mustChangePassword.value = false;
       await navigateTo('/login');
     }
   }
@@ -110,6 +140,9 @@ export function useAuth() {
     user,
     isLoading,
     isAuthenticated,
+    permissions,
+    roleInfo,
+    mustChangePassword,
     getAuthHeaders,
     login,
     fetchUser,

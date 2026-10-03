@@ -90,6 +90,19 @@ export class InMemoryRedis {
     );
   }
 
+  /**
+   * SCAN variant used by auth.service.destroyAllSessions. Returns every
+   * matching key in a single batch with cursor "0" (the caller keeps looping
+   * until the cursor comes back as "0", so one-shot semantics are safe).
+   */
+  async scan(cursor: string, ...args: unknown[]): Promise<[string, string[]]> {
+    void cursor;
+    const matchIdx = args.findIndex((arg) => String(arg).toUpperCase() === "MATCH");
+    const pattern = matchIdx >= 0 ? String(args[matchIdx + 1]) : "*";
+    const matched = await this.keys(pattern);
+    return ["0", matched];
+  }
+
   /** ioredis is an EventEmitter; consumers may attach error handlers. */
   on(): this {
     return this;

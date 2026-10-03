@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useSidebar } from '~/composables/useSidebar'
 import { useAuth } from '~/composables/useAuth'
+import { usePermission } from '~/composables/usePermission'
 
 const { user, logout } = useAuth()
+const { can } = usePermission()
 
 const props = defineProps<{
   isMobile?: boolean
@@ -18,6 +20,7 @@ const expandedGroups = ref({
   store: true,
   orders: true,
   settings: true,
+  administration: true,
 })
 
 function toggleGroup(key: keyof typeof expandedGroups.value) {
@@ -39,15 +42,17 @@ interface NavItem {
   label: string
   icon: string
   badge: NavBadge | null
+  permission: string
 }
 
 interface NavGroup {
-  key: 'main' | 'store' | 'orders' | 'settings'
+  key: 'main' | 'store' | 'orders' | 'settings' | 'administration'
   label: string
   items: NavItem[]
 }
 
-// Nav items definition
+// Nav items definition — every item carries the permission that gates it;
+// items/groups the role lacks are filtered out below.
 const navGroups: NavGroup[] = [
   {
     key: 'main' as const,
@@ -58,12 +63,14 @@ const navGroups: NavGroup[] = [
         label: 'Overview',
         icon: 'pi pi-th-large',
         badge: null,
+        permission: 'overview.view',
       },
       {
         to: '/supplier',
         label: 'XPro Supplier',
         icon: 'pi pi-cloud',
         badge: { type: 'pulse', color: 'emerald' },
+        permission: 'supplier.view',
       },
     ],
   },
@@ -76,6 +83,7 @@ const navGroups: NavGroup[] = [
         label: 'Products',
         icon: 'pi pi-box',
         badge: null,
+        permission: 'products.view',
       },
     ],
   },
@@ -88,18 +96,21 @@ const navGroups: NavGroup[] = [
         label: 'Product Orders',
         icon: 'pi pi-shopping-bag',
         badge: null,
+        permission: 'orders.view',
       },
       {
         to: '/payments',
         label: 'Deposit Slips',
         icon: 'pi pi-wallet',
         badge: { type: 'pill', text: 'Review', color: 'amber' },
+        permission: 'payments.view',
       },
       {
         to: '/customers',
         label: 'Customer Wallets',
         icon: 'pi pi-users',
         badge: null,
+        permission: 'customers.view',
       },
     ],
   },
@@ -112,10 +123,45 @@ const navGroups: NavGroup[] = [
         label: 'Rates & Margins',
         icon: 'pi pi-sliders-h',
         badge: null,
+        permission: 'settings.view',
+      },
+    ],
+  },
+  {
+    key: 'administration' as const,
+    label: 'User Management',
+    items: [
+      {
+        to: '/users',
+        label: 'Role Users',
+        icon: 'pi pi-user-plus',
+        badge: null,
+        permission: 'users.manage',
+      },
+      {
+        to: '/roles',
+        label: 'Roles & Permissions',
+        icon: 'pi pi-shield',
+        badge: null,
+        permission: 'roles.manage',
+      },
+      {
+        to: '/audit',
+        label: 'Audit Log',
+        icon: 'pi pi-history',
+        badge: null,
+        permission: 'audit.view',
       },
     ],
   },
 ]
+
+// Hide items the signed-in role cannot view, then drop empty groups.
+const visibleNavGroups = computed<NavGroup[]>(() =>
+  navGroups
+    .map((group) => ({ ...group, items: group.items.filter((item) => can(item.permission)) }))
+    .filter((group) => group.items.length > 0)
+)
 </script>
 
 <template>
@@ -201,7 +247,7 @@ const navGroups: NavGroup[] = [
         isCollapsed && !isMobile ? 'overflow-visible' : 'overflow-y-auto overflow-x-hidden',
       ]"
     >
-      <div v-for="(group, gIdx) in navGroups" :key="group.key">
+      <div v-for="(group, gIdx) in visibleNavGroups" :key="group.key">
         <!-- Accordion Header with Label (Smooth Collapse) -->
         <div
           class="transition-all duration-300 ease-in-out overflow-hidden"

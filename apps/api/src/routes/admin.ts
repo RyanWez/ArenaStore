@@ -37,6 +37,10 @@ import {
 } from "../services/telegram-notifier";
 import { decryptPayload, formatCredentialsText } from "../services/encryption";
 import { fetchTelegramFile, getPlaceholderSlipSvg } from "../services/telegram-file.service";
+import { writeAudit } from "../services/audit.service";
+import { getRbac, requirePermission } from "../rbac/require-permission";
+import { filterSettingsForPermissions } from "../rbac/catalog";
+import { RbacContext } from "../services/rbac.service";
 
 const ReviewDepositSchema = z.object({
   action: z.enum(["APPROVE", "REJECT"]),
@@ -159,7 +163,10 @@ export async function adminRoutes(server: FastifyInstance) {
   refreshSupplierStatus(true).catch(() => {});
 
   // GET /api/admin/stats (Dashboard overview summary stats)
-  server.get("/api/admin/stats", async () => {
+  server.get(
+    "/api/admin/stats",
+    { preHandler: requirePermission("overview.view") },
+    async () => {
     const db = getDb();
 
     // 1. Total revenue / sales from completed orders and order counts
@@ -210,7 +217,10 @@ export async function adminRoutes(server: FastifyInstance) {
   });
 
   // GET /api/admin/supplier/status (For top bar wallet widget & supplier diagnostics)
-  server.get("/api/admin/supplier/status", async (_request, reply) => {
+  server.get(
+    "/api/admin/supplier/status",
+    { preHandler: requirePermission("supplier.view") },
+    async (_request, reply) => {
     try {
       const status = await refreshSupplierStatus();
       const db = getDb();
@@ -252,205 +262,286 @@ export async function adminRoutes(server: FastifyInstance) {
   });
 
   // POST /api/admin/supplier/sync (Sync catalog from XPro)
-  server.post("/api/admin/supplier/sync", async (_request, reply) => {
-    try {
-      const result = await catalogService.syncFullCatalog();
+  server.post(
+    "/api/admin/supplier/sync",
+    { preHandler: requirePermission("supplier.sync") },
+    async (request, reply) => {
+      try {
+        const result = await catalogService.syncFullCatalog();
+
+        await writeAudit({
+          actorId: getRbac(request)?.userId ?? null,
+          action: "SUPPLIER_SYNC",
+          entityType: "SUPPLIER",
+          entityId: "xpro",
+          details: { result },
+        });
+
+        return {
+          ok: true,
+          synced: result,
+        };
+      } catch (err: any) {
+        return reply.status(500).send({
+          ok: false,
+          error: `Sync error: ${err.message}`,
+        });
+      }
+    }
+  );
+
+  // GET /api/admin/products (List all products with category and supplier snapshot info)
+  server.get(
+    "/api/admin/products",
+    { preHandler: requirePermission("products.view") },
+    async (request) => {
+      const db = getDb();
+      const rbac: RbacContext | undefined = getRbac(request);
+      const perms = rbac?.permissions ?? [];
+      const canSeeCost = perms.includes("products.show_cost");
+      const canSeeMargin = perms.includes("products.show_margin");
+      const canSeeSupplierWallet = perms.includes("supplier.view");
+
+      const productRows = await db
+        .select({
+          id: products.id,
+          upstreamProductId: products.upstreamProductId,
+          categoryId: products.categoryId,
+          categoryName: categories.name,
+          nameMmk: products.nameMmk,
+          descriptionMmk: products.descriptionMmk,
+          retailPriceMmk: products.retailPriceMmk,
+          localStockLimit: products.localStockLimit,
+          isActive: products.isActive,
+          createdAt: products.createdAt,
+          updatedAt: products.updatedAt,
+          supplierRawName: productSupplierSnapshots.rawName,
+          supplierPriceUsd: productSupplierSnapshots.supplierPriceUsd,
+          supplierStock: productSupplierSnapshots.supplierStock,
+          deliveryType: productSupplierSnapshots.deliveryType,
+          inStock: productSupplierSnapshots.inStock,
+        })
+        .from(products)
+        .leftJoin(categories, eq(products.categoryId, categories.id))
+        .leftJoin(productSupplierSnapshots, eq(products.id, productSupplierSnapshots.productId))
+        .orderBy(products.id);
+
+      let walletBalanceUsd = String(supplierStatusCache.balanceUsd || "0.00");
+      try {
+        const balRes = await xproClient.getBalance(2500, 1);
+        if (balRes.ok) {
+          walletBalanceUsd = String(balRes.balance);
+        }
+      } catch {
+        // Fallback to cache if available
+      }
+
+      // Exchange rate for the server-computed margin %, so margin can be
+      // hidden/shown independently of the USD cost column.
+      let exchangeRate = 4500;
+      try {
+        const settingsList = await db.select().from(appSettings);
+        for (const s of settingsList) {
+          if (s.key === "usdToMmkRate") exchangeRate = Number(s.value) || 4500;
+        }
+      } catch {
+        // Fall back to the default rate
+      }
+
+      const mappedProducts = productRows.map((p) => {
+        const stockCalc = calculateSellableStock({
+          supplierStock: p.supplierStock ?? 999,
+          supplierWalletBalanceUsd: walletBalanceUsd,
+          unitCostUsd: p.supplierPriceUsd || "0.00",
+          localLimit: p.localStockLimit,
+        });
+
+        const costUsd = parseFloat(p.supplierPriceUsd || "0") || 0;
+        const retailMmk = Number(p.retailPriceMmk) || 0;
+        const marginPct =
+          costUsd > 0 && retailMmk > 0
+            ? Math.round((retailMmk / (costUsd * exchangeRate) - 1) * 100)
+            : null;
+
+        const row: Record<string, unknown> = {
+          id: p.id,
+          supplierProductId: p.upstreamProductId,
+          categoryId: p.categoryId,
+          categoryName: stripCustomEmojiPlaceholders(p.categoryName || "") || "Uncategorized",
+          name: p.supplierRawName || p.nameMmk,
+          nameMmk: p.nameMmk,
+          description: p.descriptionMmk || "",
+          supplierPriceUsd: p.supplierPriceUsd || "0.00",
+          customPriceMmk: p.retailPriceMmk,
+          retailPriceMmk: p.retailPriceMmk,
+          pricingMode: "CUSTOM_OVERRIDE",
+          marginPct,
+          supplierStock: p.supplierStock ?? 999,
+          walletCapacity: stockCalc.walletCapacity,
+          sellableStock: stockCalc.sellableStock,
+          isWalletConstrained: stockCalc.isWalletConstrained,
+          localStockLimit: p.localStockLimit,
+          stockSyncStatus: p.inStock ? "SYNCED" : "OUT_OF_STOCK",
+          deliveryType: p.deliveryType || "CREDENTIALS",
+          isActive: p.isActive,
+          syncStatus: "SYNCED",
+          updatedAt: p.updatedAt,
+        };
+
+        // Field-level hiding — enforced here, not just in the UI, so the data
+        // is never sent over the wire without the field permission.
+        if (!canSeeCost) {
+          delete row.supplierPriceUsd;
+        }
+        if (!canSeeMargin) {
+          delete row.marginPct;
+        }
+        return row;
+      });
 
       return {
         ok: true,
-        synced: result,
+        walletBalanceUsd: canSeeSupplierWallet ? walletBalanceUsd : null,
+        products: mappedProducts,
       };
-    } catch (err: any) {
-      return reply.status(500).send({
-        ok: false,
-        error: `Sync error: ${err.message}`,
-      });
     }
-  });
+  );
 
-  // GET /api/admin/products (List all products with category and supplier snapshot info)
-  server.get("/api/admin/products", async () => {
-    const db = getDb();
-    const productRows = await db
-      .select({
-        id: products.id,
-        upstreamProductId: products.upstreamProductId,
-        categoryId: products.categoryId,
-        categoryName: categories.name,
-        nameMmk: products.nameMmk,
-        descriptionMmk: products.descriptionMmk,
-        retailPriceMmk: products.retailPriceMmk,
-        localStockLimit: products.localStockLimit,
-        isActive: products.isActive,
-        createdAt: products.createdAt,
-        updatedAt: products.updatedAt,
-        supplierRawName: productSupplierSnapshots.rawName,
-        supplierPriceUsd: productSupplierSnapshots.supplierPriceUsd,
-        supplierStock: productSupplierSnapshots.supplierStock,
-        deliveryType: productSupplierSnapshots.deliveryType,
-        inStock: productSupplierSnapshots.inStock,
-      })
-      .from(products)
-      .leftJoin(categories, eq(products.categoryId, categories.id))
-      .leftJoin(productSupplierSnapshots, eq(products.id, productSupplierSnapshots.productId))
-      .orderBy(products.id);
+  // PUT /api/admin/products/:id (Update product pricing or stock limits)
+  server.put<{ Params: { id: string } }>(
+    "/api/admin/products/:id",
+    { preHandler: requirePermission("products.edit") },
+    async (request, reply) => {
+      const productId = parseInt(request.params.id, 10);
+      const body = {
+        ...(request.body as Record<string, unknown>),
+        productId,
+      };
 
-    let walletBalanceUsd = String(supplierStatusCache.balanceUsd || "0.00");
-    try {
-      const balRes = await xproClient.getBalance(2500, 1);
-      if (balRes.ok) {
-        walletBalanceUsd = String(balRes.balance);
+      const parseRes = UpdateProductPricingSchema.safeParse(body);
+      if (!parseRes.success) {
+        return reply.status(400).send({
+          ok: false,
+          error: "Validation error",
+          issues: parseRes.error.issues,
+        });
       }
-    } catch {
-      // Fallback to cache if available
-    }
 
-    const mappedProducts = productRows.map((p) => {
-      const stockCalc = calculateSellableStock({
-        supplierStock: p.supplierStock ?? 999,
-        supplierWalletBalanceUsd: walletBalanceUsd,
-        unitCostUsd: p.supplierPriceUsd || "0.00",
-        localLimit: p.localStockLimit,
+      const db = getDb();
+      const updateValues: Record<string, unknown> = {
+        updatedAt: new Date(),
+      };
+
+      if (parseRes.data.retailPriceMmk !== undefined) {
+        updateValues.retailPriceMmk = parseRes.data.retailPriceMmk;
+      }
+
+      if (parseRes.data.localStockLimit !== undefined) {
+        updateValues.localStockLimit = parseRes.data.localStockLimit;
+      }
+      if (parseRes.data.isActive !== undefined) {
+        updateValues.isActive = parseRes.data.isActive;
+      }
+      if (parseRes.data.nameMmk) {
+        updateValues.nameMmk = parseRes.data.nameMmk;
+      }
+      if (parseRes.data.descriptionMmk !== undefined) {
+        updateValues.descriptionMmk = parseRes.data.descriptionMmk;
+      }
+
+      const [updated] = await db
+        .update(products)
+        .set(updateValues)
+        .where(eq(products.id, productId))
+        .returning();
+
+      await writeAudit({
+        actorId: getRbac(request)?.userId ?? null,
+        action: "PRODUCT_UPDATE",
+        entityType: "PRODUCT",
+        entityId: productId,
+        details: updateValues,
       });
 
       return {
-        id: p.id,
-        supplierProductId: p.upstreamProductId,
-        categoryId: p.categoryId,
-        categoryName: stripCustomEmojiPlaceholders(p.categoryName || "") || "Uncategorized",
-        name: p.supplierRawName || p.nameMmk,
-        nameMmk: p.nameMmk,
-        description: p.descriptionMmk || "",
-        supplierPriceUsd: p.supplierPriceUsd || "0.00",
-        customPriceMmk: p.retailPriceMmk,
-        retailPriceMmk: p.retailPriceMmk,
-        pricingMode: "CUSTOM_OVERRIDE",
-        supplierStock: p.supplierStock ?? 999,
-        walletCapacity: stockCalc.walletCapacity,
-        sellableStock: stockCalc.sellableStock,
-        isWalletConstrained: stockCalc.isWalletConstrained,
-        localStockLimit: p.localStockLimit,
-        stockSyncStatus: p.inStock ? "SYNCED" : "OUT_OF_STOCK",
-        deliveryType: p.deliveryType || "CREDENTIALS",
-        isActive: p.isActive,
-        syncStatus: "SYNCED",
-        updatedAt: p.updatedAt,
+        ok: true,
+        product: updated,
       };
-    });
-
-    return {
-      ok: true,
-      walletBalanceUsd,
-      products: mappedProducts,
-    };
-  });
-
-  // PUT /api/admin/products/:id (Update product pricing or stock limits)
-  server.put<{
-    Params: { id: string };
-  }>("/api/admin/products/:id", async (request, reply) => {
-    const productId = parseInt(request.params.id, 10);
-    const body = {
-      ...(request.body as Record<string, unknown>),
-      productId,
-    };
-
-    const parseRes = UpdateProductPricingSchema.safeParse(body);
-    if (!parseRes.success) {
-      return reply.status(400).send({
-        ok: false,
-        error: "Validation error",
-        issues: parseRes.error.issues,
-      });
     }
-
-    const db = getDb();
-    const updateValues: Record<string, unknown> = {
-      updatedAt: new Date(),
-    };
-
-    if (parseRes.data.retailPriceMmk !== undefined) {
-      updateValues.retailPriceMmk = parseRes.data.retailPriceMmk;
-    }
-
-    if (parseRes.data.localStockLimit !== undefined) {
-      updateValues.localStockLimit = parseRes.data.localStockLimit;
-    }
-    if (parseRes.data.isActive !== undefined) {
-      updateValues.isActive = parseRes.data.isActive;
-    }
-    if (parseRes.data.nameMmk) {
-      updateValues.nameMmk = parseRes.data.nameMmk;
-    }
-    if (parseRes.data.descriptionMmk !== undefined) {
-      updateValues.descriptionMmk = parseRes.data.descriptionMmk;
-    }
-
-    const [updated] = await db
-      .update(products)
-      .set(updateValues)
-      .where(eq(products.id, productId))
-      .returning();
-
-    return {
-      ok: true,
-      product: updated,
-    };
-  });
+  );
 
   // GET /api/admin/categories (List all categories for admin)
-  server.get("/api/admin/categories", async () => {
-    const db = getDb();
-    const catList = await db
-      .select()
-      .from(categories)
-      .orderBy(categories.sortOrder);
+  server.get(
+    "/api/admin/categories",
+    { preHandler: requirePermission("products.view") },
+    async () => {
+      const db = getDb();
+      const catList = await db
+        .select()
+        .from(categories)
+        .orderBy(categories.sortOrder);
 
-    return {
-      ok: true,
-      categories: catList.map((c) => ({
-        ...c,
-        cleanName: stripCustomEmojiPlaceholders(c.name),
-      })),
-    };
-  });
+      return {
+        ok: true,
+        categories: catList.map((c) => ({
+          ...c,
+          cleanName: stripCustomEmojiPlaceholders(c.name),
+        })),
+      };
+    }
+  );
 
   // PUT /api/admin/categories/:id (Update category)
   server.put<{
     Params: { id: string };
     Body: { name?: string; iconEmoji?: string; sortOrder?: number; isActive?: boolean };
-  }>("/api/admin/categories/:id", async (request, reply) => {
-    const categoryId = parseInt(request.params.id, 10);
-    const db = getDb();
+  }>(
+    "/api/admin/categories/:id",
+    { preHandler: requirePermission("products.edit") },
+    async (request, reply) => {
+      const categoryId = parseInt(request.params.id, 10);
+      const db = getDb();
 
-    const updateData: Record<string, unknown> = {
-      updatedAt: new Date(),
-    };
-    if (request.body.name !== undefined) updateData.name = request.body.name;
-    if (request.body.iconEmoji !== undefined) updateData.iconEmoji = request.body.iconEmoji;
-    if (request.body.sortOrder !== undefined) updateData.sortOrder = request.body.sortOrder;
-    if (request.body.isActive !== undefined) updateData.isActive = request.body.isActive;
+      const updateData: Record<string, unknown> = {
+        updatedAt: new Date(),
+      };
+      if (request.body.name !== undefined) updateData.name = request.body.name;
+      if (request.body.iconEmoji !== undefined) updateData.iconEmoji = request.body.iconEmoji;
+      if (request.body.sortOrder !== undefined) updateData.sortOrder = request.body.sortOrder;
+      if (request.body.isActive !== undefined) updateData.isActive = request.body.isActive;
 
-    const [updated] = await db
-      .update(categories)
-      .set(updateData)
-      .where(eq(categories.id, categoryId))
-      .returning();
+      const [updated] = await db
+        .update(categories)
+        .set(updateData)
+        .where(eq(categories.id, categoryId))
+        .returning();
 
-    if (!updated) {
-      return reply.status(404).send({ ok: false, error: "Category not found" });
+      if (!updated) {
+        return reply.status(404).send({ ok: false, error: "Category not found" });
+      }
+
+      await writeAudit({
+        actorId: getRbac(request)?.userId ?? null,
+        action: "CATEGORY_UPDATE",
+        entityType: "CATEGORY",
+        entityId: categoryId,
+        details: updateData,
+      });
+
+      return {
+        ok: true,
+        category: updated,
+      };
     }
-
-    return {
-      ok: true,
-      category: updated,
-    };
-  });
+  );
 
   // GET /api/admin/deposits (List wallet deposit slips)
   server.get<{
     Querystring: { status?: string };
-  }>("/api/admin/deposits", async (request) => {
+  }>(
+    "/api/admin/deposits",
+    { preHandler: requirePermission("payments.view") },
+    async (request) => {
     const db = getDb();
     const { status } = request.query;
 
@@ -525,9 +616,10 @@ export async function adminRoutes(server: FastifyInstance) {
   });
 
   // GET /api/admin/telegram-file/:fileId (Stream Telegram Photo Proxy)
-  server.get<{
-    Params: { fileId: string };
-  }>("/api/admin/telegram-file/:fileId", async (request, reply) => {
+  server.get<{ Params: { fileId: string } }>(
+    "/api/admin/telegram-file/:fileId",
+    { preHandler: requirePermission("payments.view") },
+    async (request, reply) => {
     const fileId = request.params.fileId;
     try {
       const file = await fetchTelegramFile(fileId);
@@ -546,9 +638,10 @@ export async function adminRoutes(server: FastifyInstance) {
   });
 
   // GET /api/admin/telegram-file (Query string format)
-  server.get<{
-    Querystring: { fileId?: string };
-  }>("/api/admin/telegram-file", async (request, reply) => {
+  server.get<{ Querystring: { fileId?: string } }>(
+    "/api/admin/telegram-file",
+    { preHandler: requirePermission("payments.view") },
+    async (request, reply) => {
     const fileId = request.query.fileId;
     if (!fileId) {
       reply.header("Content-Type", "image/svg+xml");
@@ -565,9 +658,10 @@ export async function adminRoutes(server: FastifyInstance) {
   });
 
   // GET /api/admin/deposits/:id/slip-image (Direct Slip Image by Deposit ID)
-  server.get<{
-    Params: { id: string };
-  }>("/api/admin/deposits/:id/slip-image", async (request, reply) => {
+  server.get<{ Params: { id: string } }>(
+    "/api/admin/deposits/:id/slip-image",
+    { preHandler: requirePermission("payments.view") },
+    async (request, reply) => {
     const depositId = parseInt(request.params.id, 10);
     const db = getDb();
     const [topUp] = await db
@@ -593,9 +687,10 @@ export async function adminRoutes(server: FastifyInstance) {
   });
 
   // POST /api/admin/deposits/:id/review (Approve or Reject top-up request)
-  server.post<{
-    Params: { id: string };
-  }>("/api/admin/deposits/:id/review", async (request, reply) => {
+  server.post<{ Params: { id: string } }>(
+    "/api/admin/deposits/:id/review",
+    { preHandler: requirePermission("payments.review") },
+    async (request, reply) => {
     const depositId = parseInt(request.params.id, 10);
     const parseRes = ReviewDepositSchema.safeParse(request.body);
     if (!parseRes.success) {
@@ -705,6 +800,19 @@ export async function adminRoutes(server: FastifyInstance) {
         });
       }
 
+      await writeAudit({
+        actorId: getRbac(request)?.userId ?? null,
+        action: "DEPOSIT_REVIEW",
+        entityType: "DEPOSIT",
+        entityId: depositId,
+        details: {
+          action: "APPROVE",
+          reference: topUp.reference,
+          amountMmk: topUp.amountMmk,
+          newBalanceMmk: newBalance,
+        },
+      });
+
       return {
         ok: true,
         action: "APPROVED",
@@ -732,6 +840,19 @@ export async function adminRoutes(server: FastifyInstance) {
         });
       }
 
+      await writeAudit({
+        actorId: getRbac(request)?.userId ?? null,
+        action: "DEPOSIT_REVIEW",
+        entityType: "DEPOSIT",
+        entityId: depositId,
+        details: {
+          action: "REJECT",
+          reference: topUp.reference,
+          amountMmk: topUp.amountMmk,
+          rejectReason: reason,
+        },
+      });
+
       return {
         ok: true,
         action: "REJECTED",
@@ -740,9 +861,10 @@ export async function adminRoutes(server: FastifyInstance) {
   });
 
   // GET /api/admin/orders (List all product orders with items and deliveries)
-  server.get<{
-    Querystring: { limit?: string };
-  }>("/api/admin/orders", async (request) => {
+  server.get<{ Querystring: { limit?: string } }>(
+    "/api/admin/orders",
+    { preHandler: requirePermission("orders.view") },
+    async (request) => {
     const db = getDb();
     const limit = Math.min(Math.max(1, Number(request.query?.limit) || 100), 100);
     const orderList = await db
@@ -851,7 +973,10 @@ export async function adminRoutes(server: FastifyInstance) {
   });
 
   // POST /api/admin/orders/:id/refund (Refund order to customer's wallet and notify on Telegram)
-  server.post("/api/admin/orders/:id/refund", async (request, reply) => {
+  server.post(
+    "/api/admin/orders/:id/refund",
+    { preHandler: requirePermission("orders.refund") },
+    async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = (request.body || {}) as { reason?: string };
     const reason = body.reason?.trim() || "Admin Customer Support Refund";
@@ -948,6 +1073,19 @@ export async function adminRoutes(server: FastifyInstance) {
       });
     }
 
+    await writeAudit({
+      actorId: getRbac(request)?.userId ?? null,
+      action: "ORDER_REFUND",
+      entityType: "ORDER",
+      entityId: order.id,
+      details: {
+        publicOrderNo: order.publicOrderNo,
+        refundedAmountMmk: order.totalAmountMmk,
+        newBalanceMmk: newBalance,
+        reason,
+      },
+    });
+
     return {
       ok: true,
       publicOrderNo: order.publicOrderNo,
@@ -958,7 +1096,10 @@ export async function adminRoutes(server: FastifyInstance) {
   });
 
   // POST /api/admin/orders/:id/resend (Re-send digital credentials to customer's Telegram chat)
-  server.post("/api/admin/orders/:id/resend", async (request, reply) => {
+  server.post(
+    "/api/admin/orders/:id/resend",
+    { preHandler: requirePermission("orders.resend") },
+    async (request, reply) => {
     const { id } = request.params as { id: string };
     const db = getDb();
 
@@ -1020,129 +1161,184 @@ export async function adminRoutes(server: FastifyInstance) {
       return reply.code(502).send({ ok: false, error: "Failed to send Telegram message to customer" });
     }
 
+    await writeAudit({
+      actorId: getRbac(request)?.userId ?? null,
+      action: "ORDER_RESEND",
+      entityType: "ORDER",
+      entityId: order.id,
+      details: { publicOrderNo: order.publicOrderNo },
+    });
+
     return {
       ok: true,
       message: `Credentials for ${order.publicOrderNo} successfully re-sent to customer on Telegram!`,
     };
   });
 
-  // GET /api/admin/settings (Get all app settings)
-  server.get("/api/admin/settings", async () => {
-    const db = getDb();
-    const settingsList = await db.select().from(appSettings);
-    const settingsMap: Record<string, string> = {};
-    for (const s of settingsList) {
-      settingsMap[s.key] = s.value;
+  // GET /api/admin/settings (Get all app settings — filtered by settings sub-permissions)
+  server.get(
+    "/api/admin/settings",
+    { preHandler: requirePermission("settings.view") },
+    async (request) => {
+      const db = getDb();
+      const settingsList = await db.select().from(appSettings);
+      const settingsMap: Record<string, string> = {};
+      for (const s of settingsList) {
+        settingsMap[s.key] = s.value;
+      }
+
+      const defaults = {
+        usdToMmkRate: "4500",
+        defaultMarginPct: "25",
+        supportTelegramHandle: "@ArenaStoreSupport",
+        kpayAccountName: "Arena Digital Services",
+        kpayPhone: "09 987 654 321",
+        wavepayAccountName: "Arena Store",
+        wavepayPhone: "09 789 123 456",
+        ayapayAccountName: "Arena Store",
+        ayapayPhone: "09 987 654 321",
+        uabpayAccountName: "Arena Store",
+        uabpayPhone: "09 789 123 456",
+        isMaintenanceMode: "false",
+        orderTimeoutMinutes: "15",
+      };
+
+      const merged = { ...defaults, ...settingsMap };
+      const perms = getRbac(request)?.permissions ?? [];
+      // Only settings groups the role may edit are readable — payment account
+      // numbers etc. stay hidden without settings.payments.
+      const visible = filterSettingsForPermissions(merged, perms).allowed;
+
+      return {
+        ok: true,
+        settings: visible,
+      };
     }
+  );
 
-    const defaults = {
-      usdToMmkRate: "4500",
-      defaultMarginPct: "25",
-      supportTelegramHandle: "@ArenaStoreSupport",
-      kpayAccountName: "Arena Digital Services",
-      kpayPhone: "09 987 654 321",
-      wavepayAccountName: "Arena Store",
-      wavepayPhone: "09 789 123 456",
-      ayapayAccountName: "Arena Store",
-      ayapayPhone: "09 987 654 321",
-      uabpayAccountName: "Arena Store",
-      uabpayPhone: "09 789 123 456",
-      isMaintenanceMode: "false",
-      orderTimeoutMinutes: "15",
-    };
+  // PUT /api/admin/settings (Update app settings key-values — whitelisted by sub-permissions)
+  server.put<{ Body: Record<string, string> }>(
+    "/api/admin/settings",
+    { preHandler: requirePermission("settings.view") },
+    async (request, reply) => {
+      const db = getDb();
+      const rbac = getRbac(request);
+      const perms = rbac?.permissions ?? [];
+      const { allowed, denied } = filterSettingsForPermissions(request.body, perms);
 
-    return {
-      ok: true,
-      settings: {
-        ...defaults,
-        ...settingsMap,
-      },
-    };
-  });
+      // Fail closed: a role with no settings edit permission cannot change
+      // anything, and a payload touching groups it may not edit is rejected
+      // outright — never silently trimmed.
+      if (denied.length > 0) {
+        return reply.status(403).send({
+          ok: false,
+          error: `Permission denied. You cannot edit these settings keys: ${denied.join(", ")}.`,
+        });
+      }
+      if (Object.keys(allowed).length === 0) {
+        return reply.status(403).send({
+          ok: false,
+          error: "Permission denied. No settings edit permission granted.",
+        });
+      }
 
-  // PUT /api/admin/settings (Update app settings key-values)
-  server.put<{
-    Body: Record<string, string>;
-  }>("/api/admin/settings", async (request) => {
-    const db = getDb();
-    const updates = request.body;
-
-    for (const [key, value] of Object.entries(updates)) {
-      await db
-        .insert(appSettings)
-        .values({
-          key,
-          value: String(value),
-          updatedAt: new Date(),
-        })
-        .onConflictDoUpdate({
-          target: appSettings.key,
-          set: {
+      for (const [key, value] of Object.entries(allowed)) {
+        await db
+          .insert(appSettings)
+          .values({
+            key,
             value: String(value),
             updatedAt: new Date(),
-          },
-        });
-    }
+          })
+          .onConflictDoUpdate({
+            target: appSettings.key,
+            set: {
+              value: String(value),
+              updatedAt: new Date(),
+            },
+          });
+      }
 
-    return {
-      ok: true,
-      message: "Settings saved successfully",
-    };
-  });
+      await writeAudit({
+        actorId: rbac?.userId ?? null,
+        action: "SETTINGS_UPDATE",
+        entityType: "SETTING",
+        entityId: "app_settings",
+        details: { keys: Object.keys(allowed), values: allowed },
+      });
+
+      return {
+        ok: true,
+        message: "Settings saved successfully",
+      };
+    }
+  );
 
   // POST /api/admin/settings/recalculate-prices (Recalculate all products with current exchange rate)
-  server.post("/api/admin/settings/recalculate-prices", async () => {
-    const db = getDb();
-    const settingsList = await db.select().from(appSettings);
-    const settingsMap: Record<string, string> = {};
-    for (const s of settingsList) {
-      settingsMap[s.key] = s.value;
-    }
-
-    const exchangeRate = Number(settingsMap.usdToMmkRate) || 4500;
-    const marginPct = Number(settingsMap.defaultMarginPct) || 25;
-
-    const prodsWithSnapshots = await db
-      .select({
-        productId: products.id,
-        supplierPriceUsd: productSupplierSnapshots.supplierPriceUsd,
-      })
-      .from(products)
-      .innerJoin(
-        productSupplierSnapshots,
-        eq(products.id, productSupplierSnapshots.productId)
-      );
-
-    let updatedCount = 0;
-    for (const p of prodsWithSnapshots) {
-      const usdPrice = parseFloat(p.supplierPriceUsd) || 0;
-      if (usdPrice > 0) {
-        const pricing = calculateRetailMmk({
-          upstreamUsdCost: usdPrice,
-          exchangeRateMmk: exchangeRate,
-          marginPercentage: marginPct,
-          roundToNearest: 100,
-        });
-
-        await db
-          .update(products)
-          .set({
-            retailPriceMmk: pricing.retailPriceMmk,
-            updatedAt: new Date(),
-          })
-          .where(eq(products.id, p.productId));
-        updatedCount++;
+  server.post(
+    "/api/admin/settings/recalculate-prices",
+    { preHandler: requirePermission("settings.pricing") },
+    async (request) => {
+      const db = getDb();
+      const settingsList = await db.select().from(appSettings);
+      const settingsMap: Record<string, string> = {};
+      for (const s of settingsList) {
+        settingsMap[s.key] = s.value;
       }
-    }
 
-    return {
-      ok: true,
-      updatedCount,
-      exchangeRate,
-      marginPct,
-      message: `Successfully recalculated ${updatedCount} products using 1 USD = ${exchangeRate.toLocaleString()} MMK (${marginPct}% margin).`,
-    };
-  });
+      const exchangeRate = Number(settingsMap.usdToMmkRate) || 4500;
+      const marginPct = Number(settingsMap.defaultMarginPct) || 25;
+
+      const prodsWithSnapshots = await db
+        .select({
+          productId: products.id,
+          supplierPriceUsd: productSupplierSnapshots.supplierPriceUsd,
+        })
+        .from(products)
+        .innerJoin(
+          productSupplierSnapshots,
+          eq(products.id, productSupplierSnapshots.productId)
+        );
+
+      let updatedCount = 0;
+      for (const p of prodsWithSnapshots) {
+        const usdPrice = parseFloat(p.supplierPriceUsd) || 0;
+        if (usdPrice > 0) {
+          const pricing = calculateRetailMmk({
+            upstreamUsdCost: usdPrice,
+            exchangeRateMmk: exchangeRate,
+            marginPercentage: marginPct,
+            roundToNearest: 100,
+          });
+
+          await db
+            .update(products)
+            .set({
+              retailPriceMmk: pricing.retailPriceMmk,
+              updatedAt: new Date(),
+            })
+            .where(eq(products.id, p.productId));
+          updatedCount++;
+        }
+      }
+
+      await writeAudit({
+        actorId: getRbac(request)?.userId ?? null,
+        action: "RECALCULATE_PRICES",
+        entityType: "PRODUCT",
+        entityId: "bulk",
+        details: { updatedCount, exchangeRate, marginPct },
+      });
+
+      return {
+        ok: true,
+        updatedCount,
+        exchangeRate,
+        marginPct,
+        message: `Successfully recalculated ${updatedCount} products using 1 USD = ${exchangeRate.toLocaleString()} MMK (${marginPct}% margin).`,
+      };
+    }
+  );
 
   // GET /api/admin/customers (List customers with wallet balances, order counts, stats)
   server.get<{
@@ -1154,175 +1350,183 @@ export async function adminRoutes(server: FastifyInstance) {
       pageSize?: string;
       statusFilter?: string;
     };
-  }>("/api/admin/customers", async (request) => {
-    const db = getDb();
-    const {
-      search,
-      balanceFilter,
-      sortBy = "balance_desc",
-      statusFilter = "active",
-    } = request.query;
+  }>(
+    "/api/admin/customers",
+    { preHandler: requirePermission("customers.view") },
+    async (request) => {
+      const db = getDb();
+      const {
+        search,
+        balanceFilter,
+        sortBy = "balance_desc",
+        statusFilter = "active",
+      } = request.query;
 
-    const page = Math.max(1, Number(request.query.page) || 1);
-    const pageSize = Math.min(100, Math.max(1, Number(request.query.pageSize) || 20));
+      const page = Math.max(1, Number(request.query.page) || 1);
+      const pageSize = Math.min(100, Math.max(1, Number(request.query.pageSize) || 20));
 
-    // 1. Overall KPI summary (customers only)
-    const [kpiResult] = await db
-      .select({
-        totalCustomers: sql<number>`count(distinct ${users.id})`,
-        customersWithBalance: sql<number>`count(distinct case when coalesce(${wallets.balanceMmk}, 0) > 0 then ${users.id} end)`,
-        totalWalletBalanceMmk: sql<number>`coalesce(sum(case when ${wallets.balanceMmk} > 0 then ${wallets.balanceMmk} else 0 end), 0)`,
-        totalSpentMmk: sql<number>`coalesce(sum(${wallets.totalSpentMmk}), 0)`,
-      })
-      .from(users)
-      .leftJoin(wallets, eq(users.id, wallets.userId))
-      .where(ne(users.role, "ADMIN"));
+      // Staff accounts (any role) are never customers — exclude ADMIN and SUPERADMIN.
+      const notStaff = and(ne(users.role, "ADMIN"), ne(users.role, "SUPERADMIN"));
 
-    // 2. Subquery for orders aggregated per customer
-    const orderStats = db
-      .select({
-        customerId: orders.customerId,
-        orderCount: sql<number>`count(${orders.id})`.as("order_count"),
-        deliveredSpentMmk: sql<number>`coalesce(sum(case when ${orders.status} = 'DELIVERED' then ${orders.totalAmountMmk} else 0 end), 0)`.as("delivered_spent_mmk"),
-        lastOrderAt: sql<Date | null>`max(${orders.createdAt})`.as("last_order_at"),
-      })
-      .from(orders)
-      .groupBy(orders.customerId)
-      .as("order_stats");
+      // 1. Overall KPI summary (customers only)
+      const [kpiResult] = await db
+        .select({
+          totalCustomers: sql<number>`count(distinct ${users.id})`,
+          customersWithBalance: sql<number>`count(distinct case when coalesce(${wallets.balanceMmk}, 0) > 0 then ${users.id} end)`,
+          totalWalletBalanceMmk: sql<number>`coalesce(sum(case when ${wallets.balanceMmk} > 0 then ${wallets.balanceMmk} else 0 end), 0)`,
+          totalSpentMmk: sql<number>`coalesce(sum(${wallets.totalSpentMmk}), 0)`,
+        })
+        .from(users)
+        .leftJoin(wallets, eq(users.id, wallets.userId))
+        .where(notStaff);
 
-    // 3. WHERE conditions pushed down to SQL (role, status, search, balance)
-    const conditions = [ne(users.role, "ADMIN")];
+      // 2. Subquery for orders aggregated per customer
+      const orderStats = db
+        .select({
+          customerId: orders.customerId,
+          orderCount: sql<number>`count(${orders.id})`.as("order_count"),
+          deliveredSpentMmk: sql<number>`coalesce(sum(case when ${orders.status} = 'DELIVERED' then ${orders.totalAmountMmk} else 0 end), 0)`.as("delivered_spent_mmk"),
+          lastOrderAt: sql<Date | null>`max(${orders.createdAt})`.as("last_order_at"),
+        })
+        .from(orders)
+        .groupBy(orders.customerId)
+        .as("order_stats");
 
-    if (statusFilter === "deactivated") {
-      conditions.push(ne(users.status, "ACTIVE"));
-    } else if (statusFilter !== "all") {
-      conditions.push(eq(users.status, "ACTIVE"));
-    }
+      // 3. WHERE conditions pushed down to SQL (role, status, search, balance)
+      const conditions = [notStaff];
 
-    const term = search?.trim().replace(/^@/, "").toLowerCase() || "";
-    if (term) {
-      const pattern = `%${term}%`;
-      const searchCondition = or(
-        ilike(users.telegramId, pattern),
-        ilike(users.username, pattern),
-        sql`(coalesce(${users.firstName}, '') || ' ' || coalesce(${users.lastName}, '')) ilike ${pattern}`,
-        sql`cast(${users.id} as text) ilike ${pattern}`
-      );
-      if (searchCondition) conditions.push(searchCondition);
-    }
-
-    if (balanceFilter === "has_balance") {
-      conditions.push(sql`coalesce(${wallets.balanceMmk}, 0) > 0`);
-    } else if (balanceFilter === "zero_balance") {
-      conditions.push(sql`coalesce(${wallets.balanceMmk}, 0) = 0`);
-    }
-
-    const whereExpr = and(...conditions);
-
-    // 4. Total count for pagination (same joins/where)
-    const [countResult] = await db
-      .select({ total: sql<number>`count(distinct ${users.id})` })
-      .from(users)
-      .leftJoin(wallets, eq(users.id, wallets.userId))
-      .leftJoin(orderStats, eq(users.id, orderStats.customerId))
-      .where(whereExpr);
-    const total = Number(countResult?.total || 0);
-
-    // 5. Sort expressions (SQL level) with stable id tiebreaker
-    const balanceExpr = sql`coalesce(${wallets.balanceMmk}, 0)`;
-    const spentExpr = sql`greatest(coalesce(${wallets.totalSpentMmk}, 0), coalesce(${orderStats.deliveredSpentMmk}, 0))`;
-    const orderCountExpr = sql`coalesce(${orderStats.orderCount}, 0)`;
-
-    let orderByExpr: ReturnType<typeof desc>;
-    if (sortBy === "balance_asc") orderByExpr = asc(balanceExpr);
-    else if (sortBy === "spent_desc") orderByExpr = desc(spentExpr);
-    else if (sortBy === "orders_desc") orderByExpr = desc(orderCountExpr);
-    else if (sortBy === "newest") orderByExpr = desc(users.createdAt);
-    else orderByExpr = desc(balanceExpr);
-
-    // 6. Page of customer users joined with wallets and order stats
-    const rows = await db
-      .select({
-        id: users.id,
-        telegramId: users.telegramId,
-        username: users.username,
-        firstName: users.firstName,
-        lastName: users.lastName,
-        role: users.role,
-        status: users.status,
-        createdAt: users.createdAt,
-        updatedAt: users.updatedAt,
-        walletId: wallets.id,
-        balanceMmk: sql<number>`coalesce(${wallets.balanceMmk}, 0)`,
-        totalDepositedMmk: sql<number>`coalesce(${wallets.totalDepositedMmk}, 0)`,
-        walletTotalSpentMmk: sql<number>`coalesce(${wallets.totalSpentMmk}, 0)`,
-        orderCount: sql<number>`coalesce(${orderStats.orderCount}, 0)`,
-        deliveredSpentMmk: sql<number>`coalesce(${orderStats.deliveredSpentMmk}, 0)`,
-        lastOrderAt: orderStats.lastOrderAt,
-      })
-      .from(users)
-      .leftJoin(wallets, eq(users.id, wallets.userId))
-      .leftJoin(orderStats, eq(users.id, orderStats.customerId))
-      .where(whereExpr)
-      .orderBy(orderByExpr, asc(users.id))
-      .limit(pageSize)
-      .offset((page - 1) * pageSize);
-
-    // Transform and map
-    const customerList = rows.map((r) => {
-      const fullName = [r.firstName, r.lastName].filter(Boolean).join(" ").trim();
-      let displayName = fullName;
-      if (!displayName || displayName === "Customer") {
-        if (r.username) {
-          displayName = `@${r.username}`;
-        } else if (r.telegramId) {
-          displayName = `User ${r.telegramId}`;
-        } else {
-          displayName = `Customer #${r.id}`;
-        }
+      if (statusFilter === "deactivated") {
+        conditions.push(ne(users.status, "ACTIVE"));
+      } else if (statusFilter !== "all") {
+        conditions.push(eq(users.status, "ACTIVE"));
       }
-      const effectiveSpent = Math.max(
-        Number(r.walletTotalSpentMmk || 0),
-        Number(r.deliveredSpentMmk || 0)
-      );
+
+      const term = search?.trim().replace(/^@/, "").toLowerCase() || "";
+      if (term) {
+        const pattern = `%${term}%`;
+        const searchCondition = or(
+          ilike(users.telegramId, pattern),
+          ilike(users.username, pattern),
+          sql`(coalesce(${users.firstName}, '') || ' ' || coalesce(${users.lastName}, '')) ilike ${pattern}`,
+          sql`cast(${users.id} as text) ilike ${pattern}`
+        );
+        if (searchCondition) conditions.push(searchCondition);
+      }
+
+      if (balanceFilter === "has_balance") {
+        conditions.push(sql`coalesce(${wallets.balanceMmk}, 0) > 0`);
+      } else if (balanceFilter === "zero_balance") {
+        conditions.push(sql`coalesce(${wallets.balanceMmk}, 0) = 0`);
+      }
+
+      const whereExpr = and(...conditions);
+
+      // 4. Total count for pagination (same joins/where)
+      const [countResult] = await db
+        .select({ total: sql<number>`count(distinct ${users.id})` })
+        .from(users)
+        .leftJoin(wallets, eq(users.id, wallets.userId))
+        .leftJoin(orderStats, eq(users.id, orderStats.customerId))
+        .where(whereExpr);
+      const total = Number(countResult?.total || 0);
+
+      // 5. Sort expressions (SQL level) with stable id tiebreaker
+      const balanceExpr = sql`coalesce(${wallets.balanceMmk}, 0)`;
+      const spentExpr = sql`greatest(coalesce(${wallets.totalSpentMmk}, 0), coalesce(${orderStats.deliveredSpentMmk}, 0))`;
+      const orderCountExpr = sql`coalesce(${orderStats.orderCount}, 0)`;
+
+      let orderByExpr: ReturnType<typeof desc>;
+      if (sortBy === "balance_asc") orderByExpr = asc(balanceExpr);
+      else if (sortBy === "spent_desc") orderByExpr = desc(spentExpr);
+      else if (sortBy === "orders_desc") orderByExpr = desc(orderCountExpr);
+      else if (sortBy === "newest") orderByExpr = desc(users.createdAt);
+      else orderByExpr = desc(balanceExpr);
+
+      // 6. Page of customer users joined with wallets and order stats
+      const rows = await db
+        .select({
+          id: users.id,
+          telegramId: users.telegramId,
+          username: users.username,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          role: users.role,
+          status: users.status,
+          createdAt: users.createdAt,
+          updatedAt: users.updatedAt,
+          walletId: wallets.id,
+          balanceMmk: sql<number>`coalesce(${wallets.balanceMmk}, 0)`,
+          totalDepositedMmk: sql<number>`coalesce(${wallets.totalDepositedMmk}, 0)`,
+          walletTotalSpentMmk: sql<number>`coalesce(${wallets.totalSpentMmk}, 0)`,
+          orderCount: sql<number>`coalesce(${orderStats.orderCount}, 0)`,
+          deliveredSpentMmk: sql<number>`coalesce(${orderStats.deliveredSpentMmk}, 0)`,
+          lastOrderAt: orderStats.lastOrderAt,
+        })
+        .from(users)
+        .leftJoin(wallets, eq(users.id, wallets.userId))
+        .leftJoin(orderStats, eq(users.id, orderStats.customerId))
+        .where(whereExpr)
+        .orderBy(orderByExpr, asc(users.id))
+        .limit(pageSize)
+        .offset((page - 1) * pageSize);
+
+      // Transform and map
+      const customerList = rows.map((r) => {
+        const fullName = [r.firstName, r.lastName].filter(Boolean).join(" ").trim();
+        let displayName = fullName;
+        if (!displayName || displayName === "Customer") {
+          if (r.username) {
+            displayName = `@${r.username}`;
+          } else if (r.telegramId) {
+            displayName = `User ${r.telegramId}`;
+          } else {
+            displayName = `Customer #${r.id}`;
+          }
+        }
+        const effectiveSpent = Math.max(
+          Number(r.walletTotalSpentMmk || 0),
+          Number(r.deliveredSpentMmk || 0)
+        );
+
+        return {
+          id: r.id,
+          telegramId: r.telegramId,
+          username: r.username,
+          firstName: r.firstName,
+          lastName: r.lastName,
+          displayName,
+          role: r.role,
+          status: r.status,
+          walletBalanceMmk: Number(r.balanceMmk || 0),
+          totalDepositedMmk: Number(r.totalDepositedMmk || 0),
+          totalSpentMmk: effectiveSpent,
+          ordersCount: Number(r.orderCount || 0),
+          lastActive: r.lastOrderAt || r.updatedAt || r.createdAt,
+          createdAt: r.createdAt,
+        };
+      });
 
       return {
-        id: r.id,
-        telegramId: r.telegramId,
-        username: r.username,
-        firstName: r.firstName,
-        lastName: r.lastName,
-        displayName,
-        role: r.role,
-        status: r.status,
-        walletBalanceMmk: Number(r.balanceMmk || 0),
-        totalDepositedMmk: Number(r.totalDepositedMmk || 0),
-        totalSpentMmk: effectiveSpent,
-        ordersCount: Number(r.orderCount || 0),
-        lastActive: r.lastOrderAt || r.updatedAt || r.createdAt,
-        createdAt: r.createdAt,
+        ok: true,
+        stats: {
+          totalCustomers: Number(kpiResult?.totalCustomers || 0),
+          customersWithBalance: Number(kpiResult?.customersWithBalance || 0),
+          totalWalletBalanceMmk: Number(kpiResult?.totalWalletBalanceMmk || 0),
+          totalSpentMmk: Number(kpiResult?.totalSpentMmk || 0),
+        },
+        total,
+        page,
+        pageSize,
+        customers: customerList,
       };
-    });
-
-    return {
-      ok: true,
-      stats: {
-        totalCustomers: Number(kpiResult?.totalCustomers || 0),
-        customersWithBalance: Number(kpiResult?.customersWithBalance || 0),
-        totalWalletBalanceMmk: Number(kpiResult?.totalWalletBalanceMmk || 0),
-        totalSpentMmk: Number(kpiResult?.totalSpentMmk || 0),
-      },
-      total,
-      page,
-      pageSize,
-      customers: customerList,
-    };
-  });
+    }
+  );
 
   // GET /api/admin/customers/:id (Customer full details, order history, topup slips, ledger)
-  server.get<{
-    Params: { id: string };
-  }>("/api/admin/customers/:id", async (request, reply) => {
+  server.get<{ Params: { id: string } }>(
+    "/api/admin/customers/:id",
+    { preHandler: requirePermission("customers.view") },
+    async (request, reply) => {
     const rawId = request.params.id;
     const db = getDb();
     let user = null;
@@ -1495,9 +1699,10 @@ export async function adminRoutes(server: FastifyInstance) {
   });
 
   // POST /api/admin/customers/:id/adjust-balance (Admin balance credit/debit with audit ledger and Telegram notification)
-  server.post<{
-    Params: { id: string };
-  }>("/api/admin/customers/:id/adjust-balance", async (request, reply) => {
+  server.post<{ Params: { id: string } }>(
+    "/api/admin/customers/:id/adjust-balance",
+    { preHandler: requirePermission("customers.balance") },
+    async (request, reply) => {
     const rawId = request.params.id;
     const db = getDb();
     let user = null;
@@ -1515,6 +1720,9 @@ export async function adminRoutes(server: FastifyInstance) {
 
     if (!user) {
       return reply.status(404).send({ ok: false, error: "Customer not found" });
+    }
+    if (user.role !== "CUSTOMER") {
+      return reply.status(400).send({ ok: false, error: "Only customer accounts can be adjusted" });
     }
 
     const AdjustBalanceSchema = z.object({
@@ -1633,6 +1841,20 @@ export async function adminRoutes(server: FastifyInstance) {
       }
     }
 
+    await writeAudit({
+      actorId: getRbac(request)?.userId ?? null,
+      action: "ADMIN_ADJUSTMENT",
+      entityType: "USER",
+      entityId: customerId,
+      details: {
+        action,
+        amountMmk,
+        newBalanceMmk,
+        notes: notes.trim(),
+        telegramNotified,
+      },
+    });
+
     return {
       ok: true,
       action,
@@ -1644,10 +1866,10 @@ export async function adminRoutes(server: FastifyInstance) {
   });
 
   // POST /api/admin/customers/:id/deactivate (Soft delete — reversible, keeps all history)
-  server.post<{
-    Params: { id: string };
-    Body: { reason?: string };
-  }>("/api/admin/customers/:id/deactivate", async (request, reply) => {
+  server.post<{ Params: { id: string }; Body: { reason?: string } }>(
+    "/api/admin/customers/:id/deactivate",
+    { preHandler: requirePermission("customers.status") },
+    async (request, reply) => {
     const db = getDb();
     const customerId = Number(request.params.id);
     if (!Number.isInteger(customerId) || customerId <= 0) {
@@ -1701,9 +1923,10 @@ export async function adminRoutes(server: FastifyInstance) {
   });
 
   // POST /api/admin/customers/:id/restore (Undo a deactivation)
-  server.post<{
-    Params: { id: string };
-  }>("/api/admin/customers/:id/restore", async (request, reply) => {
+  server.post<{ Params: { id: string } }>(
+    "/api/admin/customers/:id/restore",
+    { preHandler: requirePermission("customers.status") },
+    async (request, reply) => {
     const db = getDb();
     const customerId = Number(request.params.id);
     if (!Number.isInteger(customerId) || customerId <= 0) {
@@ -1749,9 +1972,10 @@ export async function adminRoutes(server: FastifyInstance) {
   });
 
   // DELETE /api/admin/customers/:id (Permanent hard delete — only for deactivated customers with no orders)
-  server.delete<{
-    Params: { id: string };
-  }>("/api/admin/customers/:id", async (request, reply) => {
+  server.delete<{ Params: { id: string } }>(
+    "/api/admin/customers/:id",
+    { preHandler: requirePermission("customers.delete") },
+    async (request, reply) => {
     const db = getDb();
     const customerId = Number(request.params.id);
     if (!Number.isInteger(customerId) || customerId <= 0) {
