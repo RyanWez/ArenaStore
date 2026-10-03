@@ -1169,8 +1169,8 @@ export async function adminRoutes(server: FastifyInstance) {
     // 1. Overall KPI summary (customers only)
     const [kpiResult] = await db
       .select({
-        totalCustomers: sql<number>`count(${users.id})`,
-        customersWithBalance: sql<number>`count(case when coalesce(${wallets.balanceMmk}, 0) > 0 then 1 end)`,
+        totalCustomers: sql<number>`count(distinct ${users.id})`,
+        customersWithBalance: sql<number>`count(distinct case when coalesce(${wallets.balanceMmk}, 0) > 0 then ${users.id} end)`,
         totalWalletBalanceMmk: sql<number>`coalesce(sum(case when ${wallets.balanceMmk} > 0 then ${wallets.balanceMmk} else 0 end), 0)`,
         totalSpentMmk: sql<number>`coalesce(sum(${wallets.totalSpentMmk}), 0)`,
       })
@@ -1221,7 +1221,7 @@ export async function adminRoutes(server: FastifyInstance) {
 
     // 4. Total count for pagination (same joins/where)
     const [countResult] = await db
-      .select({ total: sql<number>`count(*)` })
+      .select({ total: sql<number>`count(distinct ${users.id})` })
       .from(users)
       .leftJoin(wallets, eq(users.id, wallets.userId))
       .leftJoin(orderStats, eq(users.id, orderStats.customerId))

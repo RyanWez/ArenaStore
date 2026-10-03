@@ -166,17 +166,6 @@ export function createBot(): Bot<BotContext> {
     ctx.session.unmatchedPhotoFileId = undefined;
     const firstName = ctx.from?.first_name || "Customer";
 
-    if (ctx.from?.id) {
-      await botOrderService
-        .upsertTelegramUser({
-          telegramId: String(ctx.from.id),
-          firstName: ctx.from.first_name || "Customer",
-          lastName: ctx.from.last_name || null,
-          username: ctx.from.username || null,
-        })
-        .catch(() => {});
-    }
-
     if (!(await ensureChannelMember(ctx))) return;
 
     await ctx.reply(formatStartMessage(firstName), {

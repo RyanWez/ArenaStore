@@ -138,7 +138,7 @@ export class BotOrderService {
             totalDepositedMmk: 0,
             totalSpentMmk: 0,
           })
-          .onConflictDoNothing()
+          .onConflictDoNothing({ target: wallets.userId })
           .returning();
         wallet = newWallet || (await db.select().from(wallets).where(eq(wallets.userId, user.id)).limit(1))[0];
       }

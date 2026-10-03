@@ -7,6 +7,7 @@ export const wallets = pgTable(
     id: serial("id").primaryKey(),
     userId: integer("user_id")
       .notNull()
+      .unique()
       .references(() => users.id, { onDelete: "cascade" }),
     balanceMmk: integer("balance_mmk").notNull().default(0),
     totalDepositedMmk: integer("total_deposited_mmk").notNull().default(0),
