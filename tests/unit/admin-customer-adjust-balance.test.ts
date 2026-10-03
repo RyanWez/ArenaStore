@@ -61,6 +61,7 @@ const h = vi.hoisted(() => {
         const snapshot = () => (rows[name] ?? []).map((r) => ({ ...r }));
         const builder: any = {
           where: () => builder,
+          orderBy: () => builder,
           limit: () => builder,
           offset: () => builder,
           then: (resolve: any, reject: any) => Promise.resolve(snapshot()).then(resolve, reject),
@@ -185,7 +186,7 @@ function makeReply() {
   return reply;
 }
 
-async function callRoute(method: "POST", url: string, id: string, body?: unknown) {
+async function callRoute(method: "GET" | "POST", url: string, id: string, body?: unknown) {
   const handlers = (globalThis as any).__adminRouteHandlersBalance as Map<string, RouteHandler>;
   const handler = handlers.get(`${method} ${url}`);
   if (!handler) throw new Error(`Route not registered: ${method} ${url}`);
@@ -198,6 +199,7 @@ async function callRoute(method: "POST", url: string, id: string, body?: unknown
 }
 
 const ADJUST_URL = "/api/admin/customers/:id/adjust-balance";
+const CUSTOMER_DETAIL_URL = "/api/admin/customers/:id";
 
 const testUser = {
   id: "550e8400-e29b-41d4-a716-446655440000",
@@ -342,5 +344,45 @@ describe("Admin Adjust Balance Route", () => {
     const walletInsert = h.inserts.find((i) => i.table === "wallets");
     expect(walletInsert).toBeDefined();
     expect(walletInsert?.values.balanceMmk).toBe(0);
+  });
+
+  it("rebuilds ledger balanceAfterMmk backwards from the current wallet balance", async () => {
+    // Mirrors the real incident: +50,000 top-up then −50,000 admin debit,
+    // wallet now at 0. Rows are seeded newest-first, the order the API returns.
+    h.reset({
+      users: [{ ...testUser }],
+      wallets: [{ ...testWallet, balanceMmk: 0 }],
+      walletLedger: [
+        { id: 2, walletId: 1, amountMmk: -50000, type: "ADMIN_ADJUSTMENT", notes: "Deduct" },
+        { id: 1, walletId: 1, amountMmk: 50000, type: "TOPUP_CREDIT", notes: "Manual wallet credit by admin" },
+      ],
+    });
+
+    const res = await callRoute("GET", CUSTOMER_DETAIL_URL, testUser.id);
+
+    expect(res.status).toBe(200);
+    expect(res.body.wallet.balanceMmk).toBe(0);
+    expect(res.body.ledger).toHaveLength(2);
+    // Newest row (the debit) ends at the current balance 0…
+    expect(res.body.ledger[0]).toMatchObject({ amountMmk: -50000, balanceAfterMmk: 0 });
+    // …and the row before it shows the money was really in the wallet: 50,000.
+    expect(res.body.ledger[1]).toMatchObject({ amountMmk: 50000, balanceAfterMmk: 50000 });
+  });
+
+  it("keeps balanceAfterMmk consistent for a non-zero ending balance", async () => {
+    h.reset({
+      users: [{ ...testUser }],
+      wallets: [{ ...testWallet, balanceMmk: 2000 }],
+      walletLedger: [
+        { id: 2, walletId: 1, amountMmk: -3000, type: "ORDER_DEBIT" },
+        { id: 1, walletId: 1, amountMmk: 5000, type: "TOPUP_CREDIT" },
+      ],
+    });
+
+    const res = await callRoute("GET", CUSTOMER_DETAIL_URL, testUser.id);
+
+    expect(res.status).toBe(200);
+    expect(res.body.ledger[0]).toMatchObject({ amountMmk: -3000, balanceAfterMmk: 2000 });
+    expect(res.body.ledger[1]).toMatchObject({ amountMmk: 5000, balanceAfterMmk: 5000 });
   });
 });

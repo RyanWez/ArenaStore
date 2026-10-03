@@ -1439,13 +1439,22 @@ export async function adminRoutes(server: FastifyInstance) {
       createdAt: t.createdAt,
     }));
 
-    // Wallet Ledger / Audit Trail
-    const ledger = await db
+    // Wallet Ledger / Audit Trail (newest first). The table stores only deltas,
+    // so the balance after each entry is rebuilt backwards from the current
+    // wallet balance — the newest entry always ends exactly at balanceMmk.
+    const ledgerRows = await db
       .select()
       .from(walletLedger)
       .where(eq(walletLedger.walletId, wallet.id))
-      .orderBy(desc(walletLedger.createdAt))
+      .orderBy(desc(walletLedger.createdAt), desc(walletLedger.id))
       .limit(100);
+
+    let runningBalanceMmk = wallet.balanceMmk;
+    const ledger = ledgerRows.map((entry) => {
+      const enriched = { ...entry, balanceAfterMmk: runningBalanceMmk };
+      runningBalanceMmk -= entry.amountMmk;
+      return enriched;
+    });
 
     const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
     let displayName = fullName;

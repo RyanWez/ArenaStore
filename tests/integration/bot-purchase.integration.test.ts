@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { botOrderService } from "../../apps/bot/src/services/order.service";
 import { decryptPayload } from "../../apps/bot/src/services/encryption";
 import {
   getDb,
   closeDb,
   users,
+  wallets,
   walletLedger,
   orders,
   orderItems,
@@ -239,5 +240,39 @@ describe("Bot instant wallet purchase (Recommendation D money path)", () => {
     const wallet = await getWalletBalance(userId);
     expect(wallet.balanceMmk).toBe(0);
     expect(wallet.totalSpentMmk).toBe(FALLBACK_PRICE_MMk);
+  });
+
+  it("admin dashboard debit leaves no phantom balance: bot shows 0 and purchase is refused", async () => {
+    const telegramId = syntheticTelegramId();
+    // 1. Customer credited 50,000 — real funds in the wallet.
+    await botOrderService.creditWallet(telegramId, 50000);
+
+    // 2. Admin debits it all from the Dashboard (same guarded update as
+    //    adjust-balance). The API never touches the bot's in-process cache.
+    const userId = await getUserIdByTelegramId(telegramId);
+    const db = getDb();
+    const [walletRow] = await db.select().from(wallets).where(eq(wallets.userId, userId));
+    const [debited] = await db
+      .update(wallets)
+      .set({ balanceMmk: sql`${wallets.balanceMmk} - 50000` })
+      .where(and(eq(wallets.id, walletRow.id), gte(wallets.balanceMmk, 50000)))
+      .returning();
+    expect(debited.balanceMmk).toBe(0);
+
+    // 3. The bot must report the true debited balance, never a stale cache.
+    expect(await botOrderService.getWalletBalance(telegramId)).toBe(0);
+
+    // 4. A purchase with no money must be refused and store nothing.
+    const res = await botOrderService.purchaseWithWallet({
+      telegramId,
+      customerName: "Debited Customer",
+      productId: FALLBACK_PRODUCT_ID,
+      quantity: 1,
+    });
+    expect(res.success).toBe(false);
+    expect(res.error).toBe("INSUFFICIENT_FUNDS");
+
+    const orderRows = await db.select().from(orders).where(eq(orders.customerId, userId));
+    expect(orderRows).toHaveLength(0);
   });
 });

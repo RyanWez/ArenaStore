@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
+import { formatMyanmarDateTime } from '~/utils/date'
 
 const router = useRouter()
 const toast = useToast()
@@ -25,7 +26,7 @@ export interface DepositItem {
   slipImageUrl: string
   submittedAt: string
   rawDate: string
-  status: 'SUBMITTED' | 'APPROVED' | 'REJECTED'
+  status: 'PENDING' | 'SUBMITTED' | 'APPROVED' | 'REJECTED'
   intendedProduct?: string
 }
 
@@ -39,7 +40,7 @@ const approvingSlipId = ref<number | null>(null)
 const copiedId = ref<string | null>(null)
 
 // Filters
-const activeTab = ref<'ALL' | 'SUBMITTED' | 'APPROVED' | 'REJECTED'>('ALL')
+const activeTab = ref<'ALL' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'PENDING'>('ALL')
 const searchQuery = ref('')
 const debouncedSearch = ref('')
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -90,7 +91,7 @@ async function fetchSlips(isSilent = false) {
                 ? s.slipUrl
                 : `/api/admin/telegram-file/${encodeURIComponent(s.slipUrl)}`)
             : `/api/admin/deposits/${s.id}/slip-image`,
-          submittedAt: s.date ? new Date(s.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
+          submittedAt: formatMyanmarDateTime(s.date),
           rawDate: s.date || new Date().toISOString(),
           status: s.status === 'COMPLETED' ? 'APPROVED' : (s.status as any),
           intendedProduct: s.intendedProduct || 'General Wallet Topup',
@@ -216,6 +217,7 @@ function goToPage(p: number) {
 }
 
 const pendingCount = computed(() => slips.value.filter((s) => s.status === 'SUBMITTED').length)
+const pendingUploadCount = computed(() => slips.value.filter((s) => s.status === 'PENDING').length)
 const pendingTotalMmk = computed(() =>
   slips.value
     .filter((s) => s.status === 'SUBMITTED')
@@ -463,6 +465,14 @@ async function confirmReject() {
           </button>
           <button
             type="button"
+            @click="activeTab = 'PENDING'"
+            :class="activeTab === 'PENDING' ? 'bg-slate-600 text-white shadow-sm shadow-slate-600/20' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+            class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 shrink-0 font-semibold"
+          >
+            Awaiting Slip ({{ pendingUploadCount }})
+          </button>
+          <button
+            type="button"
             @click="activeTab = 'REJECTED'"
             :class="activeTab === 'REJECTED' ? 'bg-rose-600 text-white shadow-sm shadow-rose-600/20' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
             class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 shrink-0 font-semibold"
@@ -663,7 +673,7 @@ async function confirmReject() {
                   <span
                     v-if="slip.status === 'SUBMITTED'"
                     @click="openSlipPreview(slip, $event)"
-                    class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors"
+                    class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors cursor-pointer"
                   >
                     <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
                     <span>Review</span>
@@ -676,7 +686,16 @@ async function confirmReject() {
                     <span>Approved</span>
                   </span>
                   <span
-                    v-else
+                    v-else-if="slip.status === 'PENDING'"
+                    @click="openSlipPreview(slip, $event)"
+                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-500/10 text-slate-500 dark:text-slate-400 border border-slate-500/20 hover:bg-slate-500/20 transition-colors cursor-pointer"
+                    title="Customer started top-up in Bot but has not uploaded receipt slip photo yet"
+                  >
+                    <i class="pi pi-clock text-[9px]"></i>
+                    <span>Awaiting Slip</span>
+                  </span>
+                  <span
+                    v-else-if="slip.status === 'REJECTED'"
                     class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
                   >
                     <i class="pi pi-times text-[9px]"></i>
@@ -833,6 +852,15 @@ async function confirmReject() {
                 <i class="pi pi-external-link text-[11px]"></i>
                 <span>Open Original</span>
               </a>
+            </div>
+
+            <!-- Notice for PENDING slips -->
+            <div v-if="selectedSlip.status === 'PENDING'" class="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-600 dark:text-amber-400 flex items-start gap-2.5">
+              <i class="pi pi-info-circle text-sm shrink-0 mt-0.5"></i>
+              <div>
+                <strong class="font-semibold block">Awaiting Customer Slip Upload</strong>
+                Customer has requested this top-up in the Telegram bot, but has not yet uploaded their screenshot receipt.
+              </div>
             </div>
 
             <!-- Transaction Details Row -->

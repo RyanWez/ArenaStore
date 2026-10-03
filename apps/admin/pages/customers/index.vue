@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
+import { formatMyanmarDate, formatMyanmarTime } from '~/utils/date'
 
 const router = useRouter()
 const toast = useToast()
@@ -744,8 +745,8 @@ function formatCurrency(amount: number): string {
 
                 <!-- Joined / Active -->
                 <td class="py-3 px-4 text-xs text-slate-500 dark:text-slate-400 font-mono whitespace-nowrap">
-                  <div>{{ c.lastActive ? new Date(c.lastActive).toLocaleDateString() : (c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '-') }}</div>
-                  <div class="text-[10px] text-slate-400">{{ c.lastActive ? new Date(c.lastActive).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '' }}</div>
+                  <div>{{ c.lastActive ? formatMyanmarDate(c.lastActive) : (c.createdAt ? formatMyanmarDate(c.createdAt) : '-') }}</div>
+                  <div class="text-[10px] text-slate-400">{{ c.lastActive ? formatMyanmarTime(c.lastActive) : '' }}</div>
                 </td>
 
                 <!-- Actions -->

@@ -189,7 +189,9 @@ export class BotOrderService {
     try {
       const record = await this.getOrCreateUser({ telegramId });
       if (record?.wallet) {
-        return Math.max(record.wallet.balanceMmk, this.memoryWallets.get(telegramId) || 0);
+        // DB is authoritative. Never blend in the in-memory cache: an admin
+        // debit from the Dashboard would otherwise keep showing phantom money.
+        return record.wallet.balanceMmk;
       }
     } catch (err: any) {
       console.warn("[BotOrderService] getWalletBalance DB fallback:", err.message);
@@ -533,7 +535,8 @@ export class BotOrderService {
 
       const user = userRecord?.user;
       const wallet = userRecord?.wallet;
-      const availableBalance = wallet ? Math.max(wallet.balanceMmk, memCurrent) : memCurrent;
+      // DB balance decides; the guarded atomic debit below enforces it anyway.
+      const availableBalance = wallet ? wallet.balanceMmk : memCurrent;
 
       if (availableBalance < totalMmk) {
         return {

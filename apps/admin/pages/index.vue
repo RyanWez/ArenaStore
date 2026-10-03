@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useSupplierStatus } from '~/composables/useSupplierStatus'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
+import { formatMyanmarDateTime } from '~/utils/date'
 
 const router = useRouter()
 const { supplierBalanceUsd, isSyncing, syncCatalog, lastSyncMessage, fetchStatus } = useSupplierStatus()
@@ -59,16 +60,23 @@ async function fetchDashboardData(isSilent = false) {
     }
 
     if (ordersRes?.ok && Array.isArray(ordersRes.orders)) {
-      recentOrders.value = ordersRes.orders.slice(0, 6).map((o: any) => ({
-        id: o.orderId || o.id,
-        publicOrderNo: o.id || o.publicOrderNo,
-        productName: o.product || 'Digital Item',
-        customer: o.user || 'Customer',
-        telegramId: o.telegramId || '',
-        amountMmk: o.totalMmk || 0,
-        status: o.status === 'COMPLETED' ? 'DELIVERED' : o.status,
-        createdAt: o.date ? new Date(o.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Today',
-      }))
+      recentOrders.value = [...ordersRes.orders]
+        .sort((a: any, b: any) => {
+          const timeA = a.date ? new Date(a.date).getTime() : 0
+          const timeB = b.date ? new Date(b.date).getTime() : 0
+          return timeB - timeA
+        })
+        .slice(0, 6)
+        .map((o: any) => ({
+          id: o.orderId || o.id,
+          publicOrderNo: o.id || o.publicOrderNo,
+          productName: o.product || 'Digital Item',
+          customer: o.user || 'Customer',
+          telegramId: o.telegramId || '',
+          amountMmk: o.totalMmk || 0,
+          status: o.status === 'COMPLETED' ? 'DELIVERED' : o.status,
+          createdAt: formatMyanmarDateTime(o.date),
+        }))
     }
   } catch (err: any) {
     console.error('Dashboard data fetch error:', err)

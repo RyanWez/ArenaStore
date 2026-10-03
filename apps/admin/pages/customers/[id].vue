@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
+import { formatMyanmarDateTime, formatMyanmarDate } from '~/utils/date'
 
 const route = useRoute()
 const router = useRouter()
@@ -523,7 +524,7 @@ function openSlipPreview(topUp: any) {
                 <span>First Seen</span>
               </span>
               <span class="font-medium text-slate-700 dark:text-slate-300 font-mono text-[11px]">
-                {{ customer.createdAt ? new Date(customer.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-' }}
+                {{ customer.createdAt ? formatMyanmarDate(customer.createdAt) : '-' }}
               </span>
             </div>
 
@@ -533,7 +534,7 @@ function openSlipPreview(topUp: any) {
                 <span>Last Active</span>
               </span>
               <span class="font-medium text-slate-700 dark:text-slate-300 font-mono text-[11px]">
-                {{ customer.lastActive ? new Date(customer.lastActive).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-' }}
+                {{ customer.lastActive ? formatMyanmarDateTime(customer.lastActive) : '-' }}
               </span>
             </div>
           </div>
@@ -677,7 +678,7 @@ function openSlipPreview(topUp: any) {
                     </span>
                   </td>
                   <td class="py-3 px-4 font-mono text-slate-500 text-[11px]">
-                    {{ order.createdAt ? new Date(order.createdAt).toLocaleDateString() : '-' }}
+                    {{ order.createdAt ? formatMyanmarDateTime(order.createdAt) : '-' }}
                   </td>
                   <td class="py-3 px-4 text-right">
                     <div class="inline-flex items-center gap-1.5">
@@ -791,7 +792,7 @@ function openSlipPreview(topUp: any) {
                     </span>
                   </td>
                   <td class="py-3 px-4 font-mono text-slate-500 text-[11px]">
-                    {{ slip.createdAt ? new Date(slip.createdAt).toLocaleDateString() : '-' }}
+                    {{ slip.createdAt ? formatMyanmarDateTime(slip.createdAt) : '-' }}
                   </td>
                 </tr>
               </tbody>
@@ -849,7 +850,7 @@ function openSlipPreview(topUp: any) {
                     {{ entry.notes || entry.reference || '-' }}
                   </td>
                   <td class="py-3 px-4 font-mono text-slate-400 text-[11px]">
-                    {{ entry.createdAt ? new Date(entry.createdAt).toLocaleDateString([], { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-' }}
+                    {{ entry.createdAt ? formatMyanmarDateTime(entry.createdAt) : '-' }}
                   </td>
                 </tr>
               </tbody>

@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
+import { formatMyanmarDateTime } from '~/utils/date'
 
 const router = useRouter()
 const toast = useToast()
@@ -121,7 +122,7 @@ async function fetchOrders(isSilent = false) {
         paymentSource: 'WALLET',
         totalAmountMmk: o.totalMmk || 0,
         totalCostUsd: '0.00',
-        createdAt: o.date ? new Date(o.date).toLocaleDateString() : 'Today',
+        createdAt: formatMyanmarDateTime(o.date),
         rawDate: o.date || new Date().toISOString(),
         customer: {
           id: o.telegramId ? parseInt(o.telegramId, 10) : 1,
