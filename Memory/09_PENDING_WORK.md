@@ -25,13 +25,17 @@ there is no durable record of *which admin approved what, when, for which custom
   - Adjust balance — `POST /api/admin/customers/:id/adjust-balance` (admin.ts ~line 1486+;
     it writes a `walletLedger` row of type `ADMIN_ADJUSTMENT`, but that is not an audit log —
     it has no actor/subject context beyond the note field)
-- `payment_submissions.reviewed_by` is never populated by the active deposit review flow.
+- `payment_submissions.reviewed_by` is never populated by the active deposit review flow
+  (NOTE: `topup_requests.reviewed_by`/`reviewed_at` ARE now populated by the review flow — done 2026-10-04;
+  the legacy `payment_submissions` table remains unused).
 
 **Fix approach:**
 1. Inside the SAME transaction as each wallet mutation, insert an `auditLogs` row:
    action (`DEPOSIT_APPROVED`, `DEPOSIT_REJECTED`, `ORDER_REFUNDED`, `CREDENTIALS_RESENT`,
    `BALANCE_ADJUSTED`), acting admin id, target customer/order id, amount, reference.
 2. Populate `payment_submissions.reviewed_by` (and `reviewed_at`) on deposit review.
+   ✅ Done 2026-10-04 for the active flow: `topup_requests.reviewedBy` + `reviewedAt` are set
+   inside the guarded review transaction (`POST /api/admin/deposits/:id/review`).
 3. Extend the admin list endpoints to join audit rows (optional, for an "activity" view).
 
 **Tests:** extend `tests/integration/wallet-topup.integration.test.ts` and
@@ -65,6 +69,36 @@ tests) to assert the audit row exists after each money action, with the acting a
 - Unbounded growth: `wallet_ledger` / `audit_logs` have no retention pruning (fine for now; revisit if storage becomes a concern on Neon free tier).
 - E2E suite has only one spec (`tests/e2e/deposits-review.spec.ts`); login-2FA flow has no e2e coverage.
 - Infra is configured only in dashboards (no `render.yaml` / `vercel.json`) — not reproducible from the repo.
+
+---
+
+## Done & verified on 2026-10-04: deposit review from the admin Telegram group
+
+- Extracted the deposit review implementation from the admin route into
+  `apps/api/src/services/deposit-review.service.ts` (`reviewDeposit`), shared by
+  `POST /api/admin/deposits/:id/review` (panel, thin wrapper now) and the new
+  internal endpoint `POST /api/bot/deposits/:id/review`
+  (`apps/api/src/routes/bot.ts`, auth: `x-internal-token` vs `INTERNAL_API_TOKEN`,
+  timing-safe). The guarded-claim race fix from earlier is preserved verbatim.
+- Relayed slips in the admin group now carry ✅/❌ inline buttons
+  (`apps/bot/src/services/admin-group.service.ts`). Callbacks are handled BEFORE
+  the private-chat-only guard (`apps/bot/src/handlers/admin-deposit-review.ts`);
+  session/user-sync/channel-verification are bypassed so admins are not
+  auto-created as customers. Reject is a two-step confirm (it notifies the
+  customer). On approve/reject the slip message is re-rendered via
+  `editMessageCaption` with a short outcome line ("✅ @admin က အတည်ပြုပြီး") and
+  the keyboard is removed, so nobody can click a stale button; 409 responses
+  re-render the same settled state.
+- Bot→API calls go through `apps/bot/src/services/deposit-review.client.ts`
+  (typed results, 10s timeout, 1 retry). TELEGRAM actors are recorded in the
+  audit details; `reviewed_by` stays NULL (FK is to staff users).
+- Env: `INTERNAL_API_TOKEN` (api + bot, .env.example + docker-compose). Deploy
+  order matters: API first, then bot.
+- Tests: `tests/unit/deposit-review-caption.test.ts` (9) and
+  `tests/integration/bot-deposit-review.integration.test.ts` (6: auth 401,
+  approve+credit with TELEGRAM actor, double-review 409 without double credit,
+  reject, 404, validation). Full suite 27 files / 204 tests green; api+bot
+  tsc clean.
 
 ---
 

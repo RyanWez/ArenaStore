@@ -84,7 +84,15 @@ export const SETTINGS_PERMISSION_KEYS: Record<string, string[]> = {
     "uabpayAccountName",
     "uabpayPhone",
   ],
-  "settings.operations": ["supportTelegramHandle", "isMaintenanceMode", "orderTimeoutMinutes"],
+  "settings.operations": [
+    "supportTelegramHandle",
+    "isMaintenanceMode",
+    "orderTimeoutMinutes",
+    "telegramGroupChatId",
+    "telegramDepositTopicId",
+    "telegramAdminMentions",
+    "telegramApproverIds",
+  ],
 };
 
 /**

@@ -19,6 +19,16 @@ const canEditAnySettings = computed(() => canEditPricing.value || canEditPayment
 
 const showSuccessBanner = ref(false)
 const isRecalculating = ref(false)
+const isAutoRepricing = ref(false)
+const isTestingGroupNotify = ref(false)
+
+// Shared label for the header save button — reflects the phase handleSave is in
+// (settings PUT → automatic catalog recalculation).
+const saveButtonLabel = computed(() => {
+  if (isAutoRepricing.value) return 'Updating prices...'
+  if (isSaving.value) return 'Saving...'
+  return 'Save Configuration'
+})
 
 // Password Change State
 const currentPassword = ref('')
@@ -49,33 +59,71 @@ function formatNumber(num: number): string {
 }
 
 async function handleSave() {
-  const result = await saveSettings(settings.value)
-  if (!result.success) {
-    toast.error('Failed to save settings: ' + (result.error || 'Unknown error'))
-    return
-  }
-
-  // Automatically recalculate catalog products pricing with the newly saved exchange rate & margin
+  isSaving.value = true
   try {
-    const repriceRes: any = await $fetch('/api/admin/settings/recalculate-prices', {
-      method: 'POST',
-      headers: getAuthHeaders(),
-    })
+    const result = await saveSettings(settings.value)
+    if (!result.success) {
+      toast.error('Failed to save settings: ' + (result.error || 'Unknown error'))
+      return
+    }
 
-    showSuccessBanner.value = true
-    const count = repriceRes?.updatedCount || 0
-    toast.success(
-      `Settings saved & ${count} products updated to ${formatNumber(settings.value.usdToMmkRate)} MMK (+${settings.value.defaultMarginPct}% margin)!`,
-      'Catalog Updated'
-    )
-  } catch (err: any) {
-    showSuccessBanner.value = true
-    toast.success('Store rates and payment accounts saved to database!', 'Settings Saved')
+    // saveSettings clears its own loading flag once the PUT resolves, but the
+    // automatic recalculation below is the slower half — keep the buttons in
+    // loading state until it finishes too, so the UI never looks "done" before
+    // the success toast arrives.
+    isAutoRepricing.value = true
+    try {
+      const repriceRes: any = await $fetch('/api/admin/settings/recalculate-prices', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      })
+
+      showSuccessBanner.value = true
+      const count = repriceRes?.updatedCount || 0
+      toast.success(
+        `Settings saved & ${count} products updated to ${formatNumber(settings.value.usdToMmkRate)} MMK (+${settings.value.defaultMarginPct}% margin)!`,
+        'Catalog Updated'
+      )
+    } catch (err: any) {
+      showSuccessBanner.value = true
+      toast.success('Store rates and payment accounts saved to database!', 'Settings Saved')
+    }
+  } finally {
+    isAutoRepricing.value = false
+    isSaving.value = false
   }
 
   setTimeout(() => {
     showSuccessBanner.value = false
   }, 4500)
+}
+
+async function handleTestGroupNotify() {
+  if (!settings.value.telegramGroupChatId.trim()) {
+    toast.error('Group Chat ID အရင်ထည့်ပါဆာ။', 'Deposit Relay')
+    return
+  }
+  isTestingGroupNotify.value = true
+  try {
+    const res: any = await $fetch('/api/admin/settings/test-group-notify', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: {
+        chatId: settings.value.telegramGroupChatId,
+        topicId: settings.value.telegramDepositTopicId,
+        mentions: settings.value.telegramAdminMentions,
+      },
+    })
+    if (res.ok) {
+      toast.success(res.message || 'Test message delivered', 'Deposit Relay')
+    } else {
+      toast.error(res.error || 'Test failed', 'Deposit Relay')
+    }
+  } catch (err: any) {
+    toast.error(err?.data?.error || err?.message || 'Test failed', 'Deposit Relay')
+  } finally {
+    isTestingGroupNotify.value = false
+  }
 }
 
 async function handleRecalculatePrices() {
@@ -185,12 +233,12 @@ async function handleChangePassword() {
           v-if="canEditAnySettings"
           type="button"
           @click="handleSave"
-          :disabled="isSaving"
+          :disabled="isSaving || isAutoRepricing"
           class="px-5 py-2.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-all shadow-md shadow-indigo-600/20 flex items-center gap-2 disabled:opacity-50 cursor-pointer"
         >
-          <i v-if="isSaving" class="pi pi-spin pi-spinner text-xs"></i>
+          <i v-if="isSaving || isAutoRepricing" class="pi pi-spin pi-spinner text-xs"></i>
           <i v-else class="pi pi-check text-xs"></i>
-          <span>{{ isSaving ? 'Saving...' : 'Save Configuration' }}</span>
+          <span>{{ saveButtonLabel }}</span>
         </button>
       </div>
     </div>
@@ -511,18 +559,88 @@ async function handleChangePassword() {
             <p class="text-[11px] text-slate-400">Time window allowed for customers to upload payment slip receipts</p>
           </div>
         </div>
+
+        <!-- Deposit Slip Relay → Admin Telegram Group -->
+        <div class="rounded-xl bg-sky-50/50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/50 p-4 space-y-4">
+          <div class="flex items-center gap-2">
+            <i class="pi pi-send text-sky-600 dark:text-sky-400 text-xs"></i>
+            <h3 class="text-sm font-bold text-sky-950 dark:text-sky-200">Deposit Slip Relay (Group ထဲ Slip ပို့ပေးတာ)</h3>
+          </div>
+          <p class="text-[11px] text-slate-500 -mt-2">
+            ဝယ်ယူသူတိုင်း၏ payment slip ကို bot က ဤ group/topic ထဲသို့ အလိုအလျောက် ပို့ပေးပါမည်။
+            Bot ကို group admin အဖြစ် ထည့်ထားရပါမည်။ Group ID သည် <code>-100…</code> ပုံစံဖြစ်ပြီး
+            Topic ID မှာ topic link (<code>t.me/c/xxx/&lt;TopicID&gt;</code>) ထဲက နံပါတ်ဖြစ်သည် — စွန့်ခွာထားလျှင် General သို့ ပို့မည်။
+          </p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="space-y-1.5">
+              <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">Group Chat ID</label>
+              <input
+                v-model="settings.telegramGroupChatId"
+                type="text"
+                placeholder="-1001234567890"
+                class="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-sky-200 dark:border-sky-900 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              />
+            </div>
+            <div class="space-y-1.5">
+              <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">Deposit Topic ID (message_thread_id)</label>
+              <input
+                v-model="settings.telegramDepositTopicId"
+                type="text"
+                placeholder="e.g. 42 (empty = General)"
+                class="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-sky-200 dark:border-sky-900 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+              />
+            </div>
+          </div>
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">Admin Mentions (Slip အောက်ဆုံးမှာ @ခေါ်ရမည်သူများ)</label>
+            <input
+              v-model="settings.telegramAdminMentions"
+              type="text"
+              placeholder="e.g. ryanwez, H_M_A_2026"
+              class="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-sky-200 dark:border-sky-900 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            />
+            <p class="text-[11px] text-slate-400">
+              Telegram username များကို comma/spacing ဖြင့် ခွာထားပါ — slip တိုင်း၏ အောက်ဆုံးတွင်
+              <code>@ryanwez | @H_M_A_2026</code> ပုံစံ ပေါ်မည့်အပြင် ၎င်းတို့ ထားထိနိူင်ပါ။ (@ မတိုင်းလဲရပါ)
+            </p>
+          </div>
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">Deposit Approvers Allowlist (Telegram User IDs / Usernames)</label>
+            <input
+              v-model="settings.telegramApproverIds"
+              type="text"
+              placeholder="e.g. 123456789, ryanwez (အလွတ် = group အတွင်း မည်သူမဆို အတည်ပြုနိုင်သည်)"
+              class="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-sky-200 dark:border-sky-900 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            />
+            <p class="text-[11px] text-slate-400">
+              အတည်ပြုခွင့်ရှိသူများ၏ Telegram ID သို့မဟုတ် Username များကို comma/space ဖြင့် ခွာ၍ ထည့်ပါ။ (အလွတ်ထားပါက group အတွင်း မည်သူမဆို အတည်ပြုနိုင်သည်)
+            </p>
+          </div>
+          <div class="flex justify-end">
+            <button
+              type="button"
+              :disabled="isTestingGroupNotify"
+              class="px-4 py-2 rounded-lg text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+              @click="handleTestGroupNotify"
+            >
+              <i v-if="isTestingGroupNotify" class="pi pi-spin pi-spinner text-xs"></i>
+              <i v-else class="pi pi-paperplane text-xs"></i>
+              <span>{{ isTestingGroupNotify ? 'Testing...' : 'Send Test Post' }}</span>
+            </button>
+          </div>
+        </div>
       </fieldset>
 
       <!-- Save Button Row -->
       <div v-if="canEditAnySettings" class="flex justify-end pt-2">
         <button
           type="submit"
-          :disabled="isSaving"
+          :disabled="isSaving || isAutoRepricing"
           class="px-6 py-3 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-all shadow-lg shadow-indigo-600/25 flex items-center gap-2 disabled:opacity-50 cursor-pointer"
         >
-          <i v-if="isSaving" class="pi pi-spin pi-spinner text-xs"></i>
+          <i v-if="isSaving || isAutoRepricing" class="pi pi-spin pi-spinner text-xs"></i>
           <i v-else class="pi pi-check text-xs"></i>
-          <span>{{ isSaving ? 'Saving Changes...' : 'Save All Settings' }}</span>
+          <span>{{ isAutoRepricing ? 'Updating prices...' : (isSaving ? 'Saving Changes...' : 'Save All Settings') }}</span>
         </button>
       </div>
     </form>

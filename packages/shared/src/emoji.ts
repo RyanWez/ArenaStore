@@ -38,6 +38,10 @@ export const BOT_EMOJIS = {
   WAVEPAY: "6057728063049830775",    // 🆗 WavePay
   UABPAY: "5391349017898656371",     // 💚 UAB Pay
   AYAPAY: "5282730523343474638",     // 🙂 AYA Pay
+
+  // Admin Group Notices
+  CLOCK: "5359535585251838264",      // 🕐
+  BELL: "6260097382914986431",       // 🔔
 } as const;
 
 /**

@@ -1,10 +1,12 @@
 import { FastifyInstance } from "fastify";
 import {
+  BOT_EMOJIS,
   ReviewPaymentSchema,
   UpdateProductPricingSchema,
   calculateRetailMmk,
   calculateSellableStock,
   stripCustomEmojiPlaceholders,
+  tgEmoji,
 } from "@arena/shared";
 import {
   getDb,
@@ -29,12 +31,11 @@ import { xproClient } from "../services/xpro-client";
 import { catalogService } from "../services/catalog.service";
 import { orderService } from "../services/order.service";
 import {
-  notifyTopUpApproved,
-  notifyTopUpRejected,
   notifyOrderRefunded,
   notifyOrderCredentialsResent,
   notifyBalanceAdjusted,
 } from "../services/telegram-notifier";
+import { reviewDeposit, buildCustomerDisplayName } from "../services/deposit-review.service";
 import { decryptPayload, formatCredentialsText } from "../services/encryption";
 import { fetchTelegramFile, getPlaceholderSlipSvg } from "../services/telegram-file.service";
 import { writeAudit } from "../services/audit.service";
@@ -50,21 +51,6 @@ const ReviewDepositSchema = z.object({
 const DeactivateCustomerSchema = z.object({
   reason: z.string().max(500).optional(),
 });
-
-/** Customer-facing display name used in audit details and responses. */
-function buildCustomerDisplayName(u: {
-  id: number;
-  telegramId: string | null;
-  username: string | null;
-  firstName: string | null;
-  lastName: string | null;
-}): string {
-  const fullName = [u.firstName, u.lastName].filter(Boolean).join(" ").trim();
-  if (fullName && fullName !== "Customer") return fullName;
-  if (u.username) return `@${u.username}`;
-  if (u.telegramId) return `User ${u.telegramId}`;
-  return `Customer #${u.id}`;
-}
 
 interface CachedSupplierStatus {
   balanceUsd: string | number;
@@ -687,178 +673,45 @@ export async function adminRoutes(server: FastifyInstance) {
   });
 
   // POST /api/admin/deposits/:id/review (Approve or Reject top-up request)
+  // Thin wrapper — the implementation lives in deposit-review.service.ts and
+  // is shared with the internal bot route (POST /api/bot/deposits/:id/review).
   server.post<{ Params: { id: string } }>(
     "/api/admin/deposits/:id/review",
     { preHandler: requirePermission("payments.review") },
     async (request, reply) => {
-    const depositId = parseInt(request.params.id, 10);
-    const parseRes = ReviewDepositSchema.safeParse(request.body);
-    if (!parseRes.success) {
-      return reply.status(400).send({
-        ok: false,
-        error: "Validation failed",
-        issues: parseRes.error.issues,
+      const depositId = parseInt(request.params.id, 10);
+      const parseRes = ReviewDepositSchema.safeParse(request.body);
+      if (!parseRes.success) {
+        return reply.status(400).send({
+          ok: false,
+          error: "Validation failed",
+          issues: parseRes.error.issues,
+        });
+      }
+
+      const result = await reviewDeposit({
+        depositId,
+        action: parseRes.data.action,
+        rejectReason: parseRes.data.rejectReason,
+        actor: { kind: "ADMIN", adminUserId: getRbac(request)?.userId ?? null },
       });
-    }
 
-    const { action, rejectReason } = parseRes.data;
-    const db = getDb();
-
-    // 1. Fetch deposit request with user
-    const [depositRow] = await db
-      .select({
-        topUp: topUpRequests,
-        user: users,
-      })
-      .from(topUpRequests)
-      .innerJoin(users, eq(topUpRequests.userId, users.id))
-      .where(eq(topUpRequests.id, depositId))
-      .limit(1);
-
-    if (!depositRow) {
-      return reply.status(404).send({ ok: false, error: "Deposit request not found" });
-    }
-
-    const { topUp, user } = depositRow;
-
-    if (topUp.status !== "SUBMITTED" && topUp.status !== "PENDING") {
-      return reply.status(400).send({
-        ok: false,
-        error: `Deposit request is already ${topUp.status}.`,
-      });
-    }
-
-    if (action === "APPROVE") {
-      // Atomic wallet credit + ledger entry
-      let newBalance = 0;
-      await db.transaction(async (tx) => {
-        // Mark deposit as COMPLETED
-        await tx
-          .update(topUpRequests)
-          .set({
-            status: "COMPLETED",
-            reviewedAt: new Date(),
-          })
-          .where(eq(topUpRequests.id, depositId));
-
-        // Find or create wallet
-        const [existingWallet] = await tx
-          .select()
-          .from(wallets)
-          .where(eq(wallets.userId, topUp.userId))
-          .limit(1);
-
-        if (existingWallet) {
-          const [updatedWallet] = await tx
-            .update(wallets)
-            .set({
-              balanceMmk: sql`${wallets.balanceMmk} + ${topUp.amountMmk}`,
-              totalDepositedMmk: sql`${wallets.totalDepositedMmk} + ${topUp.amountMmk}`,
-              updatedAt: new Date(),
-            })
-            .where(eq(wallets.id, existingWallet.id))
-            .returning();
-
-          newBalance = updatedWallet ? updatedWallet.balanceMmk : existingWallet.balanceMmk + topUp.amountMmk;
-
-          await tx.insert(walletLedger).values({
-            walletId: existingWallet.id,
-            amountMmk: topUp.amountMmk,
-            type: "TOPUP_CREDIT",
-            referenceId: topUp.reference,
-            notes: `Wallet deposit approved by admin`,
-          });
-        } else {
-          newBalance = topUp.amountMmk;
-          const [newWallet] = await tx
-            .insert(wallets)
-            .values({
-              userId: topUp.userId,
-              balanceMmk: topUp.amountMmk,
-              totalDepositedMmk: topUp.amountMmk,
-              totalSpentMmk: 0,
-            })
-            .returning();
-
-          await tx.insert(walletLedger).values({
-            walletId: newWallet.id,
-            amountMmk: topUp.amountMmk,
-            type: "TOPUP_CREDIT",
-            referenceId: topUp.reference,
-            notes: `Initial wallet deposit approved by admin`,
-          });
+      if (!result.ok) {
+        if (result.code === "NOT_FOUND") {
+          return reply.status(404).send({ ok: false, error: "Deposit request not found" });
         }
-      });
-
-      // Send celebration Telegram notification to customer
-      if (user.telegramId) {
-        await notifyTopUpApproved({
-          telegramId: user.telegramId,
-          reference: topUp.reference,
-          amountMmk: topUp.amountMmk,
-          newBalanceMmk: newBalance,
+        return reply.status(400).send({
+          ok: false,
+          error: `Deposit request is already ${result.status}.`,
         });
       }
 
-      await writeAudit({
-        actorId: getRbac(request)?.userId ?? null,
-        action: "DEPOSIT_REVIEW",
-        entityType: "DEPOSIT",
-        entityId: depositId,
-        details: {
-          action: "APPROVE",
-          reference: topUp.reference,
-          amountMmk: topUp.amountMmk,
-          newBalanceMmk: newBalance,
-        },
-      });
-
-      return {
-        ok: true,
-        action: "APPROVED",
-        newBalanceMmk: newBalance,
-      };
-    } else {
-      // REJECT
-      const reason = rejectReason || "Deposit slip verification failed.";
-      await db
-        .update(topUpRequests)
-        .set({
-          status: "REJECTED",
-          rejectReason: reason,
-          reviewedAt: new Date(),
-        })
-        .where(eq(topUpRequests.id, depositId));
-
-      // Send rejection Telegram notification
-      if (user.telegramId) {
-        await notifyTopUpRejected({
-          telegramId: user.telegramId,
-          reference: topUp.reference,
-          amountMmk: topUp.amountMmk,
-          reason,
-        });
+      if (result.action === "APPROVED") {
+        return { ok: true, action: "APPROVED", newBalanceMmk: result.newBalanceMmk };
       }
-
-      await writeAudit({
-        actorId: getRbac(request)?.userId ?? null,
-        action: "DEPOSIT_REVIEW",
-        entityType: "DEPOSIT",
-        entityId: depositId,
-        details: {
-          action: "REJECT",
-          reference: topUp.reference,
-          amountMmk: topUp.amountMmk,
-          rejectReason: reason,
-        },
-      });
-
-      return {
-        ok: true,
-        action: "REJECTED",
-      };
+      return { ok: true, action: "REJECTED" };
     }
-  });
+  );
 
   // GET /api/admin/orders (List all product orders with items and deliveries)
   server.get<{ Querystring: { limit?: string } }>(
@@ -1201,6 +1054,10 @@ export async function adminRoutes(server: FastifyInstance) {
         uabpayPhone: "09 789 123 456",
         isMaintenanceMode: "false",
         orderTimeoutMinutes: "15",
+        telegramGroupChatId: "",
+        telegramDepositTopicId: "",
+        telegramAdminMentions: "",
+        telegramApproverIds: "",
       };
 
       const merged = { ...defaults, ...settingsMap };
@@ -1242,22 +1099,24 @@ export async function adminRoutes(server: FastifyInstance) {
         });
       }
 
-      for (const [key, value] of Object.entries(allowed)) {
-        await db
-          .insert(appSettings)
-          .values({
+      // Single multi-row upsert — one DB round-trip instead of one per key
+      // (sequential awaits made Save take seconds against the remote Neon DB).
+      await db
+        .insert(appSettings)
+        .values(
+          Object.entries(allowed).map(([key, value]) => ({
             key,
             value: String(value),
             updatedAt: new Date(),
-          })
-          .onConflictDoUpdate({
-            target: appSettings.key,
-            set: {
-              value: String(value),
-              updatedAt: new Date(),
-            },
-          });
-      }
+          }))
+        )
+        .onConflictDoUpdate({
+          target: appSettings.key,
+          set: {
+            value: sql`excluded.value`,
+            updatedAt: sql`excluded.updated_at`,
+          },
+        });
 
       await writeAudit({
         actorId: rbac?.userId ?? null,
@@ -1271,6 +1130,99 @@ export async function adminRoutes(server: FastifyInstance) {
         ok: true,
         message: "Settings saved successfully",
       };
+    }
+  );
+
+  // POST /api/admin/settings/test-group-notify (Send a test message into the
+  // configured admin Telegram group/topic — or an ad-hoc one supplied in the
+  // body — so the deposit-slip relay can be verified before saving settings.)
+  server.post<{ Body: { chatId?: string; topicId?: string; mentions?: string } }>(
+    "/api/admin/settings/test-group-notify",
+    { preHandler: requirePermission("settings.operations") },
+    async (request, reply) => {
+      const db = getDb();
+      const rows = await db.select().from(appSettings);
+      const map: Record<string, string> = {};
+      for (const r of rows) map[r.key] = r.value;
+
+      const chatId = String(request.body?.chatId ?? map.telegramGroupChatId ?? "").trim();
+      const topicRaw = String(request.body?.topicId ?? map.telegramDepositTopicId ?? "").trim();
+      // Mentions come from the form body first so Send Test reflects what the
+      // admin sees on screen — an unsaved mentions value must not be ignored.
+      const mentionsRaw = String(request.body?.mentions ?? map.telegramAdminMentions ?? "");
+
+      if (!chatId) {
+        return reply
+          .status(400)
+          .send({ ok: false, error: "Group Chat ID မထည့်ရသေးပါ။" });
+      }
+      if (!/^-?\d{5,}$/.test(chatId)) {
+        return reply.status(400).send({
+          ok: false,
+          error:
+            "Group Chat ID ပုံစံ မှားနေပါသည်။ ဥပမာ: -1001234567890 (message link ထဲက t.me/c/<n> ကို -100 နဲ့ ဦးပေါ်တည်ပါ)။",
+        });
+      }
+      if (!config.TELEGRAM_BOT_TOKEN) {
+        return reply
+          .status(500)
+          .send({ ok: false, error: "Server has no TELEGRAM_BOT_TOKEN configured." });
+      }
+
+      const threadId = parseInt(topicRaw, 10);
+      const mentionNames = mentionsRaw
+        .split(/[\s,|]+/)
+        .map((t) => t.replace(/^@/, "").trim())
+        .filter((t) => /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(t));
+      const mentionLine =
+        mentionNames.length > 0
+          ? `\n\n${tgEmoji(BOT_EMOJIS.BELL, "🔔")} ${mentionNames.map((n) => `@${n}`).join(" | ")}`
+          : "";
+      try {
+        // AbortSignal caps a dropped connection at 10s instead of the default
+        // ~2min TCP timeout; one retry rides out transient ETIMEDOUT blips.
+        const res = await (async () => {
+          const payload = {
+            chat_id: chatId,
+            text:
+              `✅ <b>Arena Store Bot ချိတ်ဆက်မှု အတည်ပြုပြီး</b>\n\n` +
+              `Deposit slip အသစ်များ တွေ့ရတိုင်း ဤ group/topic ထဲသို့ အလိုအလျောက် ပို့ပေးပါမည်။` +
+              mentionLine,
+            parse_mode: "HTML",
+            ...(Number.isFinite(threadId) && threadId > 0 ? { message_thread_id: threadId } : {}),
+          };
+          for (let attempt = 1; ; attempt++) {
+            try {
+              return await fetch(
+                `https://api.telegram.org/bot${config.TELEGRAM_BOT_TOKEN}/sendMessage`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload),
+                  signal: AbortSignal.timeout(10_000),
+                }
+              );
+            } catch (err) {
+              if (attempt >= 2) throw err;
+            }
+          }
+        })();
+        const data: any = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          const desc = data?.description || `HTTP ${res.status}`;
+          return reply.status(502).send({ ok: false, error: `Telegram: ${desc}` });
+        }
+        return { ok: true, message: "စမ်းသပ်စာ ပို့ပြီးပါပြီ — Group/Topic ကို စစ်ဆေးပါ။" };
+      } catch (err: any) {
+        // undici wraps the real socket/DNS failure in err.cause — without it
+        // every network-layer failure shows up as a useless "fetch failed".
+        const cause = err?.cause?.code || err?.cause?.message || "";
+        const detail =
+          err?.name === "TimeoutError"
+            ? `Telegram request timed out after 10s${cause ? ` (${cause})` : ""}`
+            : `${err?.message}${cause ? ` (${cause})` : ""}`;
+        return reply.status(502).send({ ok: false, error: `Network error: ${detail}` });
+      }
     }
   );
 
@@ -1301,26 +1253,38 @@ export async function adminRoutes(server: FastifyInstance) {
         );
 
       let updatedCount = 0;
-      for (const p of prodsWithSnapshots) {
-        const usdPrice = parseFloat(p.supplierPriceUsd) || 0;
-        if (usdPrice > 0) {
+      // Compute all prices in memory, then write in parallel batches —
+      // one sequential await per product over the remote Neon DB made this
+      // take seconds even for ~40 products.
+      const priceUpdates = prodsWithSnapshots
+        .map((p) => {
+          const usdPrice = parseFloat(p.supplierPriceUsd) || 0;
+          if (usdPrice <= 0) return null;
           const pricing = calculateRetailMmk({
             upstreamUsdCost: usdPrice,
             exchangeRateMmk: exchangeRate,
             marginPercentage: marginPct,
             roundToNearest: 100,
           });
+          return { productId: p.productId, retailPriceMmk: pricing.retailPriceMmk };
+        })
+        .filter((u): u is NonNullable<typeof u> => u !== null);
 
-          await db
-            .update(products)
-            .set({
-              retailPriceMmk: pricing.retailPriceMmk,
-              updatedAt: new Date(),
-            })
-            .where(eq(products.id, p.productId));
-          updatedCount++;
-        }
+      const BATCH_SIZE = 10;
+      for (let i = 0; i < priceUpdates.length; i += BATCH_SIZE) {
+        await Promise.all(
+          priceUpdates.slice(i, i + BATCH_SIZE).map((u) =>
+            db
+              .update(products)
+              .set({
+                retailPriceMmk: u.retailPriceMmk,
+                updatedAt: new Date(),
+              })
+              .where(eq(products.id, u.productId))
+          )
+        );
       }
+      updatedCount = priceUpdates.length;
 
       await writeAudit({
         actorId: getRbac(request)?.userId ?? null,

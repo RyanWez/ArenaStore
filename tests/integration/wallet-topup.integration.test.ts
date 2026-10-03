@@ -119,6 +119,10 @@ describe("Wallet top-up → admin review → wallet credit (full money path)", (
     expect(topUpRow.status).toBe("COMPLETED");
     expect(topUpRow.reviewedAt).toBeTruthy();
 
+    // The acting admin is recorded as the reviewer (reviewed_by FK).
+    const [admin] = await db.select().from(users).where(eq(users.email, TEST_ADMIN_EMAIL));
+    expect(topUpRow.reviewedBy).toBe(admin.id);
+
     // Wallet credited exactly (integer MMK).
     const [walletRow] = await db.select().from(wallets).where(eq(wallets.userId, customer.id));
     expect(walletRow.balanceMmk).toBe(amountMmk);
@@ -163,6 +167,8 @@ describe("Wallet top-up → admin review → wallet credit (full money path)", (
       .where(eq(topUpRequests.id, Number(topUp.id)));
     expect(topUpRow.status).toBe("REJECTED");
     expect(topUpRow.rejectReason).toBe("Slip image is unclear");
+    const [admin] = await db.select().from(users).where(eq(users.email, TEST_ADMIN_EMAIL));
+    expect(topUpRow.reviewedBy).toBe(admin.id);
 
     const [walletRow] = await db.select().from(wallets).where(eq(wallets.userId, customer.id));
     expect(walletRow.balanceMmk).toBe(0);
@@ -193,6 +199,119 @@ describe("Wallet top-up → admin review → wallet credit (full money path)", (
   it("returns 404 for an unknown deposit id", async () => {
     const res = await reviewDeposit(999999999, { action: "APPROVE" });
     expect(res.statusCode).toBe(404);
+  });
+
+  it("credits the wallet exactly once when two admins approve concurrently", async () => {
+    const telegramId = syntheticTelegramId();
+    const amountMmk = 7000;
+
+    const topUp = await botOrderService.createTopUpRequest({ telegramId, amountMmk });
+    await botOrderService.submitTopUpSlip({
+      topUpId: topUp.id,
+      telegramId,
+      fileId: "race-slip-file-id",
+      amountMmk,
+      paymentMethod: "KPAY",
+    });
+
+    // Two review requests race for the same deposit (two admins / double-click /
+    // stale 4-second poll window). The guarded status claim inside the review
+    // transaction must let exactly one through.
+    const [first, second] = await Promise.all([
+      reviewDeposit(Number(topUp.id), { action: "APPROVE" }),
+      reviewDeposit(Number(topUp.id), { action: "APPROVE" }),
+    ]);
+
+    const statusCodes = [first.statusCode, second.statusCode].sort((a, b) => a - b);
+    expect(statusCodes).toEqual([200, 400]);
+
+    const db = getDb();
+    const [customer] = await db.select().from(users).where(eq(users.telegramId, telegramId));
+    const [walletRow] = await db.select().from(wallets).where(eq(wallets.userId, customer.id));
+    expect(walletRow.balanceMmk).toBe(amountMmk);
+
+    const ledgerRows = await db
+      .select()
+      .from(walletLedger)
+      .where(eq(walletLedger.walletId, walletRow.id));
+    const credits = ledgerRows.filter((r) => r.type === "TOPUP_CREDIT");
+    expect(credits).toHaveLength(1);
+
+    const [topUpRow] = await db
+      .select()
+      .from(topUpRequests)
+      .where(eq(topUpRequests.id, Number(topUp.id)));
+    expect(topUpRow.status).toBe("COMPLETED");
+  });
+
+  it("refuses to reject a deposit that was already approved", async () => {
+    const telegramId = syntheticTelegramId();
+    const amountMmk = 9000;
+
+    const topUp = await botOrderService.createTopUpRequest({ telegramId, amountMmk });
+    await botOrderService.submitTopUpSlip({
+      topUpId: topUp.id,
+      telegramId,
+      fileId: "stale-reject-slip-file-id",
+      amountMmk,
+      paymentMethod: "KPAY",
+    });
+
+    const approved = await reviewDeposit(Number(topUp.id), { action: "APPROVE" });
+    expect(approved.statusCode).toBe(200);
+
+    // A stale REJECT from another tab/admin must not overwrite COMPLETED
+    // (which would mark a credited deposit as rejected).
+    const staleReject = await reviewDeposit(Number(topUp.id), {
+      action: "REJECT",
+      rejectReason: "stale reject",
+    });
+    expect(staleReject.statusCode).toBe(400);
+
+    const db = getDb();
+    const [topUpRow] = await db
+      .select()
+      .from(topUpRequests)
+      .where(eq(topUpRequests.id, Number(topUp.id)));
+    expect(topUpRow.status).toBe("COMPLETED");
+
+    // Wallet still holds exactly the approved amount (no reversal, no double credit).
+    const [customer] = await db.select().from(users).where(eq(users.telegramId, telegramId));
+    const [walletRow] = await db.select().from(wallets).where(eq(wallets.userId, customer.id));
+    expect(walletRow.balanceMmk).toBe(amountMmk);
+  });
+
+  it("stores both top-up requests in the DB when created in the same millisecond", async () => {
+    // Freeze the clock so the reference timestamp is identical for both calls:
+    // the random suffix must keep the UNIQUE reference constraint satisfied.
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_770_000_000_000);
+    try {
+      const a = await botOrderService.createTopUpRequest({
+        telegramId: syntheticTelegramId(),
+        amountMmk: 1111,
+      });
+      const b = await botOrderService.createTopUpRequest({
+        telegramId: syntheticTelegramId(),
+        amountMmk: 2222,
+      });
+
+      expect(a.reference).not.toBe(b.reference);
+
+      // Numeric ids prove both rows were really INSERTed — with the old
+      // `TOP-` + last-6-digits format the second insert hit the UNIQUE
+      // constraint and silently fell back to an in-memory-only record.
+      expect(Number.isNaN(Number(a.id))).toBe(false);
+      expect(Number.isNaN(Number(b.id))).toBe(false);
+
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(topUpRequests)
+        .where(eq(topUpRequests.reference, a.reference));
+      expect(rows).toHaveLength(1);
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it("requires an admin session for deposit review", async () => {

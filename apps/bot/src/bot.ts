@@ -40,10 +40,31 @@ import {
   formatForceJoinMessage,
 } from "./formatters/messages";
 import { channelVerificationService } from "./services/channel-verification.service";
+import { notifyAdminGroupDepositSlip } from "./services/admin-group.service";
+import { registerAdminDepositReviewHandlers } from "./handlers/admin-deposit-review";
 import { BOT_EMOJIS, tgEmoji, escapeHtml } from "@arena/shared";
 
 export function createBot(): Bot<BotContext> {
   const bot = new Bot<BotContext>(botConfig.TELEGRAM_BOT_TOKEN);
+
+  // 0. Admin-Group Deposit Review Callbacks
+  // Must be registered BEFORE the private-chat-only guard below: the guard
+  // swallows every non-private update, so the ✅/❌ buttons on relayed slip
+  // messages in the admin group are the one sanctioned group interaction.
+  // They also never reach session/user-sync/channel-verification, so an
+  // admin clicking them is not auto-created as a customer.
+  registerAdminDepositReviewHandlers(bot);
+
+  // 0.1 Private-Chat-Only Guard
+  // The bot only converses in DMs. In groups (e.g. the admin Deposit relay
+  // group) it is a poster only — never a participant. This stops it from
+  // replying to group chatter and from bot-vs-bot loops with other bots
+  // in the same group. Deposit notifications are outbound api calls and
+  // the review-button callbacks above are unaffected by this guard.
+  bot.use(async (ctx, next) => {
+    if (ctx.chat?.type && ctx.chat.type !== "private") return;
+    await next();
+  });
 
   // 1. Session Middleware
   bot.use(
@@ -538,6 +559,13 @@ export function createBot(): Bot<BotContext> {
         amountMmk: amount,
         paymentMethod: "KPAY",
       });
+      void notifyAdminGroupDepositSlip(ctx.api, ctx.from, {
+        topUpId: topUp.id,
+        reference: topUp.reference,
+        amountMmk: amount,
+        fileId: unmatchedPhoto,
+        telegramId,
+      });
 
       await ctx.answerCallbackQuery({ text: "ပြေစာပုံကို အလိုအလျောက် ပူးတွဲတင်ပြပြီးပါပြီ!" });
       await ctx.editMessageText(
@@ -554,6 +582,7 @@ export function createBot(): Bot<BotContext> {
       topUpId: topUp.reference,
       amountMmk: amount,
       reference: topUp.reference,
+      dbId: topUp.id,
     };
     ctx.session.awaitingCustomTopUp = false;
     const settings = await botSettingsService.getSettings();
@@ -590,6 +619,13 @@ export function createBot(): Bot<BotContext> {
         amountMmk: deficit,
         paymentMethod: "KPAY",
       });
+      void notifyAdminGroupDepositSlip(ctx.api, ctx.from, {
+        topUpId: topUp.id,
+        reference: topUp.reference,
+        amountMmk: deficit,
+        fileId: unmatchedPhoto,
+        telegramId,
+      });
 
       await ctx.answerCallbackQuery({ text: "ပြေစာပုံကို အလိုအလျောက် ပူးတွဲတင်ပြပြီးပါပြီ!" });
       await ctx.editMessageText(
@@ -606,6 +642,7 @@ export function createBot(): Bot<BotContext> {
       topUpId: topUp.reference,
       amountMmk: deficit,
       reference: topUp.reference,
+      dbId: topUp.id,
     };
     ctx.session.awaitingCustomTopUp = false;
     const settings = await botSettingsService.getSettings();
@@ -750,6 +787,7 @@ export function createBot(): Bot<BotContext> {
           topUpId: pending.reference,
           amountMmk: pending.amountMmk,
           reference: pending.reference,
+          dbId: pending.id,
         };
       }
     }
@@ -767,6 +805,13 @@ export function createBot(): Bot<BotContext> {
         fileId,
         amountMmk,
         paymentMethod: "KPAY",
+      });
+      void notifyAdminGroupDepositSlip(ctx.api, ctx.from, {
+        topUpId: topUpSlip.dbId || "",
+        reference: reference || topUpId,
+        amountMmk,
+        fileId,
+        telegramId,
       });
 
       ctx.session.awaitingTopUpSlip = undefined;
@@ -856,6 +901,13 @@ export function createBot(): Bot<BotContext> {
           amountMmk: amount,
           paymentMethod: "KPAY",
         });
+        void notifyAdminGroupDepositSlip(ctx.api, ctx.from, {
+          topUpId: topUp.id,
+          reference: topUp.reference,
+          amountMmk: amount,
+          fileId: unmatchedPhoto,
+          telegramId,
+        });
 
         await ctx.reply(
           formatTopUpSlipReceivedMessage({ amountMmk: amount, reference: topUp.reference }),
@@ -941,3 +993,4 @@ export function createBot(): Bot<BotContext> {
 
   return bot;
 }
+

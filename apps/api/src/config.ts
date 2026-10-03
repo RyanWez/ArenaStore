@@ -48,6 +48,12 @@ const envSchema = z.object({
   ADMIN_TOTP_SECRET: z
     .union([z.literal(""), z.string().regex(/^[A-Z2-7=]{16,}$/i)])
     .optional(),
+  /**
+   * Shared secret authenticating the bot process against internal endpoints
+   * (e.g. POST /api/bot/deposits/:id/review for the admin group's approve /
+   * reject buttons). Empty disables those endpoints entirely.
+   */
+  INTERNAL_API_TOKEN: z.string().default(""),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

@@ -18,6 +18,8 @@ export interface SessionData {
     topUpId: string;
     amountMmk: number;
     reference: string;
+    /** Numeric DB id (when the top-up row exists) — enables the admin group's review buttons. */
+    dbId?: string;
   };
   intendedOrderAfterTopUp?: {
     productId: number;

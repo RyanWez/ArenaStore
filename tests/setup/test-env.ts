@@ -30,6 +30,9 @@ export const TEST_ADMIN_API_KEY = "arena-integration-test-admin-api-key";
 export const TEST_ADMIN_EMAIL = "test-admin@arena-store.test";
 export const TEST_ADMIN_PASSWORD = "TestAdminPass2026!";
 
+/** Shared secret exercising the bot → API internal endpoints in tests. */
+export const TEST_INTERNAL_API_TOKEN = "arena-integration-test-internal-token";
+
 /** Environment overrides applied to every Vitest worker before app imports. */
 export const TEST_ENV: Record<string, string> = {
   NODE_ENV: "test",
@@ -49,6 +52,7 @@ export const TEST_ENV: Record<string, string> = {
   ADMIN_EMAIL: TEST_ADMIN_EMAIL,
   ADMIN_INITIAL_PASSWORD: TEST_ADMIN_PASSWORD,
   ADMIN_TOTP_SECRET: "",
+  INTERNAL_API_TOKEN: TEST_INTERNAL_API_TOKEN,
   LOG_LEVEL: "silent",
 };
 

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { botConfig } from "../config";
 import { botCatalog } from "./catalog.service";
 import { placeUpstreamOrder, XProOrderError } from "./xpro-order";
@@ -46,6 +47,26 @@ export interface TopUpRecord {
   slipFileId?: string;
   status: "PENDING" | "SUBMITTED" | "APPROVED" | "REJECTED";
   createdAt: string;
+}
+
+/**
+ * Collision-resistant top-up reference.
+ *
+ * The old form was `TOP-${Date.now().toString().slice(-6)}` — only the last 6
+ * digits of the millisecond timestamp, which wraps every ~16.7 minutes and is
+ * identical for two requests in the same millisecond. `topup_requests.reference`
+ * is UNIQUE, so a collision made the insert throw, the catch swallowed it, and
+ * the request silently fell back to the in-memory record the admin panel (which
+ * reads the DB) can never show.
+ *
+ * Format: `TOP-` + base36 timestamp (monotonic-ish, ~8 chars) + 8 random hex
+ * chars (32-bit) — unique with overwhelming probability while staying
+ * short/readable (20 chars total, well within the 64-char column).
+ */
+export function generateTopUpReference(): string {
+  const timePart = Date.now().toString(36).toUpperCase();
+  const randomPart = crypto.randomBytes(4).toString("hex").toUpperCase();
+  return `TOP-${timePart}${randomPart}`;
 }
 
 export class BotOrderService {
@@ -253,7 +274,7 @@ export class BotOrderService {
     telegramUsername?: string;
     intendedProduct?: string;
   }): Promise<TopUpRecord> {
-    const reference = `TOP-${Date.now().toString().slice(-6)}`;
+    const reference = generateTopUpReference();
     const nowIso = new Date().toISOString();
 
     try {

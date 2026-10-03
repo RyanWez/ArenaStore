@@ -15,6 +15,10 @@ export interface BotAppSettings {
   uabpayPhone: string;
   orderTimeoutMinutes: number;
   isMaintenanceMode: boolean;
+  telegramGroupChatId: string;
+  telegramDepositTopicId: string;
+  telegramAdminMentions: string;
+  telegramApproverIds: string;
 }
 
 class BotSettingsService {
@@ -50,6 +54,10 @@ class BotSettingsService {
         uabpayPhone: map.uabpayPhone || "09 789 123 456",
         orderTimeoutMinutes: Number(map.orderTimeoutMinutes) || 15,
         isMaintenanceMode: map.isMaintenanceMode === "true",
+        telegramGroupChatId: (map.telegramGroupChatId || botConfig.TELEGRAM_GROUP_CHAT_ID).trim(),
+        telegramDepositTopicId: (map.telegramDepositTopicId || botConfig.TELEGRAM_DEPOSIT_TOPIC_ID).trim(),
+        telegramAdminMentions: (map.telegramAdminMentions || botConfig.TELEGRAM_ADMIN_MENTIONS).trim(),
+        telegramApproverIds: (map.telegramApproverIds || botConfig.TELEGRAM_APPROVER_IDS || "").trim(),
       };
       this.lastFetchedAt = now;
       return this.cache;
@@ -69,6 +77,10 @@ class BotSettingsService {
         uabpayPhone: "09 789 123 456",
         orderTimeoutMinutes: 15,
         isMaintenanceMode: false,
+        telegramGroupChatId: botConfig.TELEGRAM_GROUP_CHAT_ID.trim(),
+        telegramDepositTopicId: botConfig.TELEGRAM_DEPOSIT_TOPIC_ID.trim(),
+        telegramAdminMentions: botConfig.TELEGRAM_ADMIN_MENTIONS.trim(),
+        telegramApproverIds: (botConfig.TELEGRAM_APPROVER_IDS || "").trim(),
       };
     }
   }

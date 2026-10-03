@@ -733,7 +733,6 @@ function openSlipPreview(topUp: any) {
               <thead class="sticky top-0 z-10 bg-slate-50 dark:bg-[#0e172a] shadow-sm border-b border-slate-200 dark:border-slate-800">
                 <tr class="font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   <th class="py-3 px-4">Ref #</th>
-                  <th class="py-3 px-4">Method</th>
                   <th class="py-3 px-4">Amount</th>
                   <th class="py-3 px-4">Slip Receipt</th>
                   <th class="py-3 px-4">Status</th>
@@ -742,7 +741,7 @@ function openSlipPreview(topUp: any) {
               </thead>
               <tbody class="divide-y divide-slate-100 dark:divide-slate-800/60">
                 <tr v-if="topUps.length === 0">
-                  <td colspan="6" class="py-12 text-center text-slate-400">
+                  <td colspan="5" class="py-12 text-center text-slate-400">
                     <i class="pi pi-receipt text-2xl mb-2 block text-slate-300 dark:text-slate-600"></i>
                     <span>No deposit slips submitted yet</span>
                   </td>
@@ -754,11 +753,6 @@ function openSlipPreview(topUp: any) {
                 >
                   <td class="py-3 px-4 font-mono font-bold text-slate-800 dark:text-slate-200">
                     {{ slip.reference || ('TOP-' + slip.id) }}
-                  </td>
-                  <td class="py-3 px-4">
-                    <span class="font-semibold px-2 py-0.5 rounded text-[11px] bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 text-slate-700 dark:text-slate-300">
-                      {{ slip.paymentMethod || 'KPAY' }}
-                    </span>
                   </td>
                   <td class="py-3 px-4 font-bold text-slate-900 dark:text-white font-mono">
                     {{ formatCurrencyKs(slip.amountMmk || 0) }}

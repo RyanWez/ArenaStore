@@ -12,6 +12,11 @@ export default defineConfig({
     environment: "node",
     testTimeout: 20000,
     hookTimeout: 60000,
+    // `fileParallelism` is a ROOT-level option — setting it inside a project is
+    // ignored by Vitest. Without this, integration files bootstrap concurrently
+    // and their per-file `TRUNCATE` statements deadlock each other (and leak
+    // rows across files mid-run), causing flaky full-suite runs.
+    fileParallelism: false,
     projects: [
       {
         test: {
@@ -30,8 +35,8 @@ export default defineConfig({
           include: ["integration/**/*.test.ts"],
           testTimeout: 30000,
           hookTimeout: 60000,
-          // The test database is stateful; run files sequentially.
-          fileParallelism: false,
+          // The test database is stateful; runs are already sequential via the
+          // root-level `fileParallelism: false` above.
           env: TEST_ENV,
           setupFiles: ["./setup/integration-safety.ts", "./setup/integration-bootstrap.ts"],
         },

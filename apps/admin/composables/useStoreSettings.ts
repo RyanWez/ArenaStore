@@ -15,6 +15,10 @@ export interface StoreSettings {
   ayapayPhone: string
   uabpayAccountName: string
   uabpayPhone: string
+  telegramGroupChatId: string
+  telegramDepositTopicId: string
+  telegramAdminMentions: string
+  telegramApproverIds: string
 }
 
 export const defaultSettings: StoreSettings = {
@@ -31,6 +35,10 @@ export const defaultSettings: StoreSettings = {
   ayapayPhone: '09 987 654 321',
   uabpayAccountName: 'Arena Store',
   uabpayPhone: '09 789 123 456',
+  telegramGroupChatId: '',
+  telegramDepositTopicId: '',
+  telegramAdminMentions: '',
+  telegramApproverIds: '',
 }
 
 export function useStoreSettings() {
@@ -66,6 +74,10 @@ export function useStoreSettings() {
           ayapayPhone: res.settings.ayapayPhone || defaultSettings.ayapayPhone,
           uabpayAccountName: res.settings.uabpayAccountName || defaultSettings.uabpayAccountName,
           uabpayPhone: res.settings.uabpayPhone || defaultSettings.uabpayPhone,
+          telegramGroupChatId: res.settings.telegramGroupChatId || '',
+          telegramDepositTopicId: res.settings.telegramDepositTopicId || '',
+          telegramAdminMentions: res.settings.telegramAdminMentions || '',
+          telegramApproverIds: res.settings.telegramApproverIds || '',
         }
         visibleKeys.value = new Set(Object.keys(res.settings))
         hasLoaded.value = true

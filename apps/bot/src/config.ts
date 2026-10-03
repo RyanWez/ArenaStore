@@ -21,6 +21,12 @@ const envSchema = z.object({
   PAYMENT_KPAY_PHONE: z.string().default("09960476738"),
   PAYMENT_WAVEPAY_PHONE: z.string().default("09960476738"),
   PAYMENT_ACCOUNT_NAME: z.string().default("Ryan Wez"),
+  TELEGRAM_GROUP_CHAT_ID: z.string().default(""),
+  TELEGRAM_DEPOSIT_TOPIC_ID: z.string().default(""),
+  TELEGRAM_ADMIN_MENTIONS: z.string().default(""),
+  TELEGRAM_APPROVER_IDS: z.string().default(""),
+  /** Shared secret for internal API calls (deposit review buttons). Empty disables them. */
+  INTERNAL_API_TOKEN: z.string().default(""),
   DELIVERY_ENCRYPTION_KEY: z
     .string()
     .min(16)
