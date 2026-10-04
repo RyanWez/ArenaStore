@@ -5,8 +5,10 @@ import {
   E2E_ADMIN_TOKEN,
   MOCK_ADMIN_STATS,
   makeAdminOrders,
+  makeAdminRole,
   makeAdminSettings,
   makeAdminUser,
+  MOCK_ADMIN_PERMISSIONS,
   makeDepositSlips,
   makeProductCatalog,
   makeSupplierStatus,
@@ -84,10 +86,26 @@ export async function installAdminApiMocks(
         if (options.loginError) {
           return respond({ ok: false, error: options.loginError }, 401);
         }
-        return respond({ ok: true, token: E2E_ADMIN_TOKEN, user: makeAdminUser() });
+        // Mirrors the real login response (apps/api/src/routes/auth.ts):
+        // token + user + mustChangePassword; permissions arrive via /me.
+        return respond({
+          ok: true,
+          token: E2E_ADMIN_TOKEN,
+          user: makeAdminUser(),
+          mustChangePassword: false,
+        });
       }
       if (pathname === "/api/admin/auth/me") {
-        return respond({ ok: true, user: makeAdminUser() });
+        // The real /me resolves permissions fresh from the role (fail-closed
+        // gates in auth.global.ts redirect to /denied when this is empty), so
+        // the mock must carry the top-level permissions/role envelope too.
+        return respond({
+          ok: true,
+          user: makeAdminUser(),
+          role: makeAdminRole(),
+          permissions: MOCK_ADMIN_PERMISSIONS,
+          mustChangePassword: false,
+        });
       }
       if (pathname === "/api/admin/auth/logout") {
         return respond({ ok: true });

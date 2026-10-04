@@ -32,6 +32,48 @@ export function makeAdminUser(overrides: Partial<MockAdminUser> = {}): MockAdmin
   };
 }
 
+export interface MockAdminRole {
+  id: number | null;
+  name: string | null;
+  isSuperadmin: boolean;
+}
+
+export function makeAdminRole(overrides: Partial<MockAdminRole> = {}): MockAdminRole {
+  return { id: 1, name: "SUPERADMIN", isSuperadmin: true, ...overrides };
+}
+
+/**
+ * Every key in the API's rbac catalog (apps/api/src/rbac/catalog.ts). The E2E
+ * admin acts as an all-permissions owner so the panel's fail-closed page and
+ * action gates never hide what the specs must click. Keep in sync with the
+ * catalog.
+ */
+export const MOCK_ADMIN_PERMISSIONS: string[] = [
+  "overview.view",
+  "supplier.view",
+  "supplier.sync",
+  "products.view",
+  "products.edit",
+  "products.show_cost",
+  "products.show_margin",
+  "orders.view",
+  "orders.refund",
+  "orders.resend",
+  "payments.view",
+  "payments.review",
+  "customers.view",
+  "customers.balance",
+  "customers.status",
+  "customers.delete",
+  "settings.view",
+  "settings.pricing",
+  "settings.payments",
+  "settings.operations",
+  "users.manage",
+  "roles.manage",
+  "audit.view",
+];
+
 export interface MockAdminProduct {
   id: string;
   supplierProductId: string;
