@@ -1,4 +1,4 @@
-ည<script setup lang="ts">
+<script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import { useToast } from '~/composables/useToast'
