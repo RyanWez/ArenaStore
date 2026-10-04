@@ -5,7 +5,7 @@ import { getDb, roles, rolePermissions, users, auditLogs } from "@arena/db";
 import { authService } from "../services/auth.service";
 import { writeAudit } from "../services/audit.service";
 import { getRbac, requirePermission } from "../rbac/require-permission";
-import { DEFAULT_ROLES, PERMISSION_CATALOG, PERMISSION_KEYS } from "../rbac/catalog";
+import { DEFAULT_ROLES, PERMISSION_CATALOG, PERMISSION_KEYS, PERMISSION_DEPENDENCIES } from "../rbac/catalog";
 
 const CreateRoleSchema = z.object({
   name: z.string().min(1).max(64),
@@ -42,6 +42,17 @@ function slugifyRoleKey(name: string): string {
       .replace(/^_+|_+$/g, "")
       .slice(0, 64) || `role_${Date.now()}`
   );
+}
+
+function normalizeRolePermissions(permissions: string[]): string[] {
+  const set = new Set(permissions);
+  for (const p of permissions) {
+    const parent = PERMISSION_DEPENDENCIES[p];
+    if (parent && PERMISSION_KEYS.has(parent)) {
+      set.add(parent);
+    }
+  }
+  return Array.from(set);
 }
 
 async function assertPermissionsValid(permissions: string[]): Promise<string | null> {
@@ -137,11 +148,13 @@ export async function adminUsersRoutes(server: FastifyInstance) {
         })
         .returning();
 
-      if (parseRes.data.permissions.length > 0) {
+      const normalizedPermissions = normalizeRolePermissions(parseRes.data.permissions);
+
+      if (normalizedPermissions.length > 0) {
         await db
           .insert(rolePermissions)
           .values(
-            parseRes.data.permissions.map((permission) => ({ roleId: created.id, permission }))
+            normalizedPermissions.map((permission) => ({ roleId: created.id, permission }))
           )
           .onConflictDoNothing();
       }
@@ -151,10 +164,10 @@ export async function adminUsersRoutes(server: FastifyInstance) {
         action: "ROLE_CREATE",
         entityType: "ROLE",
         entityId: created.id,
-        details: { name: created.name, key, permissions: parseRes.data.permissions },
+        details: { name: created.name, key, permissions: normalizedPermissions },
       });
 
-      return { ok: true, role: { ...created, permissions: parseRes.data.permissions, userCount: 0 } };
+      return { ok: true, role: { ...created, permissions: normalizedPermissions, userCount: 0 } };
     }
   );
 
@@ -192,6 +205,8 @@ export async function adminUsersRoutes(server: FastifyInstance) {
         await db.select().from(rolePermissions).where(eq(rolePermissions.roleId, roleId))
       ).map((p) => p.permission);
 
+      const normalizedPermissions = permissions ? normalizeRolePermissions(permissions) : undefined;
+
       await db.transaction(async (tx) => {
         if (name !== undefined || description !== undefined) {
           await tx
@@ -203,12 +218,12 @@ export async function adminUsersRoutes(server: FastifyInstance) {
             .where(eq(roles.id, roleId));
         }
 
-        if (permissions) {
+        if (normalizedPermissions) {
           await tx.delete(rolePermissions).where(eq(rolePermissions.roleId, roleId));
-          if (permissions.length > 0) {
+          if (normalizedPermissions.length > 0) {
             await tx
               .insert(rolePermissions)
-              .values(permissions.map((permission) => ({ roleId, permission })))
+              .values(normalizedPermissions.map((permission) => ({ roleId, permission })))
               .onConflictDoNothing();
           }
         }
@@ -223,16 +238,21 @@ export async function adminUsersRoutes(server: FastifyInstance) {
         entityId: roleId,
         details: {
           name: name ?? role.name,
-          addedPermissions: permissions
-            ? permissions.filter((p) => !previousPermissions.includes(p))
-            : [],
-          removedPermissions: permissions
-            ? previousPermissions.filter((p) => !permissions.includes(p))
-            : [],
+          previousName: name && name !== role.name ? role.name : undefined,
+          permissions: normalizedPermissions ?? undefined,
+          previousPermissions: permissions ? previousPermissions : undefined,
         },
       });
 
-      return { ok: true };
+      return {
+        ok: true,
+        role: {
+          id: roleId,
+          name: name ?? role.name,
+          description: description !== undefined ? description : role.description,
+          permissions: normalizedPermissions ?? previousPermissions,
+        },
+      };
     }
   );
 

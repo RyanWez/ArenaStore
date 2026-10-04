@@ -48,11 +48,11 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: "customers.status", page: "Customer Wallets", label: "Deactivate / restore customers", type: "action" },
   { key: "customers.delete", page: "Customer Wallets", label: "Permanently delete customers", type: "action" },
 
-  // Rates & Settings
-  { key: "settings.view", page: "Rates & Settings", label: "View store settings", type: "view" },
-  { key: "settings.pricing", page: "Rates & Settings", label: "Edit exchange rate & margins", type: "action" },
-  { key: "settings.payments", page: "Rates & Settings", label: "Edit payment accounts", type: "action" },
-  { key: "settings.operations", page: "Rates & Settings", label: "Edit support & bot operations", type: "action" },
+  // Rates & Margins
+  { key: "settings.view", page: "Rates & Margins", label: "View store settings & rates", type: "view" },
+  { key: "settings.pricing", page: "Rates & Margins", label: "Edit exchange rate & margins", type: "action" },
+  { key: "settings.payments", page: "Rates & Margins", label: "Edit payment accounts", type: "action" },
+  { key: "settings.operations", page: "Rates & Margins", label: "Edit support & bot operations", type: "action" },
 
   // User Management
   { key: "users.manage", page: "User Management", label: "Create & manage admin users", type: "action" },
@@ -61,6 +61,25 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   // Audit Log
   { key: "audit.view", page: "Audit Log", label: "View audit log", type: "view" },
 ];
+
+/**
+ * Maps action and field permission keys to their parent view permission.
+ */
+export const PERMISSION_DEPENDENCIES: Record<string, string> = {
+  "supplier.sync": "supplier.view",
+  "products.edit": "products.view",
+  "products.show_cost": "products.view",
+  "products.show_margin": "products.view",
+  "orders.refund": "orders.view",
+  "orders.resend": "orders.view",
+  "payments.review": "payments.view",
+  "customers.balance": "customers.view",
+  "customers.status": "customers.view",
+  "customers.delete": "customers.view",
+  "settings.pricing": "settings.view",
+  "settings.payments": "settings.view",
+  "settings.operations": "settings.view",
+};
 
 export const PERMISSION_KEYS: ReadonlySet<string> = new Set(
   PERMISSION_CATALOG.map((p) => p.key)

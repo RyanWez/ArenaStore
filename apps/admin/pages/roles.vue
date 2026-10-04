@@ -96,19 +96,82 @@ function openEdit(role: RoleDef) {
   isDialogOpen.value = true
 }
 
-function togglePermission(key: string) {
+function pageViewPermission(page: string): PermissionDef | undefined {
+  return permissionsForPage(page).find((p) => p.type === 'view')
+}
+
+function isPageEnabled(page: string): boolean {
+  const viewPerm = pageViewPermission(page)
+  if (viewPerm) {
+    return formPermissions.value.has(viewPerm.key)
+  }
+  // Pages without an explicit 'view' type (e.g., User Management)
+  return permissionsForPage(page).some((p) => formPermissions.value.has(p.key))
+}
+
+function pageActiveCount(page: string): number {
+  return permissionsForPage(page).filter((p) => formPermissions.value.has(p.key)).length
+}
+
+function togglePageMaster(page: string, enable: boolean) {
+  const perms = permissionsForPage(page)
   const next = new Set(formPermissions.value)
-  if (next.has(key)) next.delete(key)
-  else next.add(key)
+
+  if (!enable) {
+    // When turning off page: remove ALL permissions for this page
+    for (const p of perms) {
+      next.delete(p.key)
+    }
+  } else {
+    // When turning on page:
+    const viewPerm = pageViewPermission(page)
+    if (viewPerm) {
+      next.add(viewPerm.key)
+    } else {
+      for (const p of perms) {
+        next.add(p.key)
+      }
+    }
+  }
+
+  formPermissions.value = next
+}
+
+function togglePermission(key: string, page: string) {
+  const next = new Set(formPermissions.value)
+  const perms = permissionsForPage(page)
+  const viewPerm = pageViewPermission(page)
+  const target = perms.find((p) => p.key === key)
+
+  if (next.has(key)) {
+    // Unchecking
+    next.delete(key)
+    // If view permission is unchecked, uncheck ALL child permissions for this page!
+    if (target?.type === 'view') {
+      for (const p of perms) {
+        next.delete(p.key)
+      }
+    }
+  } else {
+    // Checking
+    next.add(key)
+    // Ensure parent view permission is also enabled
+    if (viewPerm) {
+      next.add(viewPerm.key)
+    }
+  }
+
   formPermissions.value = next
 }
 
 function checkPage(page: string) {
+  const next = new Set(formPermissions.value)
   for (const p of permissionsForPage(page)) formPermissions.value.add(p.key)
   formPermissions.value = new Set(formPermissions.value)
 }
 
 function uncheckPage(page: string) {
+  const next = new Set(formPermissions.value)
   for (const p of permissionsForPage(page)) formPermissions.value.delete(p.key)
   formPermissions.value = new Set(formPermissions.value)
 }
@@ -243,6 +306,53 @@ async function confirmDelete() {
             <span><i class="pi pi-check-square mr-1"></i>{{ role.permissions.length }} permissions</span>
             <span><i class="pi pi-users mr-1"></i>{{ role.userCount }} user{{ role.userCount === 1 ? '' : 's' }}</span>
           </p>
+          <div class="mt-2.5 flex items-center gap-1.5 flex-wrap">
+            <span
+              class="px-2 py-0.5 rounded text-[10px] font-medium border transition-colors flex items-center gap-1"
+              :class="role.permissions.includes('settings.view')
+                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                : 'bg-slate-500/10 text-slate-400 border-slate-500/20 opacity-50 line-through'"
+            >
+              <i class="pi" :class="role.permissions.includes('settings.view') ? 'pi-check text-[8px]' : 'pi-times text-[8px]'"></i>
+              Rates &amp; Margins
+            </span>
+            <span
+              class="px-2 py-0.5 rounded text-[10px] font-medium border transition-colors flex items-center gap-1"
+              :class="role.permissions.includes('products.view')
+                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                : 'bg-slate-500/10 text-slate-400 border-slate-500/20 opacity-50 line-through'"
+            >
+              <i class="pi" :class="role.permissions.includes('products.view') ? 'pi-check text-[8px]' : 'pi-times text-[8px]'"></i>
+              Products
+            </span>
+            <span
+              class="px-2 py-0.5 rounded text-[10px] font-medium border transition-colors flex items-center gap-1"
+              :class="role.permissions.includes('orders.view')
+                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                : 'bg-slate-500/10 text-slate-400 border-slate-500/20 opacity-50 line-through'"
+            >
+              <i class="pi" :class="role.permissions.includes('orders.view') ? 'pi-check text-[8px]' : 'pi-times text-[8px]'"></i>
+              Orders
+            </span>
+            <span
+              class="px-2 py-0.5 rounded text-[10px] font-medium border transition-colors flex items-center gap-1"
+              :class="role.permissions.includes('payments.view')
+                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                : 'bg-slate-500/10 text-slate-400 border-slate-500/20 opacity-50 line-through'"
+            >
+              <i class="pi" :class="role.permissions.includes('payments.view') ? 'pi-check text-[8px]' : 'pi-times text-[8px]'"></i>
+              Deposits
+            </span>
+            <span
+              class="px-2 py-0.5 rounded text-[10px] font-medium border transition-colors flex items-center gap-1"
+              :class="role.permissions.includes('customers.view')
+                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                : 'bg-slate-500/10 text-slate-400 border-slate-500/20 opacity-50 line-through'"
+            >
+              <i class="pi" :class="role.permissions.includes('customers.view') ? 'pi-check text-[8px]' : 'pi-times text-[8px]'"></i>
+              Wallets
+            </span>
+          </div>
         </div>
 
         <div class="flex items-center gap-2 shrink-0">
@@ -331,25 +441,91 @@ async function confirmDelete() {
             <div
               v-for="page in pages"
               :key="page"
-              class="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden"
+              class="rounded-xl border transition-all duration-200 overflow-hidden"
+              :class="isPageEnabled(page)
+                ? 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm'
+                : 'border-slate-200/60 dark:border-slate-800/50 bg-slate-50/50 dark:bg-slate-950/30'"
             >
-              <div class="px-4 py-2 bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between">
-                <span class="text-xs font-bold text-slate-600 dark:text-slate-200 uppercase tracking-wider">{{ page }}</span>
-                <div class="flex items-center gap-1.5">
-                  <button type="button" @click="checkPage(page)" class="text-[10px] font-semibold text-indigo-500 hover:text-indigo-400 px-1.5">all</button>
-                  <button type="button" @click="uncheckPage(page)" class="text-[10px] font-semibold text-slate-400 hover:text-slate-300 px-1.5">none</button>
+              <!-- Page Header with Master Switch -->
+              <div
+                class="px-4 py-2.5 flex items-center justify-between border-b transition-colors"
+                :class="isPageEnabled(page)
+                  ? 'bg-slate-50/90 dark:bg-slate-800/60 border-slate-200 dark:border-slate-800/80'
+                  : 'bg-slate-100/60 dark:bg-slate-900/40 border-slate-200/50 dark:border-slate-800/50'"
+              >
+                <div class="flex items-center gap-3">
+                  <!-- Master Switch Toggle -->
+                  <button
+                    type="button"
+                    role="switch"
+                    :aria-checked="isPageEnabled(page)"
+                    @click="togglePageMaster(page, !isPageEnabled(page))"
+                    class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none shadow-inner"
+                    :class="isPageEnabled(page) ? 'bg-indigo-600' : 'bg-slate-300 dark:bg-slate-700'"
+                    :title="isPageEnabled(page) ? `Turn off ${page} access` : `Turn on ${page} access`"
+                  >
+                    <span
+                      class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                      :class="isPageEnabled(page) ? 'translate-x-4' : 'translate-x-0'"
+                    />
+                  </button>
+
+                  <div class="flex items-center gap-2">
+                    <span
+                      class="text-xs font-bold uppercase tracking-wider transition-colors"
+                      :class="isPageEnabled(page) ? 'text-slate-800 dark:text-slate-200' : 'text-slate-400 dark:text-slate-500'"
+                    >
+                      {{ page }}
+                    </span>
+                    <span
+                      v-if="!isPageEnabled(page)"
+                      class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-rose-500/10 text-rose-500 dark:text-rose-400 border border-rose-500/20 uppercase"
+                    >
+                      Disabled
+                    </span>
+                    <span
+                      v-else
+                      class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                    >
+                      {{ pageActiveCount(page) }} of {{ permissionsForPage(page).length }} active
+                    </span>
+                  </div>
+                </div>
+
+                <div v-if="isPageEnabled(page)" class="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    @click="checkPage(page)"
+                    class="text-[10px] font-semibold text-indigo-500 hover:text-indigo-400 px-1.5 py-0.5 rounded hover:bg-indigo-500/10 transition-colors"
+                  >
+                    all
+                  </button>
+                  <button
+                    type="button"
+                    @click="uncheckPage(page)"
+                    class="text-[10px] font-semibold text-slate-400 hover:text-slate-300 px-1.5 py-0.5 rounded hover:bg-slate-500/10 transition-colors"
+                  >
+                    none
+                  </button>
                 </div>
               </div>
-              <div class="p-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+
+              <!-- Permission checkboxes -->
+              <div
+                class="p-3 grid grid-cols-1 sm:grid-cols-2 gap-2 transition-all duration-200"
+                :class="isPageEnabled(page) ? 'opacity-100' : 'opacity-40 pointer-events-none select-none'"
+              >
                 <label
                   v-for="perm in permissionsForPage(page)"
                   :key="perm.key"
-                  class="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer"
+                  class="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer transition-colors"
+                  :class="{ 'bg-indigo-50/40 dark:bg-indigo-950/20': formPermissions.has(perm.key) }"
                 >
                   <input
                     type="checkbox"
                     :checked="formPermissions.has(perm.key)"
-                    @change="togglePermission(perm.key)"
+                    :disabled="!isPageEnabled(page)"
+                    @change="togglePermission(perm.key, page)"
                     class="w-4 h-4 rounded accent-indigo-600 cursor-pointer"
                   />
                   <span class="text-xs text-slate-700 dark:text-slate-200 flex-1">{{ perm.label }}</span>

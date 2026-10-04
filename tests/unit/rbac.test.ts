@@ -109,6 +109,7 @@ import {
   DEFAULT_ROLES,
   PERMISSION_CATALOG,
   PERMISSION_KEYS,
+  PERMISSION_DEPENDENCIES,
   filterSettingsForPermissions,
 } from "../../apps/api/src/rbac/catalog";
 
@@ -153,6 +154,21 @@ describe("Permission catalog integrity", () => {
     for (const key of forbidden) {
       expect(support.permissions).not.toContain(key);
     }
+  });
+
+  it("defines valid parent-child dependencies where parent is always a view permission", () => {
+    for (const [child, parent] of Object.entries(PERMISSION_DEPENDENCIES)) {
+      expect(PERMISSION_KEYS.has(child), `child ${child} not in catalog`).toBe(true);
+      expect(PERMISSION_KEYS.has(parent), `parent ${parent} not in catalog`).toBe(true);
+      const parentDef = PERMISSION_CATALOG.find((p) => p.key === parent)!;
+      expect(parentDef.type).toBe("view");
+    }
+  });
+
+  it("links all Rates & Margins action permissions to settings.view", () => {
+    expect(PERMISSION_DEPENDENCIES["settings.pricing"]).toBe("settings.view");
+    expect(PERMISSION_DEPENDENCIES["settings.payments"]).toBe("settings.view");
+    expect(PERMISSION_DEPENDENCIES["settings.operations"]).toBe("settings.view");
   });
 });
 
