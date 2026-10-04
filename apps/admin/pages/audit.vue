@@ -2,7 +2,15 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import { useToast } from '~/composables/useToast'
-import { formatMyanmarDateTime, formatRelativeTime } from '~/utils/date'
+import {
+  formatMyanmarDateTime,
+  formatMyanmarDate,
+  getMyanmarDateString,
+  getTodayMyanmarDate,
+  matchesMyanmarDateFilter,
+  formatRelativeTime,
+  type DateFilterPreset,
+} from '~/utils/date'
 
 interface AuditEntry {
   id: number
@@ -26,6 +34,8 @@ const isRefreshing = ref(false)
 const searchQuery = ref('')
 const actionFilter = ref('')
 const entityFilter = ref('')
+const selectedDateFilter = ref<DateFilterPreset>('ALL')
+const customDateFilter = ref(getTodayMyanmarDate())
 const sortOrder = ref<'desc' | 'asc'>('desc')
 
 // --- Pagination ---
@@ -78,6 +88,13 @@ const filteredEntries = computed(() => {
     list = list.filter((e) => e.entityType === entityFilter.value)
   }
 
+  // Date Filter
+  if (selectedDateFilter.value !== 'ALL') {
+    list = list.filter((e) =>
+      matchesMyanmarDateFilter(e.createdAt, selectedDateFilter.value, customDateFilter.value)
+    )
+  }
+
   if (searchQuery.value.trim()) {
     const q = searchQuery.value.toLowerCase().trim()
     list = list.filter((e) => {
@@ -103,7 +120,7 @@ const filteredEntries = computed(() => {
 })
 
 // Reset pagination on filter change
-watch([searchQuery, actionFilter, entityFilter, pageSize], () => {
+watch([searchQuery, actionFilter, entityFilter, selectedDateFilter, customDateFilter, pageSize], () => {
   currentPage.value = 1
 })
 
@@ -156,6 +173,7 @@ function clearFilters() {
   searchQuery.value = ''
   actionFilter.value = ''
   entityFilter.value = ''
+  selectedDateFilter.value = 'ALL'
   sortOrder.value = 'desc'
 }
 
@@ -338,6 +356,29 @@ async function copyJson() {
           <option v-for="e in entityTypes" :key="e" :value="e">{{ e }}</option>
         </select>
 
+        <!-- Date Filter Preset -->
+        <select
+          v-model="selectedDateFilter"
+          class="px-3 py-2 bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-700/60 rounded-xl text-slate-900 dark:text-white text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
+        >
+          <option value="ALL">All Dates</option>
+          <option value="TODAY">Today</option>
+          <option value="YESTERDAY">Yesterday</option>
+          <option value="LAST_7_DAYS">Last 7 Days</option>
+          <option value="THIS_MONTH">This Month</option>
+          <option value="CUSTOM">Custom Date</option>
+        </select>
+
+        <!-- Custom Date input when CUSTOM is selected -->
+        <div v-if="selectedDateFilter === 'CUSTOM'" class="relative flex items-center">
+          <i class="pi pi-calendar absolute left-2.5 text-slate-400 text-xs pointer-events-none"></i>
+          <input
+            type="date"
+            v-model="customDateFilter"
+            class="pl-8 pr-2.5 py-1.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-700/70 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 cursor-pointer ring-1 ring-indigo-500"
+          />
+        </div>
+
         <!-- Sort Order -->
         <button
           type="button"
@@ -351,7 +392,7 @@ async function copyJson() {
 
         <!-- Clear Button -->
         <button
-          v-if="searchQuery || actionFilter || entityFilter || sortOrder !== 'desc'"
+          v-if="searchQuery || actionFilter || entityFilter || selectedDateFilter !== 'ALL' || sortOrder !== 'desc'"
           type="button"
           @click="clearFilters"
           class="px-3 py-2 rounded-xl text-xs font-medium text-slate-500 hover:text-slate-900 dark:hover:text-white border border-dashed border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5 cursor-pointer"

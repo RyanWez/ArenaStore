@@ -115,3 +115,71 @@ export function formatRelativeTime(dateVal?: string | Date | null): string {
     return 'Never'
   }
 }
+
+/**
+ * Returns the YYYY-MM-DD date string in Myanmar timezone (UTC+06:30).
+ */
+export function getMyanmarDateString(dateVal?: string | Date | null): string {
+  if (!dateVal) return ''
+  try {
+    const d = typeof dateVal === 'string' ? new Date(dateVal) : dateVal
+    if (isNaN(d.getTime())) return ''
+    return new Intl.DateTimeFormat('en-CA', { timeZone: MYANMAR_TIMEZONE }).format(d)
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Returns today's YYYY-MM-DD in Myanmar timezone.
+ */
+export function getTodayMyanmarDate(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: MYANMAR_TIMEZONE }).format(new Date())
+}
+
+export type DateFilterPreset = 'ALL' | 'TODAY' | 'YESTERDAY' | 'LAST_7_DAYS' | 'THIS_MONTH' | 'CUSTOM'
+
+/**
+ * Checks whether a timestamp matches the selected date filter preset in Myanmar timezone.
+ */
+export function matchesMyanmarDateFilter(
+  dateVal: string | Date | null | undefined,
+  filter: DateFilterPreset,
+  customDate?: string // YYYY-MM-DD
+): boolean {
+  if (filter === 'ALL') return true
+  if (!dateVal) return false
+  const targetDateStr = getMyanmarDateString(dateVal)
+  if (!targetDateStr) return false
+
+  const todayStr = getTodayMyanmarDate()
+
+  if (filter === 'TODAY') {
+    return targetDateStr === todayStr
+  }
+
+  if (filter === 'YESTERDAY') {
+    const now = new Date()
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+    const yesterdayStr = new Intl.DateTimeFormat('en-CA', { timeZone: MYANMAR_TIMEZONE }).format(yesterday)
+    return targetDateStr === yesterdayStr
+  }
+
+  if (filter === 'LAST_7_DAYS') {
+    const now = new Date()
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    const sevenDaysAgoStr = new Intl.DateTimeFormat('en-CA', { timeZone: MYANMAR_TIMEZONE }).format(sevenDaysAgo)
+    return targetDateStr >= sevenDaysAgoStr && targetDateStr <= todayStr
+  }
+
+  if (filter === 'THIS_MONTH') {
+    return targetDateStr.slice(0, 7) === todayStr.slice(0, 7)
+  }
+
+  if (filter === 'CUSTOM' && customDate) {
+    return targetDateStr === customDate
+  }
+
+  return true
+}
+

@@ -4,7 +4,14 @@ import { useRouter } from 'vue-router'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
 import { usePermission } from '~/composables/usePermission'
-import { formatMyanmarDateTime } from '~/utils/date'
+import {
+  formatMyanmarDateTime,
+  formatMyanmarDate,
+  getMyanmarDateString,
+  getTodayMyanmarDate,
+  matchesMyanmarDateFilter,
+  type DateFilterPreset,
+} from '~/utils/date'
 
 const router = useRouter()
 const toast = useToast()
@@ -131,6 +138,35 @@ onUnmounted(() => {
   if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
 })
 
+// Date Filter State
+const selectedDateFilter = ref<DateFilterPreset>('ALL')
+const customDateFilter = ref(getTodayMyanmarDate())
+
+const dateFilterLabel = computed(() => {
+  switch (selectedDateFilter.value) {
+    case 'TODAY':
+      return 'Today'
+    case 'YESTERDAY':
+      return 'Yesterday'
+    case 'LAST_7_DAYS':
+      return 'Last 7 Days'
+    case 'THIS_MONTH':
+      return 'This Month'
+    case 'CUSTOM':
+      return customDateFilter.value ? formatMyanmarDate(customDateFilter.value) : 'Custom Date'
+    default:
+      return 'All Time'
+  }
+})
+
+// Slips matching the selected date filter (ignoring status tab, to compute period statistics)
+const dateFilteredSlips = computed(() => {
+  if (selectedDateFilter.value === 'ALL') return slips.value
+  return slips.value.filter((s) =>
+    matchesMyanmarDateFilter(s.rawDate, selectedDateFilter.value, customDateFilter.value)
+  )
+})
+
 // Filtered and sorted newest first
 const filteredSlips = computed(() => {
   let list = slips.value
@@ -138,6 +174,13 @@ const filteredSlips = computed(() => {
   // Status Tab Filter
   if (activeTab.value !== 'ALL') {
     list = list.filter((s) => s.status === activeTab.value)
+  }
+
+  // Date Filter
+  if (selectedDateFilter.value !== 'ALL') {
+    list = list.filter((s) =>
+      matchesMyanmarDateFilter(s.rawDate, selectedDateFilter.value, customDateFilter.value)
+    )
   }
 
   // Search Query Filter
@@ -167,7 +210,7 @@ const filteredSlips = computed(() => {
 const currentPage = ref(1)
 const pageSize = ref(10)
 
-watch([debouncedSearch, activeTab, pageSize], () => {
+watch([debouncedSearch, activeTab, selectedDateFilter, customDateFilter, pageSize], () => {
   currentPage.value = 1
 })
 
@@ -219,6 +262,7 @@ function goToPage(p: number) {
   }
 }
 
+// Global metrics
 const pendingCount = computed(() => slips.value.filter((s) => s.status === 'SUBMITTED').length)
 const pendingUploadCount = computed(() => slips.value.filter((s) => s.status === 'PENDING').length)
 const pendingTotalMmk = computed(() =>
@@ -226,11 +270,23 @@ const pendingTotalMmk = computed(() =>
     .filter((s) => s.status === 'SUBMITTED')
     .reduce((sum, s) => sum + s.depositAmountMmk, 0)
 )
-const approvedTodayMmk = computed(() =>
-  slips.value
-    .filter((s) => s.status === 'APPROVED')
-    .reduce((sum, s) => sum + s.depositAmountMmk, 0)
+
+// Dynamic metrics for the selected date filter period
+const periodApprovedSlips = computed(() =>
+  dateFilteredSlips.value.filter((s) => s.status === 'APPROVED')
 )
+const periodApprovedMmk = computed(() =>
+  periodApprovedSlips.value.reduce((sum, s) => sum + s.depositAmountMmk, 0)
+)
+const periodApprovedCount = computed(() => periodApprovedSlips.value.length)
+
+const periodTotalSlipsCount = computed(() => dateFilteredSlips.value.length)
+const periodTotalMmk = computed(() =>
+  dateFilteredSlips.value.reduce((sum, s) => sum + s.depositAmountMmk, 0)
+)
+
+// Backward-compat computed alias
+const approvedTodayMmk = computed(() => periodApprovedMmk.value)
 
 function openSlipPreview(slip: DepositItem, event?: Event) {
   if (event) event.stopPropagation()
@@ -378,16 +434,11 @@ async function confirmReject() {
           <span>Real-time Sync</span>
         </div>
 
-        <span class="px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-2 shadow-sm">
-          <i class="pi pi-hourglass animate-pulse text-sm"></i>
-          <span>{{ pendingCount }} Pending · {{ pendingTotalMmk.toLocaleString() }} Ks</span>
-        </span>
-
         <button
           type="button"
           @click="refreshSlips(false)"
           :disabled="isRefreshing"
-          class="p-2 rounded-xl text-xs border border-slate-200 dark:border-slate-700/60 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-all shrink-0"
+          class="p-2 rounded-xl text-xs border border-slate-200 dark:border-slate-700/60 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-all shrink-0 cursor-pointer"
           title="Refresh deposits manually"
         >
           <i class="pi pi-sync text-xs" :class="{ 'animate-spin': isRefreshing }"></i>
@@ -395,40 +446,63 @@ async function confirmReject() {
       </div>
     </div>
 
-    <!-- Stats Summary Cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4">
-        <div class="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center text-xl">
-          <i class="pi pi-clock"></i>
+    <!-- Sleek Compact Executive KPI Strip -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <!-- 1. Pending Review -->
+      <div class="p-3 sm:px-4 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-2xs flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center text-sm shrink-0">
+          <i class="pi pi-clock" :class="{ 'animate-pulse': pendingCount > 0 }"></i>
         </div>
-        <div>
-          <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Pending Deposits</div>
-          <div class="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
-            {{ pendingCount }} Slips <span class="text-xs font-normal text-slate-400">({{ pendingTotalMmk.toLocaleString() }} Ks)</span>
+        <div class="min-w-0">
+          <div class="text-[10px] sm:text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">Pending Review</div>
+          <div class="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5 truncate">
+            <span>{{ pendingCount }} Slips</span>
+            <span v-if="pendingTotalMmk > 0" class="text-xs font-normal text-amber-500">({{ pendingTotalMmk.toLocaleString() }} Ks)</span>
           </div>
         </div>
       </div>
 
-      <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4">
-        <div class="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center text-xl">
+      <!-- 2. Approved in Selected Period -->
+      <div class="p-3 sm:px-4 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-2xs flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 flex items-center justify-center text-sm shrink-0">
           <i class="pi pi-check-circle"></i>
         </div>
-        <div>
-          <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Approved Today</div>
-          <div class="text-lg font-bold text-slate-900 dark:text-white mt-0.5 font-mono">
-            {{ approvedTodayMmk.toLocaleString() }} Ks
+        <div class="min-w-0">
+          <div class="text-[10px] sm:text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">
+            Approved ({{ dateFilterLabel }})
+          </div>
+          <div class="text-sm sm:text-base font-bold text-emerald-600 dark:text-emerald-400 font-mono truncate">
+            {{ periodApprovedMmk.toLocaleString() }} Ks
+            <span class="text-[11px] font-normal text-slate-400">({{ periodApprovedCount }} slips)</span>
           </div>
         </div>
       </div>
 
-      <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4">
-        <div class="w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center text-xl">
-          <i class="pi pi-wallet"></i>
+      <!-- 3. Total Deposited (Selected Period) -->
+      <div class="p-3 sm:px-4 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-2xs flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-500 dark:text-indigo-400 flex items-center justify-center text-sm shrink-0">
+          <i class="pi pi-receipt"></i>
         </div>
-        <div>
-          <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Auto Bot Crediting</div>
-          <div class="text-lg font-bold text-emerald-500 mt-0.5 flex items-center gap-1.5 text-sm">
-            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <div class="min-w-0">
+          <div class="text-[10px] sm:text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">
+            Total Slips ({{ dateFilterLabel }})
+          </div>
+          <div class="text-sm sm:text-base font-bold text-slate-900 dark:text-white truncate">
+            {{ periodTotalSlipsCount }} Slips
+            <span class="text-[11px] font-normal text-slate-400">({{ periodTotalMmk.toLocaleString() }} Ks)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Real-time Bot Crediting -->
+      <div class="p-3 sm:px-4 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-2xs flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-500 flex items-center justify-center text-sm shrink-0">
+          <i class="pi pi-bolt"></i>
+        </div>
+        <div class="min-w-0">
+          <div class="text-[10px] sm:text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">Bot Crediting</div>
+          <div class="text-sm font-semibold text-emerald-500 flex items-center gap-1.5 truncate">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
             <span>Real-time Active</span>
           </div>
         </div>
@@ -437,71 +511,162 @@ async function confirmReject() {
 
     <!-- Integrated Unified Slips Table Card (No awkward floating detached bar) -->
     <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col overflow-hidden">
-      <!-- Integrated Filter & Search Toolbar (Smooth, no shaking or twitching) -->
-      <div class="p-3 sm:p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-        <!-- Status Tabs -->
-        <div class="flex items-center gap-1.5 overflow-x-auto text-xs font-semibold scrollbar-none">
-          <button
-            type="button"
-            @click="activeTab = 'ALL'"
-            :class="activeTab === 'ALL' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/20' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
-            class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 shrink-0 font-semibold"
-          >
-            All Deposits ({{ slips.length }})
-          </button>
-          <button
-            type="button"
-            @click="activeTab = 'SUBMITTED'"
-            :class="activeTab === 'SUBMITTED' ? 'bg-amber-600 text-white shadow-sm shadow-amber-600/20' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
-            class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 flex items-center gap-1.5 shrink-0 font-semibold"
-          >
-            <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
-            <span>Pending Review ({{ pendingCount }})</span>
-          </button>
-          <button
-            type="button"
-            @click="activeTab = 'APPROVED'"
-            :class="activeTab === 'APPROVED' ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
-            class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 shrink-0 font-semibold"
-          >
-            Approved
-          </button>
-          <button
-            type="button"
-            @click="activeTab = 'PENDING'"
-            :class="activeTab === 'PENDING' ? 'bg-slate-600 text-white shadow-sm shadow-slate-600/20' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
-            class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 shrink-0 font-semibold"
-          >
-            Awaiting Slip ({{ pendingUploadCount }})
-          </button>
-          <button
-            type="button"
-            @click="activeTab = 'REJECTED'"
-            :class="activeTab === 'REJECTED' ? 'bg-rose-600 text-white shadow-sm shadow-rose-600/20' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
-            class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 shrink-0 font-semibold"
-          >
-            Rejected
-          </button>
+      <!-- Integrated Filter & Date Toolbar -->
+      <div class="p-3 sm:p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
+        <!-- Row 1: Status Tabs & Search Input -->
+        <div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+          <!-- Status Tabs -->
+          <div class="flex items-center gap-1.5 overflow-x-auto text-xs font-semibold scrollbar-none">
+            <button
+              type="button"
+              @click="activeTab = 'ALL'"
+              :class="activeTab === 'ALL' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+              class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 shrink-0 font-semibold cursor-pointer"
+            >
+              All Deposits ({{ dateFilteredSlips.length }})
+            </button>
+            <button
+              type="button"
+              @click="activeTab = 'SUBMITTED'"
+              :class="activeTab === 'SUBMITTED' ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+              class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 flex items-center gap-1.5 shrink-0 font-semibold cursor-pointer"
+            >
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-400" :class="{ 'animate-pulse': pendingCount > 0 }"></span>
+              <span>Pending Review ({{ pendingCount }})</span>
+            </button>
+            <button
+              type="button"
+              @click="activeTab = 'APPROVED'"
+              :class="activeTab === 'APPROVED' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+              class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 shrink-0 font-semibold cursor-pointer"
+            >
+              Approved
+            </button>
+            <button
+              type="button"
+              @click="activeTab = 'PENDING'"
+              :class="activeTab === 'PENDING' ? 'bg-slate-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+              class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 shrink-0 font-semibold cursor-pointer"
+            >
+              Awaiting Slip ({{ pendingUploadCount }})
+            </button>
+            <button
+              type="button"
+              @click="activeTab = 'REJECTED'"
+              :class="activeTab === 'REJECTED' ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+              class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 shrink-0 font-semibold cursor-pointer"
+            >
+              Rejected
+            </button>
+          </div>
+
+          <!-- Search Filter -->
+          <div class="relative w-full sm:w-64 shrink-0">
+            <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none"></i>
+            <input
+              v-model="searchQuery"
+              type="text"
+              placeholder="Search slip, user, ref..."
+              class="w-full pl-8 pr-7 py-1.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/70 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-indigo-500 transition-colors"
+            />
+            <button
+              v-if="searchQuery"
+              @click="searchQuery = ''"
+              type="button"
+              class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+            >
+              <i class="pi pi-times text-[10px]"></i>
+            </button>
+          </div>
         </div>
 
-        <!-- Search Filter -->
-        <div class="relative w-full sm:w-64 shrink-0">
-          <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none"></i>
-          <input
-            v-model="searchQuery"
-            type="text"
-            placeholder="Search slip, user, ref..."
-            class="w-full pl-8 pr-7 py-1.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/70 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-0 transition-colors duration-150"
-            style="outline: none !important; box-shadow: none !important;"
-          />
-          <button
-            v-if="searchQuery"
-            @click="searchQuery = ''"
-            type="button"
-            class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-          >
-            <i class="pi pi-times text-[10px]"></i>
-          </button>
+        <!-- Row 2: Date Filter Controls (Presets + Custom Date Picker) -->
+        <div class="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800/60 text-xs">
+          <!-- Date Presets & Custom Picker -->
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <span class="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mr-1 flex items-center gap-1">
+              <i class="pi pi-calendar text-[10px]"></i>
+              <span>Date:</span>
+            </span>
+
+            <div class="flex items-center p-0.5 bg-slate-100 dark:bg-slate-950/70 rounded-xl border border-slate-200/80 dark:border-slate-800">
+              <button
+                type="button"
+                @click="selectedDateFilter = 'ALL'"
+                :class="selectedDateFilter === 'ALL' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-semibold shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'"
+                class="px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer"
+              >
+                All Time
+              </button>
+              <button
+                type="button"
+                @click="selectedDateFilter = 'TODAY'"
+                :class="selectedDateFilter === 'TODAY' ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 font-semibold shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'"
+                class="px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer"
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                @click="selectedDateFilter = 'YESTERDAY'"
+                :class="selectedDateFilter === 'YESTERDAY' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-semibold shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'"
+                class="px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer"
+              >
+                Yesterday
+              </button>
+              <button
+                type="button"
+                @click="selectedDateFilter = 'LAST_7_DAYS'"
+                :class="selectedDateFilter === 'LAST_7_DAYS' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-semibold shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'"
+                class="px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer"
+              >
+                Last 7 Days
+              </button>
+              <button
+                type="button"
+                @click="selectedDateFilter = 'THIS_MONTH'"
+                :class="selectedDateFilter === 'THIS_MONTH' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-semibold shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'"
+                class="px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer"
+              >
+                This Month
+              </button>
+            </div>
+
+            <!-- Custom Date Picker matching Image 3 -->
+            <div class="relative flex items-center">
+              <i class="pi pi-calendar absolute left-2.5 text-slate-400 text-xs pointer-events-none"></i>
+              <input
+                type="date"
+                v-model="customDateFilter"
+                @change="selectedDateFilter = 'CUSTOM'"
+                class="pl-8 pr-2.5 py-1 rounded-xl text-xs bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-700/70 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+                :class="{ 'ring-1 ring-indigo-500 border-indigo-500 font-semibold': selectedDateFilter === 'CUSTOM' }"
+                title="Filter by specific date"
+              />
+            </div>
+
+            <!-- Clear Date Button -->
+            <button
+              v-if="selectedDateFilter !== 'ALL'"
+              type="button"
+              @click="selectedDateFilter = 'ALL'"
+              class="px-2 py-1 rounded-lg text-[11px] text-slate-400 hover:text-rose-500 border border-dashed border-slate-300 dark:border-slate-700 hover:border-rose-400 transition-colors flex items-center gap-1 cursor-pointer"
+            >
+              <i class="pi pi-filter-slash text-[10px]"></i>
+              <span>Clear Date</span>
+            </button>
+          </div>
+
+          <!-- Active Filter Indicator -->
+          <div class="text-[11px] text-slate-400 flex items-center gap-1.5">
+            <span>Period:</span>
+            <span class="px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 font-semibold border border-indigo-500/20">
+              {{ dateFilterLabel }}
+            </span>
+            <span v-if="dateFilteredSlips.length !== slips.length" class="text-slate-500">
+              ({{ dateFilteredSlips.length }} of {{ slips.length }} slips)
+            </span>
+          </div>
         </div>
       </div>
 
@@ -562,12 +727,12 @@ async function confirmReject() {
                     {{ searchQuery ? 'Try adjusting your search query or clear filters' : 'Submitted screenshot slips will appear here for review' }}
                   </p>
                   <button
-                    v-if="searchQuery || activeTab !== 'ALL'"
+                    v-if="searchQuery || activeTab !== 'ALL' || selectedDateFilter !== 'ALL'"
                     type="button"
-                    @click="searchQuery = ''; activeTab = 'ALL'"
-                    class="mt-4 px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm"
+                    @click="searchQuery = ''; activeTab = 'ALL'; selectedDateFilter = 'ALL'"
+                    class="mt-4 px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm cursor-pointer"
                   >
-                    Reset Filters
+                    Reset All Filters
                   </button>
                 </div>
               </td>

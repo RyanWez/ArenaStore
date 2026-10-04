@@ -4,7 +4,14 @@ import { useRouter } from 'vue-router'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
 import { usePermission } from '~/composables/usePermission'
-import { formatMyanmarDateTime } from '~/utils/date'
+import {
+  formatMyanmarDateTime,
+  formatMyanmarDate,
+  getMyanmarDateString,
+  getTodayMyanmarDate,
+  matchesMyanmarDateFilter,
+  type DateFilterPreset,
+} from '~/utils/date'
 
 const router = useRouter()
 const toast = useToast()
@@ -181,7 +188,46 @@ onUnmounted(() => {
   if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
 })
 
-// Computed statistics
+// Date Filter State
+const selectedDateFilter = ref<DateFilterPreset>('ALL')
+const customDateFilter = ref(getTodayMyanmarDate())
+
+const dateFilterLabel = computed(() => {
+  switch (selectedDateFilter.value) {
+    case 'TODAY':
+      return 'Today'
+    case 'YESTERDAY':
+      return 'Yesterday'
+    case 'LAST_7_DAYS':
+      return 'Last 7 Days'
+    case 'THIS_MONTH':
+      return 'This Month'
+    case 'CUSTOM':
+      return customDateFilter.value ? formatMyanmarDate(customDateFilter.value) : 'Custom Date'
+    default:
+      return 'All Time'
+  }
+})
+
+// Orders matching the selected date filter (ignoring status tab, to compute period statistics)
+const dateFilteredOrders = computed(() => {
+  if (selectedDateFilter.value === 'ALL') return ordersList.value
+  return ordersList.value.filter((o) =>
+    matchesMyanmarDateFilter(o.rawDate, selectedDateFilter.value, customDateFilter.value)
+  )
+})
+
+// Dynamic metrics for the selected date filter period
+const periodDeliveredOrders = computed(() =>
+  dateFilteredOrders.value.filter((o) => o.status === 'DELIVERED')
+)
+const periodDeliveredCount = computed(() => periodDeliveredOrders.value.length)
+const periodRevenueMmk = computed(() =>
+  periodDeliveredOrders.value.reduce((sum, o) => sum + o.totalAmountMmk, 0)
+)
+const periodTotalOrdersCount = computed(() => dateFilteredOrders.value.length)
+
+// Global computed statistics
 const totalOrdersCount = computed(() => ordersList.value.length)
 const deliveredCount = computed(() => ordersList.value.filter((o) => o.status === 'DELIVERED').length)
 const processingCount = computed(() => ordersList.value.filter((o) => o.status === 'PROCESSING_SUPPLIER').length)
@@ -199,6 +245,13 @@ const filteredOrders = computed(() => {
   // Status filter
   if (selectedStatus.value !== 'ALL') {
     list = list.filter((order) => order.status === selectedStatus.value)
+  }
+
+  // Date filter
+  if (selectedDateFilter.value !== 'ALL') {
+    list = list.filter((order) =>
+      matchesMyanmarDateFilter(order.rawDate, selectedDateFilter.value, customDateFilter.value)
+    )
   }
 
   // Search query
@@ -227,7 +280,7 @@ const filteredOrders = computed(() => {
 const currentPage = ref(1)
 const pageSize = ref(10)
 
-watch([debouncedSearch, selectedStatus, pageSize], () => {
+watch([debouncedSearch, selectedStatus, selectedDateFilter, customDateFilter, pageSize], () => {
   currentPage.value = 1
 })
 
@@ -413,41 +466,63 @@ async function refundToWallet(order: OrderRecord) {
       </div>
     </div>
 
-    <!-- Stats Summary Row -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4">
-        <div class="w-12 h-12 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center text-xl">
+    <!-- Sleek Compact Executive KPI Strip -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <!-- 1. Delivered Orders -->
+      <div class="p-3 sm:px-4 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-2xs flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 flex items-center justify-center text-sm shrink-0">
           <i class="pi pi-check-circle"></i>
         </div>
-        <div>
-          <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Delivered Orders</div>
-          <div class="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
-            {{ deliveredCount }} / {{ totalOrdersCount }} Orders
+        <div class="min-w-0">
+          <div class="text-[10px] sm:text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">
+            Delivered ({{ dateFilterLabel }})
+          </div>
+          <div class="text-sm sm:text-base font-bold text-slate-900 dark:text-white truncate">
+            {{ periodDeliveredCount }} <span class="text-xs font-normal text-slate-400">/ {{ periodTotalOrdersCount }} Orders</span>
           </div>
         </div>
       </div>
 
-      <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4">
-        <div class="w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center text-xl">
+      <!-- 2. Wallet Sales Revenue -->
+      <div class="p-3 sm:px-4 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-2xs flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-500 dark:text-indigo-400 flex items-center justify-center text-sm shrink-0">
           <i class="pi pi-wallet"></i>
         </div>
-        <div>
-          <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Wallet Sales Revenue</div>
-          <div class="text-lg font-bold text-indigo-600 dark:text-indigo-400 mt-0.5 font-mono">
-            {{ formatCurrency(totalRevenueMmk) }}
+        <div class="min-w-0">
+          <div class="text-[10px] sm:text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">
+            Sales Revenue ({{ dateFilterLabel }})
+          </div>
+          <div class="text-sm sm:text-base font-bold text-indigo-600 dark:text-indigo-400 font-mono truncate">
+            {{ formatCurrency(periodRevenueMmk) }}
           </div>
         </div>
       </div>
 
-      <div class="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4">
-        <div class="w-12 h-12 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center text-xl">
+      <!-- 3. Total Orders in Period -->
+      <div class="p-3 sm:px-4 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-2xs flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-500 flex items-center justify-center text-sm shrink-0">
+          <i class="pi pi-shopping-bag"></i>
+        </div>
+        <div class="min-w-0">
+          <div class="text-[10px] sm:text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">
+            Total Orders ({{ dateFilterLabel }})
+          </div>
+          <div class="text-sm sm:text-base font-bold text-slate-900 dark:text-white truncate">
+            {{ periodTotalOrdersCount }} Orders
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Fulfillment Speed -->
+      <div class="p-3 sm:px-4 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-2xs flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-500 flex items-center justify-center text-sm shrink-0">
           <i class="pi pi-bolt"></i>
         </div>
-        <div>
-          <div class="text-xs font-medium text-slate-400 uppercase tracking-wider">Avg Fulfillment Speed</div>
-          <div class="text-lg font-bold text-emerald-500 mt-0.5 flex items-center gap-1.5 text-sm">
-            <i class="pi pi-bolt text-amber-500"></i>
-            <span>&lt; 1 sec (Zero Wait)</span>
+        <div class="min-w-0">
+          <div class="text-[10px] sm:text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">Fulfillment Speed</div>
+          <div class="text-sm font-semibold text-emerald-500 flex items-center gap-1.5 truncate">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>&lt; 1 sec (Instant)</span>
           </div>
         </div>
       </div>
@@ -455,68 +530,157 @@ async function refundToWallet(order: OrderRecord) {
 
     <!-- Integrated Unified Orders Table Card (No awkward floating detached bar) -->
     <div class="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col overflow-hidden">
-      <!-- Integrated Filter & Search Toolbar (Smooth, no shaking or twitching) -->
-      <div class="p-3 sm:p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-        <!-- Status Tabs -->
-        <div class="flex items-center gap-1.5 overflow-x-auto text-xs font-semibold scrollbar-none">
-          <button
-            type="button"
-            @click="selectedStatus = 'ALL'"
-            :class="selectedStatus === 'ALL' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/20' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
-            class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 shrink-0 font-semibold"
-          >
-            All Orders ({{ totalOrdersCount }})
-          </button>
+      <!-- Integrated Filter & Date Toolbar -->
+      <div class="p-3 sm:p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
+        <!-- Row 1: Status Tabs & Search Input -->
+        <div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+          <!-- Status Tabs -->
+          <div class="flex items-center gap-1.5 overflow-x-auto text-xs font-semibold scrollbar-none">
+            <button
+              type="button"
+              @click="selectedStatus = 'ALL'"
+              :class="selectedStatus === 'ALL' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+              class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 shrink-0 font-semibold cursor-pointer"
+            >
+              All Orders ({{ dateFilteredOrders.length }})
+            </button>
 
-          <button
-            type="button"
-            @click="selectedStatus = 'DELIVERED'"
-            :class="selectedStatus === 'DELIVERED' ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
-            class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 flex items-center gap-1.5 shrink-0 font-semibold"
-          >
-            <i class="pi pi-check text-[10px]"></i>
-            <span>Delivered ({{ deliveredCount }})</span>
-          </button>
+            <button
+              type="button"
+              @click="selectedStatus = 'DELIVERED'"
+              :class="selectedStatus === 'DELIVERED' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+              class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 flex items-center gap-1.5 shrink-0 font-semibold cursor-pointer"
+            >
+              <i class="pi pi-check text-[10px]"></i>
+              <span>Delivered ({{ periodDeliveredCount }})</span>
+            </button>
 
-          <button
-            type="button"
-            @click="selectedStatus = 'PROCESSING_SUPPLIER'"
-            :class="selectedStatus === 'PROCESSING_SUPPLIER' ? 'bg-amber-600 text-white shadow-sm shadow-amber-600/20' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
-            class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 flex items-center gap-1.5 shrink-0 font-semibold"
-          >
-            <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
-            <span>Processing ({{ processingCount }})</span>
-          </button>
+            <button
+              type="button"
+              @click="selectedStatus = 'PROCESSING_SUPPLIER'"
+              :class="selectedStatus === 'PROCESSING_SUPPLIER' ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+              class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 flex items-center gap-1.5 shrink-0 font-semibold cursor-pointer"
+            >
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+              <span>Processing ({{ processingCount }})</span>
+            </button>
 
-          <button
-            type="button"
-            @click="selectedStatus = 'REFUNDED'"
-            :class="selectedStatus === 'REFUNDED' ? 'bg-rose-600 text-white shadow-sm shadow-rose-600/20' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
-            class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 shrink-0 font-semibold"
-          >
-            Refunded ({{ refundedCount }})
-          </button>
-        </div>
+            <button
+              type="button"
+              @click="selectedStatus = 'REFUNDED'"
+              :class="selectedStatus === 'REFUNDED' ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+              class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 shrink-0 font-semibold cursor-pointer"
+            >
+              Refunded ({{ refundedCount }})
+            </button>
+          </div>
 
-        <!-- Search Input (Smooth border focus, zero twitching) -->
-        <div class="flex items-center gap-2 flex-wrap">
+          <!-- Search Input -->
           <div class="relative w-full sm:w-64 shrink-0">
             <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none"></i>
             <input
               v-model="searchQuery"
               type="text"
               placeholder="Search Order #, customer, item..."
-              class="w-full pl-8 pr-7 py-1.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/70 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-500 focus:ring-0 transition-colors duration-150"
-              style="outline: none !important; box-shadow: none !important;"
+              class="w-full pl-8 pr-7 py-1.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/70 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-indigo-500 transition-colors"
             />
             <button
               v-if="searchQuery"
               @click="searchQuery = ''"
               type="button"
-              class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
             >
               <i class="pi pi-times text-[10px]"></i>
             </button>
+          </div>
+        </div>
+
+        <!-- Row 2: Date Filter Controls (Presets + Custom Date Picker) -->
+        <div class="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800/60 text-xs">
+          <!-- Date Presets & Custom Picker -->
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <span class="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mr-1 flex items-center gap-1">
+              <i class="pi pi-calendar text-[10px]"></i>
+              <span>Date:</span>
+            </span>
+
+            <div class="flex items-center p-0.5 bg-slate-100 dark:bg-slate-950/70 rounded-xl border border-slate-200/80 dark:border-slate-800">
+              <button
+                type="button"
+                @click="selectedDateFilter = 'ALL'"
+                :class="selectedDateFilter === 'ALL' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-semibold shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'"
+                class="px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer"
+              >
+                All Time
+              </button>
+              <button
+                type="button"
+                @click="selectedDateFilter = 'TODAY'"
+                :class="selectedDateFilter === 'TODAY' ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 font-semibold shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'"
+                class="px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer"
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                @click="selectedDateFilter = 'YESTERDAY'"
+                :class="selectedDateFilter === 'YESTERDAY' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-semibold shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'"
+                class="px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer"
+              >
+                Yesterday
+              </button>
+              <button
+                type="button"
+                @click="selectedDateFilter = 'LAST_7_DAYS'"
+                :class="selectedDateFilter === 'LAST_7_DAYS' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-semibold shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'"
+                class="px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer"
+              >
+                Last 7 Days
+              </button>
+              <button
+                type="button"
+                @click="selectedDateFilter = 'THIS_MONTH'"
+                :class="selectedDateFilter === 'THIS_MONTH' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-semibold shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'"
+                class="px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer"
+              >
+                This Month
+              </button>
+            </div>
+
+            <!-- Custom Date Picker matching Image 3 -->
+            <div class="relative flex items-center">
+              <i class="pi pi-calendar absolute left-2.5 text-slate-400 text-xs pointer-events-none"></i>
+              <input
+                type="date"
+                v-model="customDateFilter"
+                @change="selectedDateFilter = 'CUSTOM'"
+                class="pl-8 pr-2.5 py-1 rounded-xl text-xs bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-700/70 text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+                :class="{ 'ring-1 ring-indigo-500 border-indigo-500 font-semibold': selectedDateFilter === 'CUSTOM' }"
+                title="Filter by specific date"
+              />
+            </div>
+
+            <!-- Clear Date Button -->
+            <button
+              v-if="selectedDateFilter !== 'ALL'"
+              type="button"
+              @click="selectedDateFilter = 'ALL'"
+              class="px-2 py-1 rounded-lg text-[11px] text-slate-400 hover:text-rose-500 border border-dashed border-slate-300 dark:border-slate-700 hover:border-rose-400 transition-colors flex items-center gap-1 cursor-pointer"
+            >
+              <i class="pi pi-filter-slash text-[10px]"></i>
+              <span>Clear Date</span>
+            </button>
+          </div>
+
+          <!-- Active Filter Indicator -->
+          <div class="text-[11px] text-slate-400 flex items-center gap-1.5">
+            <span>Period:</span>
+            <span class="px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 font-semibold border border-indigo-500/20">
+              {{ dateFilterLabel }}
+            </span>
+            <span v-if="dateFilteredOrders.length !== ordersList.length" class="text-slate-500">
+              ({{ dateFilteredOrders.length }} of {{ ordersList.length }} orders)
+            </span>
           </div>
         </div>
       </div>
@@ -582,12 +746,12 @@ async function refundToWallet(order: OrderRecord) {
                     {{ searchQuery ? 'Try adjusting your search query or clear filters' : 'Purchased orders will appear here in real-time' }}
                   </p>
                   <button
-                    v-if="searchQuery || selectedStatus !== 'ALL'"
+                    v-if="searchQuery || selectedStatus !== 'ALL' || selectedDateFilter !== 'ALL'"
                     type="button"
-                    @click="searchQuery = ''; selectedStatus = 'ALL'"
-                    class="mt-4 px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm"
+                    @click="searchQuery = ''; selectedStatus = 'ALL'; selectedDateFilter = 'ALL'"
+                    class="mt-4 px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm cursor-pointer"
                   >
-                    Reset Filters
+                    Reset All Filters
                   </button>
                 </div>
               </td>
