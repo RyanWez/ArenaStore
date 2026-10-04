@@ -1,5 +1,5 @@
 import { eq, and, lt, sql } from "drizzle-orm";
-import { getDb, categories, products, productSupplierSnapshots, stockReservations } from "@arena/db";
+import { getDb, categories, products, productSupplierSnapshots, stockReservations, appSettings } from "@arena/db";
 import { calculateRetailMmk, calculateSellableStock, formatMmk, stripCustomEmojiPlaceholders, parseCustomEmoji } from "@arena/shared";
 import { xproClient, XProProduct, XProCategory } from "./xpro-client";
 import { config } from "../config";
@@ -24,6 +24,11 @@ export interface LocalizedProduct {
 }
 
 export class CatalogService {
+  private lastSyncedAt: string | null = null;
+
+  getLastSyncedAt(): string | null {
+    return this.lastSyncedAt;
+  }
   /**
    * Syncs upstream categories into the database.
    */
@@ -324,6 +329,25 @@ export class CatalogService {
           syncedAt: new Date(),
         },
       });
+
+    const now = new Date();
+    this.lastSyncedAt = now.toISOString();
+
+    await db
+      .insert(appSettings)
+      .values({
+        key: "catalog_last_synced_at",
+        value: this.lastSyncedAt,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: appSettings.key,
+        set: {
+          value: this.lastSyncedAt,
+          updatedAt: now,
+        },
+      })
+      .catch(() => {});
 
     return {
       categories: upstreamCategories.length,
