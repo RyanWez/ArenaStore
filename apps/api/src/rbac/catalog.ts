@@ -23,6 +23,9 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   // Overview
   { key: "overview.view", page: "Overview", label: "View dashboard", type: "view" },
 
+  // Analytics & Profit
+  { key: "analytics.view", page: "Analytics", label: "View financial analytics & profit reports", type: "view" },
+
   // XPro Supplier
   { key: "supplier.view", page: "XPro Supplier", label: "View supplier status & wallet balance", type: "view" },
   { key: "supplier.sync", page: "XPro Supplier", label: "Sync catalog from supplier", type: "action" },
@@ -156,6 +159,7 @@ export const DEFAULT_ROLES: DefaultRoleDef[] = [
     description: "Runs day-to-day operations: catalog, orders, deposits, customers and settings.",
     permissions: [
       "overview.view",
+      "analytics.view",
       "supplier.view",
       "supplier.sync",
       "products.view",

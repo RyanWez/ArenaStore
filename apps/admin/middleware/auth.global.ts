@@ -6,6 +6,7 @@ import { useAuth } from '~/composables/useAuth'
  */
 const PAGE_PERMISSIONS: Record<string, string> = {
   '/': 'overview.view',
+  '/analytics': 'analytics.view',
   '/supplier': 'supplier.view',
   '/products': 'products.view',
   '/orders': 'orders.view',

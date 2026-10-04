@@ -39,6 +39,7 @@ import { reviewDeposit, buildCustomerDisplayName } from "../services/deposit-rev
 import { decryptPayload, formatCredentialsText } from "../services/encryption";
 import { fetchTelegramFile, getPlaceholderSlipSvg } from "../services/telegram-file.service";
 import { writeAudit } from "../services/audit.service";
+import { getAnalytics } from "../services/analytics.service";
 import { getRbac, requirePermission } from "../rbac/require-permission";
 import { filterSettingsForPermissions } from "../rbac/catalog";
 import { RbacContext } from "../services/rbac.service";
@@ -204,6 +205,22 @@ export async function adminRoutes(server: FastifyInstance) {
       },
     };
   });
+
+  // GET /api/admin/analytics (Financial analytics, revenue, cost, profit, categories, top products)
+  server.get(
+    "/api/admin/analytics",
+    { preHandler: requirePermission("analytics.view") },
+    async (request) => {
+      const query = request.query as {
+        preset?: string;
+        customDate?: string;
+        startDate?: string;
+        endDate?: string;
+      };
+      const data = await getAnalytics(query);
+      return { ok: true, ...data };
+    }
+  );
 
   // GET /api/admin/supplier/status (For top bar wallet widget & supplier diagnostics)
   server.get(

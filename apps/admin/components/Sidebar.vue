@@ -66,6 +66,13 @@ const navGroups: NavGroup[] = [
         permission: 'overview.view',
       },
       {
+        to: '/analytics',
+        label: 'Analytics & Profit',
+        icon: 'pi pi-chart-line',
+        badge: { type: 'pill', text: 'PROFIT', color: 'emerald' },
+        permission: 'analytics.view',
+      },
+      {
         to: '/supplier',
         label: 'XPro Supplier',
         icon: 'pi pi-cloud',
