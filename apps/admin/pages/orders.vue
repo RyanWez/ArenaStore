@@ -189,7 +189,7 @@ onUnmounted(() => {
 })
 
 // Date Filter State
-const selectedDateFilter = ref<DateFilterPreset>('ALL')
+const selectedDateFilter = ref<DateFilterPreset>('TODAY')
 const customDateFilter = ref(getTodayMyanmarDate())
 
 const dateFilterLabel = computed(() => {
@@ -743,7 +743,7 @@ async function refundToWallet(order: OrderRecord) {
                   </div>
                   <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-200">No Orders Found</h3>
                   <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    {{ searchQuery ? 'Try adjusting your search query or clear filters' : 'Purchased orders will appear here in real-time' }}
+                    {{ searchQuery ? 'Try adjusting your search query or clear filters' : (selectedDateFilter === 'TODAY' ? 'No orders placed today yet. Switch to "All Time" to view previous orders.' : 'Purchased orders will appear here in real-time') }}
                   </p>
                   <button
                     v-if="searchQuery || selectedStatus !== 'ALL' || selectedDateFilter !== 'ALL'"
@@ -751,7 +751,7 @@ async function refundToWallet(order: OrderRecord) {
                     @click="searchQuery = ''; selectedStatus = 'ALL'; selectedDateFilter = 'ALL'"
                     class="mt-4 px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm cursor-pointer"
                   >
-                    Reset All Filters
+                    {{ selectedDateFilter === 'TODAY' && !searchQuery && selectedStatus === 'ALL' ? 'View All Time Orders' : 'Reset All Filters' }}
                   </button>
                 </div>
               </td>

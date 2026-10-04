@@ -139,7 +139,7 @@ onUnmounted(() => {
 })
 
 // Date Filter State
-const selectedDateFilter = ref<DateFilterPreset>('ALL')
+const selectedDateFilter = ref<DateFilterPreset>('TODAY')
 const customDateFilter = ref(getTodayMyanmarDate())
 
 const dateFilterLabel = computed(() => {
@@ -724,7 +724,7 @@ async function confirmReject() {
                   </div>
                   <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-200">No Deposit Slips Found</h3>
                   <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    {{ searchQuery ? 'Try adjusting your search query or clear filters' : 'Submitted screenshot slips will appear here for review' }}
+                    {{ searchQuery ? 'Try adjusting your search query or clear filters' : (selectedDateFilter === 'TODAY' ? 'No deposit slips submitted today yet. Switch to "All Time" to view previous slips.' : 'Submitted screenshot slips will appear here for review') }}
                   </p>
                   <button
                     v-if="searchQuery || activeTab !== 'ALL' || selectedDateFilter !== 'ALL'"
@@ -732,7 +732,7 @@ async function confirmReject() {
                     @click="searchQuery = ''; activeTab = 'ALL'; selectedDateFilter = 'ALL'"
                     class="mt-4 px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm cursor-pointer"
                   >
-                    Reset All Filters
+                    {{ selectedDateFilter === 'TODAY' && !searchQuery && activeTab === 'ALL' ? 'View All Time Slips' : 'Reset All Filters' }}
                   </button>
                 </div>
               </td>
