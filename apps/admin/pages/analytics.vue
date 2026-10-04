@@ -1,4 +1,4 @@
-<script setup lang="ts">
+ည<script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import { useToast } from '~/composables/useToast'
@@ -25,6 +25,7 @@ interface AnalyticsData {
   summary: AnalyticsSummary
   trend: any[]
   categories: any[]
+  products: any[]
   topProducts: any[]
 }
 
@@ -57,6 +58,7 @@ const analytics = ref<AnalyticsData>({
   },
   trend: [],
   categories: [],
+  products: [],
   topProducts: [],
 })
 
@@ -90,6 +92,7 @@ async function fetchAnalytics(silent = false) {
         summary: res.summary || analytics.value.summary,
         trend: Array.isArray(res.trend) ? res.trend : [],
         categories: Array.isArray(res.categories) ? res.categories : [],
+        products: Array.isArray(res.products) ? res.products : [],
         topProducts: Array.isArray(res.topProducts) ? res.topProducts : [],
       }
     }
@@ -401,9 +404,10 @@ function formatMmk(n: number): string {
         />
       </div>
 
-      <!-- Right: Profit by Category (Donut / Circle Chart) -->
+      <!-- Right: Profit by Product (Donut / Circle Chart) -->
       <div class="lg:col-span-1">
         <AnalyticsCategoryDonut
+          :products="analytics.products"
           :categories="analytics.categories"
           :total-profit-mmk="analytics.summary.grossProfitMmk"
         />
@@ -446,7 +450,7 @@ function formatMmk(n: number): string {
           </thead>
           <tbody class="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
             <!-- Loading Skeletons -->
-            <template v-if="isLoading">
+            <template v-if="isInitialLoading">
               <tr v-for="n in 5" :key="'skel-' + n" class="animate-pulse">
                 <td class="py-3.5 px-4 text-center"><div class="h-4 w-6 mx-auto bg-slate-200 dark:bg-slate-800 rounded"></div></td>
                 <td class="py-3.5 px-4"><div class="h-4 w-36 bg-slate-200 dark:bg-slate-800 rounded"></div></td>

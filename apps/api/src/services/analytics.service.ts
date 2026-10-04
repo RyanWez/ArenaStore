@@ -1,5 +1,6 @@
 import { and, asc, eq, gte, sql } from "drizzle-orm";
 import { getDb, orders, orderItems, products, categories, appSettings } from "@arena/db";
+import { stripCustomEmojiPlaceholders } from "@arena/shared";
 
 export interface AnalyticsFilterParams {
   preset?: string;
@@ -40,6 +41,18 @@ export interface AnalyticsCategory {
   orderCount: number;
 }
 
+export interface AnalyticsProductBreakdown {
+  productId: number;
+  productName: string;
+  categoryName: string;
+  unitsSold: number;
+  revenueMmk: number;
+  costMmk: number;
+  profitMmk: number;
+  profitSharePct: number;
+  orderCount: number;
+}
+
 export interface AnalyticsTopProduct {
   productId: number;
   productName: string;
@@ -57,6 +70,7 @@ export interface AnalyticsResponseData {
   summary: AnalyticsSummary;
   trend: AnalyticsTrendPoint[];
   categories: AnalyticsCategory[];
+  products: AnalyticsProductBreakdown[];
   topProducts: AnalyticsTopProduct[];
 }
 
@@ -247,6 +261,7 @@ export async function getAnalytics(params: AnalyticsFilterParams): Promise<Analy
     revenueMmk: number;
     costMmk: number;
     profitMmk: number;
+    orderCount: number;
   }>();
 
   // Initialize trend buckets based on mode
@@ -337,37 +352,41 @@ export async function getAnalytics(params: AnalyticsFilterParams): Promise<Analy
       bucket.orderIds.add(row.orderId);
     }
 
+    // Strip custom emojis like {pe:...} from category & product names
+    const cleanCatName = stripCustomEmojiPlaceholders(row.categoryName || "").trim() || "Other Digital Products";
+    const cleanProdName = stripCustomEmojiPlaceholders(row.productNameSnapshot || "").trim() || "Digital Item";
+
     // B. Category breakdown
-    const catName = (row.categoryName || "Other Digital Products").trim();
-    let cat = categoryMap.get(catName);
+    let cat = categoryMap.get(cleanCatName);
     if (!cat) {
       cat = {
         categoryId: row.categoryId || null,
-        categoryName: catName,
+        categoryName: cleanCatName,
         revenueMmk: 0,
         costMmk: 0,
         profitMmk: 0,
         orderCount: 0,
       };
-      categoryMap.set(catName, cat);
+      categoryMap.set(cleanCatName, cat);
     }
     cat.revenueMmk += itemRevenue;
     cat.costMmk += itemCostMmk;
     cat.profitMmk += itemProfitMmk;
     cat.orderCount += 1;
 
-    // C. Top products
-    const prodKey = String(row.productId || row.productNameSnapshot);
+    // C. Product breakdown
+    const prodKey = String(row.productId || cleanProdName);
     let prod = productMap.get(prodKey);
     if (!prod) {
       prod = {
         productId: row.productId,
-        productName: row.productNameSnapshot,
-        categoryName: catName,
+        productName: cleanProdName,
+        categoryName: cleanCatName,
         unitsSold: 0,
         revenueMmk: 0,
         costMmk: 0,
         profitMmk: 0,
+        orderCount: 0,
       };
       productMap.set(prodKey, prod);
     }
@@ -375,6 +394,7 @@ export async function getAnalytics(params: AnalyticsFilterParams): Promise<Analy
     prod.revenueMmk += itemRevenue;
     prod.costMmk += itemCostMmk;
     prod.profitMmk += itemProfitMmk;
+    prod.orderCount += 1;
   }
 
   const grossProfitMmk = totalRevenueMmk - totalCostMmk;
@@ -406,10 +426,33 @@ export async function getAnalytics(params: AnalyticsFilterParams): Promise<Analy
     }))
     .sort((a, b) => b.profitMmk - a.profitMmk);
 
+  // Convert products map to sorted array with profitSharePct for Product Donut Chart
+  const productsList: AnalyticsProductBreakdown[] = Array.from(productMap.values())
+    .map((p: any) => ({
+      productId: p.productId,
+      productName: p.productName,
+      categoryName: p.categoryName,
+      unitsSold: p.unitsSold,
+      revenueMmk: p.revenueMmk,
+      costMmk: p.costMmk,
+      profitMmk: p.profitMmk,
+      profitSharePct: grossProfitMmk > 0
+        ? Number(((p.profitMmk / grossProfitMmk) * 100).toFixed(1))
+        : 0,
+      orderCount: p.orderCount || 1,
+    }))
+    .sort((a, b) => b.profitMmk - a.profitMmk);
+
   // Convert top products map to sorted array with marginPct
   const topProducts: AnalyticsTopProduct[] = Array.from(productMap.values())
     .map((p) => ({
-      ...p,
+      productId: p.productId,
+      productName: p.productName,
+      categoryName: p.categoryName,
+      unitsSold: p.unitsSold,
+      revenueMmk: p.revenueMmk,
+      costMmk: p.costMmk,
+      profitMmk: p.profitMmk,
       marginPct: p.revenueMmk > 0
         ? Number(((p.profitMmk / p.revenueMmk) * 100).toFixed(1))
         : 0,
@@ -434,6 +477,7 @@ export async function getAnalytics(params: AnalyticsFilterParams): Promise<Analy
     },
     trend,
     categories: categoriesList,
+    products: productsList,
     topProducts,
   };
 }

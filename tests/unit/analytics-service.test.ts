@@ -104,4 +104,13 @@ describe("Analytics Service - Myanmar Date Bounds & Financial Utilities", () => 
     expect(netGrossProfit).toBe(6000);
     expect(marginPct).toBe(25.0);
   });
+
+  it("cleans raw Telegram custom emoji placeholders from product and category names", async () => {
+    const { stripCustomEmojiPlaceholders } = await import("@arena/shared");
+    const rawCategory = "{pe:5069075201950483359} GEMINI AI";
+    const rawProduct = "{pe:5474521476197536994} capcut pro 1 month";
+
+    expect(stripCustomEmojiPlaceholders(rawCategory)).toBe("GEMINI AI");
+    expect(stripCustomEmojiPlaceholders(rawProduct)).toBe("capcut pro 1 month");
+  });
 });
