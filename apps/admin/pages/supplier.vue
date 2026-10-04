@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useSupplierStatus } from '~/composables/useSupplierStatus'
 import { usePermission } from '~/composables/usePermission'
+import { formatRelativeTime, formatMyanmarDateTime } from '~/utils/date'
 
 const { supplierBalanceUsd, supplierDetails, isOnline, isSyncing, syncCatalog, fetchStatus } = useSupplierStatus()
 const { can } = usePermission()
@@ -22,9 +23,46 @@ const syncLogs = ref<Array<{
   message: string
 }>>([])
 
+const currentTime = ref(Date.now())
+let tickerInterval: any = null
+let pollInterval: any = null
+
+const autoSyncScheduleText = computed(() => {
+  const mins = supplierDetails.value.autoSyncIntervalMinutes
+  if (!mins || mins <= 0) return 'Disabled'
+  return `Every ${mins} mins`
+})
+
+const lastSyncedRelative = computed(() => {
+  // Reading currentTime creates a reactive dependency so it recalculates every 10 seconds
+  if (!currentTime.value) return 'Never'
+  if (!supplierDetails.value.lastSyncedAt) return 'Never'
+  return formatRelativeTime(supplierDetails.value.lastSyncedAt)
+})
+
+const lastSyncedFull = computed(() => {
+  if (!supplierDetails.value.lastSyncedAt) return 'No sync recorded yet'
+  return formatMyanmarDateTime(supplierDetails.value.lastSyncedAt)
+})
+
 onMounted(async () => {
   await fetchStatus()
+
+  // Update ticker every 10 seconds so "Just now" transitions to "1 min ago", "2 mins ago" etc.
+  tickerInterval = setInterval(() => {
+    currentTime.value = Date.now()
+  }, 10000)
+
+  // Lightweight 30s poll to reflect background server syncs automatically
+  pollInterval = setInterval(async () => {
+    await fetchStatus().catch(() => {})
+  }, 30000)
+
   const now = new Date().toLocaleTimeString()
+  const syncInfoText = supplierDetails.value.lastSyncedAt
+    ? `Last synced: ${formatRelativeTime(supplierDetails.value.lastSyncedAt)} (${formatMyanmarDateTime(supplierDetails.value.lastSyncedAt)}).`
+    : 'No sync recorded yet.'
+
   syncLogs.value = [
     {
       timestamp: now,
@@ -38,10 +76,20 @@ onMounted(async () => {
     },
     {
       timestamp: now,
+      type: 'INFO',
+      message: `Auto-Sync cadence: ${autoSyncScheduleText.value}. ${syncInfoText}`,
+    },
+    {
+      timestamp: now,
       type: 'SUCCESS',
       message: `Catalog status: ${supplierDetails.value.categoriesCount} categories and ${supplierDetails.value.productsCount} active products in database.`,
     },
   ]
+})
+
+onUnmounted(() => {
+  if (tickerInterval) clearInterval(tickerInterval)
+  if (pollInterval) clearInterval(pollInterval)
 })
 
 async function handleSync() {
@@ -193,9 +241,23 @@ async function handlePing() {
           <span class="text-3xl font-extrabold text-slate-900 dark:text-white font-mono">{{ supplierDetails.categoriesCount }}</span>
           <span class="text-xs text-slate-500">Categories / {{ supplierDetails.productsCount }} Products</span>
         </div>
-        <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500">
-          <span>Auto-Sync Schedule</span>
-          <span class="text-indigo-600 dark:text-indigo-400 font-medium">Every 15 mins</span>
+        <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800/80 flex flex-col gap-2 text-xs text-slate-500">
+          <div class="flex items-center justify-between">
+            <span>Auto-Sync Schedule</span>
+            <span class="text-indigo-600 dark:text-indigo-400 font-semibold font-mono">
+              {{ autoSyncScheduleText }}
+            </span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span>Last Synced</span>
+            <span
+              class="font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1.5"
+              :title="lastSyncedFull"
+            >
+              <i class="pi pi-clock text-[10px] text-slate-400"></i>
+              <span>{{ lastSyncedRelative }}</span>
+            </span>
+          </div>
         </div>
       </div>
     </div>

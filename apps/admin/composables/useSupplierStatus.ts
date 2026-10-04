@@ -11,6 +11,8 @@ export interface SupplierDetails {
   latencyMs: number
   categoriesCount: number
   productsCount: number
+  autoSyncIntervalMinutes: number
+  lastSyncedAt: string | null
 }
 
 const supplierBalanceUsd = ref<string>('0.00')
@@ -27,6 +29,8 @@ const supplierDetails = ref<SupplierDetails>({
   latencyMs: 45,
   categoriesCount: 24,
   productsCount: 42,
+  autoSyncIntervalMinutes: 10,
+  lastSyncedAt: null,
 })
 
 let inFlightPromise: Promise<void> | null = null
@@ -51,6 +55,8 @@ export function useSupplierStatus() {
             latencyMs?: number
             categoriesCount?: number
             productsCount?: number
+            autoSyncIntervalMinutes?: number
+            lastSyncedAt?: string | null
           }
         }>('/api/admin/supplier/status', {
           headers: getAuthHeaders(),
@@ -70,6 +76,8 @@ export function useSupplierStatus() {
             latencyMs: res.supplier.latencyMs ?? 45,
             categoriesCount: res.supplier.categoriesCount ?? supplierDetails.value.categoriesCount,
             productsCount: res.supplier.productsCount ?? supplierDetails.value.productsCount,
+            autoSyncIntervalMinutes: res.supplier.autoSyncIntervalMinutes ?? supplierDetails.value.autoSyncIntervalMinutes,
+            lastSyncedAt: res.supplier.lastSyncedAt ?? supplierDetails.value.lastSyncedAt,
           }
         }
       } catch {
@@ -88,12 +96,14 @@ export function useSupplierStatus() {
       const res = await $fetch<{
         ok: boolean
         synced: { categories: number; products: number }
+        lastSyncedAt?: string | null
       }>('/api/admin/supplier/sync', {
         method: 'POST',
         headers: getAuthHeaders(),
       })
       if (res.ok) {
         lastSyncMessage.value = `Synced ${res.synced.categories} categories & ${res.synced.products} products.`
+        supplierDetails.value.lastSyncedAt = res.lastSyncedAt || new Date().toISOString()
       }
       fetchStatus().catch(() => {})
       return res
