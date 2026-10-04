@@ -28,7 +28,6 @@ const envSchema = z.object({
     .string()
     .min(16)
     .default("arena-store-default-dev-encryption-key-32bytes!"),
-  ADMIN_API_KEY: z.string().default("dev_admin_secret_key_change_in_production"),
   DEFAULT_EXCHANGE_RATE_MMK: z.coerce.number().default(4500),
   DEFAULT_MARGIN_PERCENTAGE: z.coerce.number().default(25),
   /** Automatic catalog sync cadence in minutes; 0 disables the scheduler. */
@@ -103,9 +102,9 @@ export function loadConfig(): AppConfig {
         "CRITICAL SECURITY ERROR: ADMIN_SESSION_SECRET is using the insecure default secret in production! Set a custom secret in .env."
       );
     }
-    if (data.ADMIN_API_KEY === "dev_admin_secret_key_change_in_production") {
+    if (data.ADMIN_INITIAL_PASSWORD === "ArenaAdmin2026!") {
       throw new Error(
-        "CRITICAL SECURITY ERROR: ADMIN_API_KEY is using the insecure default key in production! Set a custom key in .env."
+        "CRITICAL SECURITY ERROR: ADMIN_INITIAL_PASSWORD is using the insecure default password in production! Set a custom password in .env."
       );
     }
   }

@@ -354,40 +354,6 @@ export class OrderService {
       rejectReason,
     };
   }
-
-  /**
-   * Retrieves user profile details and purchasing statistics by telegramId.
-   */
-  async getUserProfile(telegramId: string) {
-    const db = getDb();
-    const [user] = await db.select().from(users).where(eq(users.telegramId, telegramId));
-
-    if (!user) {
-      return {
-        joinedDate: new Date().toISOString().split("T")[0],
-        ordersCount: 0,
-        totalSpentMmk: 0,
-        walletBalanceMmk: 0,
-        totalDepositsMmk: 0,
-      };
-    }
-
-    const [stats] = await db
-      .select({
-        ordersCount: sql<number>`COUNT(*)::integer`,
-        totalSpentMmk: sql<number>`COALESCE(SUM(CASE WHEN ${orders.status} = 'DELIVERED' THEN ${orders.totalAmountMmk} ELSE 0 END), 0)::integer`,
-      })
-      .from(orders)
-      .where(eq(orders.customerId, user.id));
-
-    return {
-      joinedDate: user.createdAt.toISOString().split("T")[0],
-      ordersCount: stats?.ordersCount ?? 0,
-      totalSpentMmk: stats?.totalSpentMmk ?? 0,
-      walletBalanceMmk: 0,
-      totalDepositsMmk: 0,
-    };
-  }
 }
 
 export const orderService = new OrderService();

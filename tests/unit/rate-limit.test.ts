@@ -75,8 +75,10 @@ describe("API Rate Limiting Protection", () => {
             timeWindow: 1000 * 60,
             hook: "preValidation",
             keyGenerator: (req) => {
+              // Mirrors the route: bucket = client IP + telegram id, so a
+              // spoofed id can never mint unlimited fresh buckets.
               const tgId = (req.body as any)?.telegramId;
-              return tgId ? `order_tg_${tgId}` : `order_ip_${req.ip}`;
+              return `order_${req.ip}_${tgId || "anon"}`;
             },
             errorResponseBuilder: (_req, context) => ({
               ok: false,

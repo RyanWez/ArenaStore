@@ -22,7 +22,10 @@ export async function healthRoutes(server: FastifyInstance) {
       dbStatus = "connected";
       dbHealthy = true;
     } catch (err: any) {
-      dbStatus = `error: ${err.message}`;
+      // /health is public (uptime monitors) — the raw DB error can carry
+      // host/credential fragments, so the detail stays in server logs only.
+      console.error("[health] database check failed:", err?.message);
+      dbStatus = "error";
     }
 
     let upstreamStatus = "unknown";
@@ -30,7 +33,8 @@ export async function healthRoutes(server: FastifyInstance) {
       const upstreamHealth = await xproClient.getHealth();
       upstreamStatus = upstreamHealth.ok ? "healthy" : "degraded";
     } catch (err: any) {
-      upstreamStatus = `error: ${err.message}`;
+      console.error("[health] upstream check failed:", err?.message);
+      upstreamStatus = "error";
     }
 
     // A dead database means the API cannot serve requests: answer 503 so HTTP

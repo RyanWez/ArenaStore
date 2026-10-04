@@ -13,8 +13,11 @@ export async function orderRoutes(server: FastifyInstance) {
           timeWindow: 1000 * 60, // 10 orders per minute
           hook: "preValidation",
           keyGenerator: (req) => {
+            // Always mix the real client IP into the bucket — trusting
+            // body.telegramId alone lets a spammer mint a fresh bucket per
+            // fake id (and pin stock reservations on arbitrary users).
             const tgId = (req.body as any)?.telegramId;
-            return tgId ? `order_tg_${tgId}` : `order_ip_${req.ip}`;
+            return `order_${req.ip}_${tgId || "anon"}`;
           },
         },
       },
@@ -73,16 +76,5 @@ export async function orderRoutes(server: FastifyInstance) {
         error: err.message,
       });
     }
-  });
-
-  // GET /api/users/:telegramId/profile (Customer Profile & Stats for Telegram Bot)
-  server.get<{
-    Params: { telegramId: string };
-  }>("/api/users/:telegramId/profile", async (request) => {
-    const profile = await orderService.getUserProfile(request.params.telegramId);
-    return {
-      ok: true,
-      data: profile,
-    };
   });
 }

@@ -155,23 +155,26 @@ export async function adminRoutes(server: FastifyInstance) {
     async () => {
     const db = getDb();
 
-    // 1. Total revenue / sales from completed orders and order counts
+    // 1. Total revenue / sales from completed orders and order counts.
+    // pendingOrders counts the real in-flight statuses (awaiting payment /
+    // slip submitted) — 'PENDING'/'PROCESSING' never occur in this schema.
     const [salesResult] = await db
       .select({
         totalSalesMmk: sql<number>`coalesce(sum(case when ${orders.status} = 'DELIVERED' then ${orders.totalAmountMmk} else 0 end), 0)`,
         fulfilledOrders: sql<number>`count(case when ${orders.status} = 'DELIVERED' then 1 end)`,
-        pendingOrders: sql<number>`count(case when ${orders.status} in ('PENDING', 'PROCESSING') then 1 end)`,
+        pendingOrders: sql<number>`count(case when ${orders.status} in ('PENDING_PAYMENT', 'PAYMENT_SUBMITTED') then 1 end)`,
         totalOrders: sql<number>`count(${orders.id})`,
       })
       .from(orders);
 
-    // 2. Pending deposit slips count
+    // 2. Pending deposit slips count — both reviewable statuses, matching
+    // the review flow's SUBMITTED|PENDING claim guard.
     const [depositsResult] = await db
       .select({
         pendingDepositsCount: sql<number>`count(${topUpRequests.id})`,
       })
       .from(topUpRequests)
-      .where(eq(topUpRequests.status, "SUBMITTED"));
+      .where(inArray(topUpRequests.status, ["SUBMITTED", "PENDING"]));
 
     // 3. Active products count
     const [productsResult] = await db
@@ -215,6 +218,27 @@ export async function adminRoutes(server: FastifyInstance) {
         db.select({ count: sql<number>`count(${products.id})` }).from(products),
       ]);
 
+      let lastSyncedAt = catalogService.getLastSyncedAt();
+      if (!lastSyncedAt) {
+        const [row] = await db
+          .select()
+          .from(appSettings)
+          .where(eq(appSettings.key, "catalog_last_synced_at"))
+          .limit(1);
+        if (row?.value) {
+          lastSyncedAt = row.value;
+        } else {
+          const [latestSnapshot] = await db
+            .select({ syncedAt: productSupplierSnapshots.syncedAt })
+            .from(productSupplierSnapshots)
+            .orderBy(desc(productSupplierSnapshots.syncedAt))
+            .limit(1);
+          if (latestSnapshot?.syncedAt) {
+            lastSyncedAt = latestSnapshot.syncedAt.toISOString();
+          }
+        }
+      }
+
       return {
         ok: true,
         supplier: {
@@ -227,6 +251,8 @@ export async function adminRoutes(server: FastifyInstance) {
           latencyMs: status.latencyMs || 45,
           categoriesCount: Number(catResult?.count || 0),
           productsCount: Number(prodResult?.count || 0),
+          autoSyncIntervalMinutes: config.CATALOG_SYNC_INTERVAL_MINUTES,
+          lastSyncedAt: lastSyncedAt || null,
         },
       };
     } catch {
@@ -242,6 +268,8 @@ export async function adminRoutes(server: FastifyInstance) {
           latencyMs: 0,
           categoriesCount: 0,
           productsCount: 0,
+          autoSyncIntervalMinutes: config.CATALOG_SYNC_INTERVAL_MINUTES,
+          lastSyncedAt: catalogService.getLastSyncedAt() || null,
         },
       };
     }
@@ -266,6 +294,7 @@ export async function adminRoutes(server: FastifyInstance) {
         return {
           ok: true,
           synced: result,
+          lastSyncedAt: catalogService.getLastSyncedAt(),
         };
       } catch (err: any) {
         return reply.status(500).send({

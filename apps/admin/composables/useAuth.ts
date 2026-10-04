@@ -18,6 +18,9 @@ export function useAuth() {
     maxAge: 60 * 60 * 24 * 7, // 7 days
     sameSite: 'lax',
     path: '/',
+    // HTTPS-only once built for production; `nuxt dev` on localhost stays on
+    // plain http so the cookie still works without TLS.
+    secure: import.meta.env.PROD,
   });
 
   const user = useState<AdminUser | null>('admin_user', () => null);

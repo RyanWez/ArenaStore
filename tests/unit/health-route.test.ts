@@ -53,7 +53,9 @@ describe("GET /health", () => {
     const body = res.json();
     expect(body.status).toBe("degraded");
     expect(body.degraded).toBe(true);
-    expect(body.services.database).toContain("ECONNREFUSED");
+    // Error detail is logged server-side only — never echoed to the public body.
+    expect(body.services.database).toBe("error");
+    expect(res.body).not.toContain("ECONNREFUSED");
   });
 
   it("returns 200 with the degraded flag when the upstream API is down", async () => {
@@ -67,7 +69,8 @@ describe("GET /health", () => {
     expect(body.status).toBe("ok");
     expect(body.degraded).toBe(true);
     expect(body.services.database).toBe("connected");
-    expect(body.services.upstreamPartnerApi).toContain("upstream timeout");
+    expect(body.services.upstreamPartnerApi).toBe("error");
+    expect(res.body).not.toContain("upstream timeout");
   });
 
   it("returns 200 with the degraded flag when upstream reports ok:false", async () => {
