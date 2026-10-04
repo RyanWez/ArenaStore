@@ -4,6 +4,12 @@
 > **the two sections below — Financial Audit Logs and Minor Security Polish — must be
 > mentioned first**, before anything else. Created 2026-10-03 at the owner's request.
 >
+> **Status update 2026-10-04:** Financial Audit Logs is essentially DONE (RBAC commit
+> wired `writeAudit` into every money/admin action — see §1). Minor Security Polish is
+> DONE except #9 (Render env check, owner) and #10 (blocked on supplier) — see §2.
+> Remaining truly-open items live in the "Related smaller leftovers" list (all
+> nice-to-have). UptimeRobot now pings /health every 5 min (free-tier spin-down solved).
+>
 > Items already done (as of 2026-10-03): all Critical/High security fixes, dependency
 > CVE bumps, wallet atomicity everywhere, TOTP 2FA on admin login, performance work
 > (N+1 fixes, reservation purge, supervisor, .dockerignore). See git log for details.
@@ -15,8 +21,13 @@
 **Why:** wallet credits, debits, refunds and credential deliveries are money. Right now
 there is no durable record of *which admin approved what, when, for which customer*.
 
-**Current state (verified 2026-10-03):**
-- `auditLogs` is written ONLY by the customer deactivate / restore / delete flow
+**✅ RESOLVED 2026-10-04 (mostly by the RBAC commit 8be2c2b):** `writeAudit` now runs for
+supplier sync, product/category updates, deposit approve+reject (both panel and Telegram
+paths via `deposit-review.service.ts`), order refund, resend, settings/recalculate changes,
+balance adjustments, staff/role changes and customer status/delete — ~15 call sites across
+`admin.ts`, `admin-users.ts` and `deposit-review.service.ts`. The helper never throws, so a
+failed audit write can never fail the money mutation. History of the original finding:
+- `auditLogs` was (2026-10-03) written ONLY by the customer deactivate / restore / delete flow
   (`apps/api/src/routes/admin.ts` — 3 inserts around lines 1673/1721/1798).
 - The following money actions write **no** `auditLogs` row:
   - Deposit approve / reject — `POST /api/admin/deposits/:id/review` (admin.ts, review transaction ~line 639)
@@ -30,13 +41,13 @@ there is no durable record of *which admin approved what, when, for which custom
   the legacy `payment_submissions` table remains unused).
 
 **Fix approach:**
-1. Inside the SAME transaction as each wallet mutation, insert an `auditLogs` row:
-   action (`DEPOSIT_APPROVED`, `DEPOSIT_REJECTED`, `ORDER_REFUNDED`, `CREDENTIALS_RESENT`,
-   `BALANCE_ADJUSTED`), acting admin id, target customer/order id, amount, reference.
-2. Populate `payment_submissions.reviewed_by` (and `reviewed_at`) on deposit review.
-   ✅ Done 2026-10-04 for the active flow: `topup_requests.reviewedBy` + `reviewedAt` are set
-   inside the guarded review transaction (`POST /api/admin/deposits/:id/review`).
-3. Extend the admin list endpoints to join audit rows (optional, for an "activity" view).
+1. ✅ Done — every money action writes an `auditLogs` row (see RESOLVED note above). Rows are
+   written immediately after each mutation via the never-throw helper rather than inside the
+   wallet transaction itself; ledger rows remain the transactional record of record.
+2. ✅ Done 2026-10-04 for the active flow: `topup_requests.reviewedBy` + `reviewedAt` are set
+   inside the guarded review transaction (`POST /api/admin/deposits/:id/review` and the bot
+   endpoint share `reviewDeposit`). The legacy `payment_submissions` table stays unused.
+3. (Open, optional) Extend the admin list endpoints to join audit rows (an "activity" view).
 
 **Tests:** extend `tests/integration/wallet-topup.integration.test.ts` and
 `tests/integration/api-order-fulfillment.integration.test.ts` (or admin-order-actions unit
@@ -48,16 +59,16 @@ tests) to assert the audit row exists after each money action, with the acting a
 
 | # | Item | Where | Fix |
 |---|------|-------|-----|
-| 1 | Sentry sends local error context that may contain customer PII (names, telegram ids) | `apps/api/src/instrument.ts`, `apps/bot/src/instrument.ts` | Add a `beforeSend` hook that drops `request` data and redacts PII-shaped strings |
-| 2 | `GET /health` returns raw DB error text (can leak host/credential fragments on DB failure) | `apps/api/src/routes/health.ts` (~lines 24-26, 47) | Return a generic message; log the detail server-side only |
-| 3 | Admin session cookie lacks the `secure` flag | `apps/admin/composables/useAuth.ts` (`useCookie('arena_admin_token', ...)`) | Set `secure: true` in production (conditionally — `secure` cookies are not sent over plain http on some browsers; keep it off for `localhost` dev) |
-| 4 | Dead secrets invite confusion: `ADMIN_API_KEY` is read + guarded but used by no route; `TELEGRAM_SECRET_TOKEN` exists in env files but is never read (bot uses long polling, not webhooks) | `apps/api/src/config.ts:31`, `.env.example:5` | Remove both, or implement their intended feature |
-| 5 | Public `GET /api/users/:telegramId/profile` exposes `totalSpentMmk` / `ordersCount` for any Telegram id without auth | `apps/api/src/routes/orders.ts:93-103` | Restrict to bot-internal calls (shared secret header) or delete the endpoint if unused |
-| 6 | Order-creation rate-limit key trusts `body.telegramId` (spoofable → fresh bucket per fake id; can pin 15-min stock reservations on arbitrary users) | `apps/api/src/routes/orders.ts` (keyGenerator ~line 15-17) | Combine IP + telegramId in the key: `order_${req.ip}_${tgId}` |
-| 7 | `ADMIN_INITIAL_PASSWORD` still defaults to `ArenaAdmin2026!` and has **no** production guard (the other defaults do throw in production) | `apps/api/src/config.ts:20` + guard block `:81-97` | Add a production guard that throws when it equals the default (password was rotated manually on Render, but the guard prevents regressions) |
-| 8 | Dashboard status drift: `pendingOrders` counts statuses `'PENDING'` / `'PROCESSING'` which never occur → metric is always 0 (real values: `PENDING_PAYMENT`, `PROCESSING_SUPPLIER`, …). Top-up status values also mix conventions | `apps/api/src/routes/admin.ts:170` (verified), schema comments in `packages/db/src/schema/topups.ts:16` | Align counted status values with the actual `OrderStatus` enum / top-up statuses |
-| 9 | Verify `REDIS_URL` in production uses `rediss://` (TLS) — code sets no TLS option; it relies entirely on the URL scheme | Render env; `apps/api/src/services/redis.ts` | Check the Render dashboard value; if plain `redis://`, switch to `rediss://` |
-| 10 | Supplier API key + order traffic travel over plaintext HTTP (`http://paid2.daki.cc:4153/...`) | `apps/api/src/config.ts` (`UPSTREAM_BASE_URL` default), `.env` | Bigger than "minor": request HTTPS from the supplier (or IP-allowlist), then rotate the key. Blocked on the supplier, not on us |
+| 1 | ✅ DONE 2026-10-04 — Sentry sends local error context that may contain customer PII | `apps/api/src/instrument.ts`, `apps/bot/src/instrument.ts` | `beforeSend` drops `event.request` and redacts values under PII-shaped keys (telegram/username/phone/email/password/token/secret/authorization/cookie) in extra/contexts/breadcrumbs |
+| 2 | ✅ DONE 2026-10-04 — `GET /health` returned raw DB error text | `apps/api/src/routes/health.ts` | Response now carries a generic `error` marker; detail logged server-side only (`health-route.test.ts` asserts no leak) |
+| 3 | ✅ DONE 2026-10-04 — Admin session cookie lacked the `secure` flag | `apps/admin/composables/useAuth.ts` | `secure: import.meta.env.PROD` — on for built deploys, off for `nuxt dev` on localhost |
+| 4 | ✅ DONE 2026-10-04 — Dead secrets invited confusion | `config.ts`, `.env.example`, `docker-compose.yml` | `ADMIN_API_KEY` (read+guarded but used by no route) and `TELEGRAM_SECRET_TOKEN` (never read; bot uses long polling) removed everywhere |
+| 5 | ✅ DONE 2026-10-04 — Public profile endpoint exposed spending stats | `apps/api/src/routes/orders.ts` | `GET /api/users/:telegramId/profile` deleted (no consumer — the bot reads the DB directly via its own `getUserProfile`); unused API service method removed too |
+| 6 | ✅ DONE 2026-10-04 — Order rate-limit key trusted `body.telegramId` alone | `apps/api/src/routes/orders.ts` | Bucket is now `order_${req.ip}_${tgId}` — a spoofed id can no longer mint fresh buckets (`rate-limit.test.ts` mirrors it) |
+| 7 | ✅ DONE 2026-10-04 — `ADMIN_INITIAL_PASSWORD` default had no production guard | `apps/api/src/config.ts` | Throws at boot in production when equal to `ArenaAdmin2026!`, matching the sibling guards. NOTE: Render env must carry a custom ADMIN_INITIAL_PASSWORD or the deploy boot-loops |
+| 8 | ✅ DONE 2026-10-04 — Dashboard `pendingOrders` always counted 0 | `apps/api/src/routes/admin.ts` | Counts the real in-flight statuses `PENDING_PAYMENT`/`PAYMENT_SUBMITTED`; pendingDeposits now counts both reviewable statuses (`SUBMITTED`+`PENDING`) |
+| 9 | OPEN (owner action) — Verify `REDIS_URL` in production uses `rediss://` (TLS) — code sets no TLS option; it relies entirely on the URL scheme | Render env; `apps/api/src/services/redis.ts` | Check the Render dashboard value; if plain `redis://`, switch to `rediss://` |
+| 10 | OPEN (blocked on supplier) — Supplier API key + order traffic travel over plaintext HTTP (`http://paid2.daki.cc:4153/...`) | `apps/api/src/config.ts` (`UPSTREAM_BASE_URL` default), `.env` | Request HTTPS from the supplier (or IP-allowlist), then rotate the key. Blocked on the supplier, not on us |
 
 ---
 
