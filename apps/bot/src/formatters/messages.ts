@@ -117,15 +117,20 @@ export function formatDeliveryMessage(params: {
   productName: string;
   deliveryType: string;
   credentialsText: string;
+  viewUrl?: string;
 }): string {
   const cleanCreds = formatCredentialsText(params.credentialsText);
+  const viewUrlBlock = params.viewUrl
+    ? `\n\n🔗 <b>Order Status / Access Link:</b>\n<a href="${escapeHtml(params.viewUrl)}">${escapeHtml(params.viewUrl)}</a>`
+    : "";
+
   return `<blockquote>${tgEmoji(BOT_EMOJIS.PARTY, "🎉")} <b>အော်ဒါ အောင်မြင်စွာ ပို့ဆောင်ပြီးပါပြီ!</b> ❞
 အော်ဒါနံပါတ်: <b>${params.publicOrderNo}</b>
 ပစ္စည်း: <b>${escapeHtml(params.productName)}</b>
 ပို့ဆောင်မှု အမျိုးအစား: <b>${params.deliveryType}</b></blockquote>
 
 ${tgEmoji(BOT_EMOJIS.KEY, "🔑")} <b>သင့်အကောင့် အချက်အလက်များ:</b>
-<pre><code>${escapeHtml(cleanCreds)}</code></pre>
+<pre><code>${escapeHtml(cleanCreds)}</code></pre>${viewUrlBlock}
 
 Arena Store ကို အားပေးသည့်အတွက် ကျေးဇူးအထူးတင်ရှိပါသည်! ${tgEmoji(BOT_EMOJIS.SPARKLES, "✨")}`;
 }
@@ -297,8 +302,13 @@ export function formatWalletDeliveryMessage(params: {
   totalMmk: number;
   remainingBalanceMmk: number;
   credentialsText: string;
+  viewUrl?: string;
 }): string {
   const cleanCreds = formatCredentialsText(params.credentialsText);
+  const viewUrlBlock = params.viewUrl
+    ? `\n\n🔗 <b>Order Status / Access Link:</b>\n<a href="${escapeHtml(params.viewUrl)}">${escapeHtml(params.viewUrl)}</a>`
+    : "";
+
   return `<blockquote>${tgEmoji(BOT_EMOJIS.PARTY, "🎉")} <b>အော်ဒါ အောင်မြင်စွာ ပို့ဆောင်ပြီးပါပြီ!</b> ❞
 အော်ဒါနံပါတ်: <b>${params.publicOrderNo}</b>
 ပစ္စည်း: <b>${escapeHtml(params.productName)} x ${params.quantity}</b>
@@ -306,7 +316,7 @@ export function formatWalletDeliveryMessage(params: {
 လက်ကျန် Wallet Balance: <b>${params.remainingBalanceMmk.toLocaleString("en-US")} MMK</b></blockquote>
 
 ${tgEmoji(BOT_EMOJIS.KEY, "🔑")} <b>သင့်အကောင့် အချက်အလက်များ:</b>
-<pre><code>${escapeHtml(cleanCreds)}</code></pre>
+<pre><code>${escapeHtml(cleanCreds)}</code></pre>${viewUrlBlock}
 
 Arena Store ကို အားပေးသည့်အတွက် ကျေးဇူးအထူးတင်ရှိပါသည်! ${tgEmoji(BOT_EMOJIS.SPARKLES, "✨")}`;
 }
@@ -339,6 +349,7 @@ export function formatOrderDetailMessage(order: {
   status: string;
   createdAt: string;
   credentialsText?: string;
+  viewUrl?: string;
 }): string {
   const statusLabel =
     order.status === "DELIVERED"
@@ -352,7 +363,10 @@ export function formatOrderDetailMessage(order: {
   let credentialsBlock = "";
   if (order.status === "DELIVERED" && order.credentialsText) {
     const cleanCreds = formatCredentialsText(order.credentialsText);
-    credentialsBlock = `\n\n${tgEmoji(BOT_EMOJIS.KEY, "🔑")} <b>အကောင့် အချက်အလက်များ:</b>\n<pre><code>${escapeHtml(cleanCreds)}</code></pre>`;
+    const viewUrlLine = order.viewUrl
+      ? `\n\n🔗 <b>Order Status / Access Link:</b>\n<a href="${escapeHtml(order.viewUrl)}">${escapeHtml(order.viewUrl)}</a>`
+      : "";
+    credentialsBlock = `\n\n${tgEmoji(BOT_EMOJIS.KEY, "🔑")} <b>အကောင့် အချက်အလက်များ:</b>\n<pre><code>${escapeHtml(cleanCreds)}</code></pre>${viewUrlLine}`;
   }
 
   return `<blockquote>${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>အော်ဒါ အသေးစိတ် · ${order.publicOrderNo}</b> ❞

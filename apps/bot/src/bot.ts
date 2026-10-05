@@ -531,6 +531,7 @@ export function createBot(): Bot<BotContext> {
         totalMmk: result.totalMmk!,
         remainingBalanceMmk: result.remainingBalance!,
         credentialsText: result.credentialsText!,
+        viewUrl: result.viewUrl,
       }),
       {
         parse_mode: "HTML",

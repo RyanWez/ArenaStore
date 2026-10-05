@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { encryptPayload, decryptPayload, formatCredentialsText } from "../../apps/api/src/services/encryption";
+import {
+  encryptPayload,
+  decryptPayload,
+  formatCredentialsText,
+  decryptDeliveryPayload,
+  type DeliveryPayloadV2,
+} from "../../apps/api/src/services/encryption";
 
 describe("AES-256-GCM Delivery Credentials Encryption", () => {
   const secretKey = "test-secret-encryption-key-32bytes-long!";
@@ -26,6 +32,34 @@ describe("AES-256-GCM Delivery Credentials Encryption", () => {
     const decrypted = decryptPayload<string[]>(encrypted, secretKey, true);
 
     expect(decrypted).toEqual(accounts);
+  });
+
+  it("encrypts and decrypts DeliveryPayloadV2 with viewUrl and supplier", () => {
+    const v2: DeliveryPayloadV2 = {
+      v: 2,
+      lines: ["https://notion.com/redeem/abc12345"],
+      viewUrl: "https://digitalcore.top/order?id=123",
+      supplier: "DIGITALCORE",
+    };
+
+    const encrypted = encryptPayload(v2, secretKey);
+    const result = decryptDeliveryPayload(encrypted, secretKey);
+
+    expect(result.lines).toEqual(["https://notion.com/redeem/abc12345"]);
+    expect(result.viewUrl).toBe("https://digitalcore.top/order?id=123");
+    expect(result.supplier).toBe("DIGITALCORE");
+    expect(result.rawText).toBe("https://notion.com/redeem/abc12345");
+  });
+
+  it("decryptDeliveryPayload handles legacy v1 string[] payloads (backward compatibility)", () => {
+    const legacyV1 = ["account1@gmail.com:pass1", "account2@gmail.com:pass2"];
+    const encrypted = encryptPayload(legacyV1, secretKey);
+
+    const result = decryptDeliveryPayload(encrypted, secretKey);
+    expect(result.lines).toEqual(legacyV1);
+    expect(result.viewUrl).toBeUndefined();
+    expect(result.supplier).toBeUndefined();
+    expect(result.rawText).toBe("account1@gmail.com:pass1\naccount2@gmail.com:pass2");
   });
 
   it("produces unique ciphertexts for identical inputs due to random IV", () => {
@@ -77,6 +111,17 @@ describe("AES-256-GCM Delivery Credentials Encryption", () => {
   });
 
   describe("formatCredentialsText", () => {
+    it("formats DeliveryPayloadV2 object correctly", () => {
+      const v2 = {
+        v: 2,
+        lines: ["https://notion.com/redeem/abc12345", "https://notion.com/redeem/def67890"],
+        viewUrl: "https://digitalcore.top/order?id=123",
+      };
+      expect(formatCredentialsText(v2)).toBe(
+        "https://notion.com/redeem/abc12345\nhttps://notion.com/redeem/def67890"
+      );
+    });
+
     it("strips JSON array brackets and quotes from single-line URL", () => {
       const raw = '["https://serviceactivationgoogle.com/subscription/new/abc12345"]';
       expect(formatCredentialsText(raw)).toBe(

@@ -4,7 +4,13 @@ import { botCatalog } from "./catalog.service";
 import { botSettingsService } from "./settings.service";
 import { createSupplierClient, SupplierError, type SupplierId } from "@arena/suppliers";
 import { escapeHtml } from "@arena/shared";
-import { encryptPayload, decryptPayload, formatCredentialsText } from "./encryption";
+import {
+  encryptPayload,
+  decryptPayload,
+  formatCredentialsText,
+  decryptDeliveryPayload,
+  type DeliveryPayloadV2,
+} from "./encryption";
 import {
   getDb,
   users,
@@ -58,9 +64,10 @@ export interface OrderRecord {
   productName: string;
   quantity: number;
   totalMmk: number;
-  status: "PENDING_PAYMENT" | "PAYMENT_SUBMITTED" | "DELIVERED" | "CANCELLED";
+  status: "PENDING_PAYMENT" | "PAYMENT_SUBMITTED" | "DELIVERED" | "CANCELLED" | "TIMEOUT_REFUNDED";
   createdAt: string;
   credentialsText?: string;
+  viewUrl?: string;
 }
 
 export interface TopUpRecord {
@@ -533,6 +540,7 @@ export class BotOrderService {
     quantity?: number;
     totalMmk?: number;
     credentialsText?: string;
+    viewUrl?: string;
     remainingBalance?: number;
     error?: string;
     errorMessage?: string;
@@ -650,6 +658,7 @@ export class BotOrderService {
       let deliveryLines: string[] = [];
       let deliveryType = product.deliveryType || "CREDENTIALS";
       let upstreamOrderId: string | null = null;
+      let upstreamViewUrl: string | undefined = undefined;
       let upstreamUnitPrice = product.supplierPriceUsd;
 
       const isTest = process.env.NODE_ENV === "test" || process.env.VITEST !== undefined;
@@ -708,6 +717,7 @@ export class BotOrderService {
           });
 
           upstreamOrderId = upstreamRes.upstreamOrderId ? String(upstreamRes.upstreamOrderId) : null;
+          upstreamViewUrl = upstreamRes.viewUrl;
           deliveryType = (upstreamRes.raw as any)?.delivery?.type || product.deliveryType || "CREDENTIALS";
           deliveryLines = upstreamRes.items || [];
           if (upstreamRes.viewUrl && !deliveryLines.includes(upstreamRes.viewUrl)) {
@@ -834,7 +844,13 @@ export class BotOrderService {
         ? deliveryLines.map((line, idx) => `#${idx + 1}: ${line}`).join("\n")
         : deliveryLines[0] || "အကောင့်အချက်အလက်ကို ရယူပြီးပါပြီ။";
       const credentialsText = formatCredentialsText(rawDeliveryText);
-      const encryptedPayload = encryptPayload(deliveryLines);
+      const deliveryPayloadV2: DeliveryPayloadV2 = {
+        v: 2,
+        lines: deliveryLines,
+        viewUrl: upstreamViewUrl,
+        supplier: supplierId,
+      };
+      const encryptedPayload = encryptPayload(deliveryPayloadV2);
 
       // 5. Commit Order & Ledger in Atomic PostgreSQL Transaction
       if (user && debitedWalletId !== null) {
@@ -900,6 +916,7 @@ export class BotOrderService {
         status: "DELIVERED",
         createdAt: new Date().toISOString(),
         credentialsText,
+        viewUrl: upstreamViewUrl,
       };
 
       const list = this.memoryOrders.get(params.telegramId) || [];
@@ -915,6 +932,7 @@ export class BotOrderService {
         quantity: params.quantity,
         totalMmk,
         credentialsText,
+        viewUrl: upstreamViewUrl,
         remainingBalance,
       };
     } finally {
@@ -1045,10 +1063,12 @@ export class BotOrderService {
           .limit(1);
 
         let credentialsText: string | undefined = undefined;
+        let viewUrl: string | undefined = undefined;
         if (deliv?.encryptedPayload) {
           try {
-            const dec = decryptPayload(deliv.encryptedPayload);
-            credentialsText = formatCredentialsText(dec);
+            const dec = decryptDeliveryPayload(deliv.encryptedPayload);
+            credentialsText = formatCredentialsText(dec.lines);
+            viewUrl = dec.viewUrl;
           } catch (err: any) {
             console.warn(`[BotOrderService] Decryption failed for order ${orderRow.publicOrderNo}:`, err.message);
             credentialsText = deliv.encryptedPayload;
@@ -1065,6 +1085,7 @@ export class BotOrderService {
           status: orderRow.status as any,
           createdAt: orderRow.createdAt.toISOString(),
           credentialsText,
+          viewUrl,
         };
       }
     } catch (err: any) {

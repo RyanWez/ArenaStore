@@ -69,6 +69,49 @@ export function decryptPayload<T = string>(
   return decrypted as unknown as T;
 }
 
+export interface DeliveryPayloadV2 {
+  v: 2;
+  lines: string[];
+  viewUrl?: string;
+  supplier?: string;
+}
+
+/**
+ * Decrypts delivery payload with full backward-compatibility for v1 (string[]) and v2.
+ */
+export function decryptDeliveryPayload(
+  encryptedString: string,
+  secretKey: string = config.DELIVERY_ENCRYPTION_KEY
+): { lines: string[]; viewUrl?: string; supplier?: string; rawText: string } {
+  const decrypted = decryptPayload<string>(encryptedString, secretKey);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(decrypted);
+  } catch {
+    return { lines: [decrypted], rawText: decrypted };
+  }
+
+  if (parsed && typeof parsed === "object") {
+    if ("v" in parsed && (parsed as any).v === 2) {
+      const v2 = parsed as DeliveryPayloadV2;
+      return {
+        lines: v2.lines || [],
+        viewUrl: v2.viewUrl,
+        supplier: v2.supplier,
+        rawText: (v2.lines || []).join("\n"),
+      };
+    }
+    if (Array.isArray(parsed)) {
+      return {
+        lines: parsed.map(String),
+        rawText: parsed.join("\n"),
+      };
+    }
+  }
+
+  return { lines: [decrypted], rawText: decrypted };
+}
+
 /**
  * Normalizes credentials into clean, newline-delimited text without JSON brackets,
  * quotes, or escaping (e.g. converts `["https://..."]` or `"https://..."` into `https://...`).
@@ -89,6 +132,12 @@ export function formatCredentialsText(raw: unknown): string {
       } catch {
         // Keep as string
       }
+    }
+  }
+
+  if (typeof val === "object" && val !== null) {
+    if ("lines" in val && Array.isArray((val as any).lines)) {
+      val = (val as any).lines;
     }
   }
 

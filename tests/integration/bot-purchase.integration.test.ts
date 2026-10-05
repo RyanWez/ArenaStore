@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { botOrderService } from "../../apps/bot/src/services/order.service";
-import { decryptPayload } from "../../apps/bot/src/services/encryption";
+import { decryptDeliveryPayload } from "../../apps/bot/src/services/encryption";
 import {
   getDb,
   closeDb,
@@ -122,9 +122,9 @@ describe("Bot instant wallet purchase (Recommendation D money path)", () => {
     const payload = deliveryRow.encryptedPayload;
     expect(payload.split(":")).toHaveLength(3);
     expect(payload).not.toContain(res.credentialsText!);
-    const lines = decryptPayload<string[]>(payload, undefined, true);
-    expect(Array.isArray(lines)).toBe(true);
-    expect(lines.join("\n")).toBe(res.credentialsText);
+    const delivery = decryptDeliveryPayload(payload, undefined);
+    expect(Array.isArray(delivery.lines)).toBe(true);
+    expect(delivery.lines.join("\n")).toBe(res.credentialsText);
 
     // Wallet balance via the service reflects the debit.
     expect(await botOrderService.getWalletBalance(telegramId)).toBe(

@@ -19,6 +19,7 @@ const envSchema = z.object({
   ADMIN_EMAIL: z.string().email().default("admin@arenastore.mm"),
   ADMIN_INITIAL_PASSWORD: z.string().min(6).default("ArenaAdmin2026!"),
   TELEGRAM_BOT_TOKEN: z.string().default(""),
+  TELEGRAM_GROUP_CHAT_ID: z.string().default(""),
   UPSTREAM_BASE_URL: z
     .string()
     .url()
@@ -116,6 +117,9 @@ export function loadConfig(): AppConfig {
     SUPPLIERS_ENABLED:
       process.env.SUPPLIERS_ENABLED ||
       "xpro",
+    TELEGRAM_GROUP_CHAT_ID:
+      process.env.TELEGRAM_GROUP_CHAT_ID ||
+      "",
   };
 
   const parsed = envSchema.safeParse(rawEnv);

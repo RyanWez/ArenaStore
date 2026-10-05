@@ -8,6 +8,8 @@
  * upsert, and this app must keep working without Redis.
  */
 
+import { supplierBalanceMonitor } from "./supplier-balance-monitor";
+
 export interface CatalogSyncResult {
   categories: number;
   products: number;
@@ -60,6 +62,14 @@ export function startCatalogSyncScheduler(options: StartSchedulerOptions): Catal
         `[CatalogScheduler] ${trigger} sync completed in ${Date.now() - startedAt}ms ` +
           `(${result.categories} categories, ${result.products} products).`
       );
+
+      if (process.env.NODE_ENV !== "test") {
+        try {
+          await supplierBalanceMonitor.checkBalances();
+        } catch (balErr: any) {
+          log.warn(`[CatalogScheduler] Supplier balance check warning: ${balErr.message}`);
+        }
+      }
     } catch (err: any) {
       log.warn(`[CatalogScheduler] ${trigger} sync failed: ${err.message}`);
     } finally {

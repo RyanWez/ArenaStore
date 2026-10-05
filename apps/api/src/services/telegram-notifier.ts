@@ -1,6 +1,8 @@
 import { config } from "../config";
 import { BOT_EMOJIS, tgEmoji, escapeHtml } from "@arena/shared";
 import { formatCredentialsText } from "./encryption";
+import { getDb, appSettings } from "@arena/db";
+import { eq } from "drizzle-orm";
 
 export async function sendTelegramMessage(chatId: string, text: string): Promise<boolean> {
   if (!config.TELEGRAM_BOT_TOKEN) {
@@ -167,5 +169,46 @@ export async function notifyBalanceAdjusted(params: {
     `ကျေးဇူးတင်ရှိပါသည်ခင်ဗျာ။ ${sparkles}`;
 
   return sendTelegramMessage(telegramId, text);
+}
+
+/**
+ * Sends a low balance alert for an upstream supplier to the admin Telegram group.
+ */
+export async function notifyLowSupplierBalance(params: {
+  supplier: string;
+  balanceUsd: string;
+  thresholdUsd: number;
+}): Promise<boolean> {
+  const { supplier, balanceUsd, thresholdUsd } = params;
+  let chatId = config.TELEGRAM_GROUP_CHAT_ID;
+  if (!chatId) {
+    try {
+      const db = getDb();
+      const [setting] = await db
+        .select()
+        .from(appSettings)
+        .where(eq(appSettings.key, "telegramGroupChatId"));
+      if (setting && setting.value) chatId = setting.value;
+    } catch {
+      // ignore
+    }
+  }
+
+  if (!chatId) {
+    console.warn("[Telegram Notifier] No admin group chatId configured for low balance alert.");
+    return false;
+  }
+
+  const warning = tgEmoji(BOT_EMOJIS.WARNING, "⚠️");
+  const money = tgEmoji(BOT_EMOJIS.MONEY, "💰");
+
+  const text =
+    `<blockquote>${warning} <b>LOW SUPPLIER BALANCE ALERT</b> ❞\n\n` +
+    `• <b>Supplier:</b> <code>${escapeHtml(supplier)}</code>\n` +
+    `• <b>Current Balance:</b> <b>$${escapeHtml(balanceUsd)} USD</b>\n` +
+    `• <b>Threshold:</b> $${thresholdUsd.toFixed(2)} USD\n\n` +
+    `${money} ကျေးဇူးပြု၍ ${escapeHtml(supplier)} အကောင့်သို့ ငွေကြိုတင်ဖြည့်သွင်းပေးပါရန် အသိပေးအပ်ပါသည်။`;
+
+  return sendTelegramMessage(chatId, text);
 }
 
