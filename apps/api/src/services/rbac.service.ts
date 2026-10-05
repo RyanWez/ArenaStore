@@ -78,7 +78,7 @@ export class RbacService {
     return ctx.isSuperadmin || ctx.permissions.includes(permission);
   }
 
-  /** Idempotently creates the default roles and their permission sets. */
+  /** Idempotently creates the default roles and their permission sets on initial setup. */
   async seedDefaultRoles(): Promise<void> {
     const db = getDb();
     for (const def of DEFAULT_ROLES) {
@@ -94,21 +94,15 @@ export class RbacService {
         .onConflictDoNothing()
         .returning();
 
-      if (!role) {
-        // Role already exists — just make sure its default permissions are present.
-        const [existing] = await db.select().from(roles).where(eq(roles.key, def.key)).limit(1);
-        if (!existing) continue;
+      // Only seed default permissions when the role is freshly inserted into the database.
+      // If the role already exists, NEVER overwrite or re-inject permissions, preserving
+      // all custom configurations saved by admins in the Roles UI.
+      if (role) {
         await db
           .insert(rolePermissions)
-          .values(def.permissions.map((permission) => ({ roleId: existing.id, permission })))
+          .values(def.permissions.map((permission) => ({ roleId: role.id, permission })))
           .onConflictDoNothing();
-        continue;
       }
-
-      await db
-        .insert(rolePermissions)
-        .values(def.permissions.map((permission) => ({ roleId: role.id, permission })))
-        .onConflictDoNothing();
     }
     console.log("[RBAC] Default roles seeded");
   }

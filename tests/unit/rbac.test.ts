@@ -276,6 +276,26 @@ describe("rbacService.seedDefaultRoles", () => {
       support.permissions.length
     );
   });
+
+  it("preserves custom role permissions and does not re-add removed permissions on subsequent boots", async () => {
+    // 1. Initial boot seeds the roles
+    await rbacService.seedDefaultRoles();
+    const adminRole = h.state.rows.roles.find((r) => r.key === "ADMIN")!;
+
+    // 2. Admin explicitly unchecks "settings.pricing" (Rates & Margins) and saves
+    h.state.rows.rolePermissions = h.state.rows.rolePermissions.filter(
+      (p) => !(p.roleId === adminRole.id && p.permission === "settings.pricing")
+    );
+    const permsBeforeReboot = h.state.rows.rolePermissions.filter((p) => p.roleId === adminRole.id);
+    expect(permsBeforeReboot.some((p) => p.permission === "settings.pricing")).toBe(false);
+
+    // 3. Server reboots (e.g. after code deploy or push) and runs seedDefaultRoles again
+    await rbacService.seedDefaultRoles();
+
+    // 4. "settings.pricing" must NOT be forcefully re-injected!
+    const permsAfterReboot = h.state.rows.rolePermissions.filter((p) => p.roleId === adminRole.id);
+    expect(permsAfterReboot.some((p) => p.permission === "settings.pricing")).toBe(false);
+  });
 });
 
 describe("seedDefaultAdmin SUPERADMIN promotion", () => {
