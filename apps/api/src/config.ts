@@ -32,11 +32,32 @@ const envSchema = z.object({
   DEFAULT_MARGIN_PERCENTAGE: z.coerce.number().default(25),
   /** Automatic catalog sync cadence in minutes; 0 disables the scheduler. */
   CATALOG_SYNC_INTERVAL_MINUTES: z.coerce.number().int().min(0).default(10),
-  /** Whether Fastify should trust reverse proxy headers like X-Forwarded-For */
+  /**
+   * Whether Fastify should trust reverse proxy headers like X-Forwarded-For.
+   * - "loopback, uniquelocal" (or 1): trusts local & private reverse proxies (e.g. Render,
+   *   Docker, Cloudflare, Nginx, AWS VPC) while rejecting spoofed IP headers from public clients. (Default)
+   * - false: disables proxy trust completely (binds to socket remoteAddress).
+   * - true: trusts all hops in the X-Forwarded-For chain.
+   * - string: specific trusted IPs, CIDR subnets, or proxy-addr keywords.
+   */
   TRUST_PROXY: z
-    .union([z.boolean(), z.string()])
-    .default(true)
-    .transform((val) => (typeof val === "string" ? val.toLowerCase() === "true" || val === "1" : val)),
+    .union([z.boolean(), z.number(), z.string()])
+    .default("loopback, uniquelocal")
+    .transform((val): boolean | string => {
+      if (typeof val === "boolean") return val;
+      if (typeof val === "number") {
+        if (val === 0) return false;
+        return "loopback, uniquelocal";
+      }
+      if (typeof val === "string") {
+        const lower = val.toLowerCase().trim();
+        if (lower === "true") return true;
+        if (lower === "false" || lower === "0" || lower === "") return false;
+        if (lower === "1") return "loopback, uniquelocal";
+        return val; // Allow specific IP or CIDR subnet
+      }
+      return "loopback, uniquelocal";
+    }),
   /** Allowed CORS origins (comma-separated domains) */
   CORS_ORIGIN: z.string().default("http://localhost:3000,http://127.0.0.1:3000"),
   /**
@@ -60,7 +81,7 @@ export type AppConfig = z.infer<typeof envSchema>;
 export function loadConfig(): AppConfig {
   const rawEnv = {
     ...process.env,
-    TRUST_PROXY: process.env.TRUST_PROXY ?? true,
+    TRUST_PROXY: process.env.TRUST_PROXY ?? "loopback, uniquelocal",
     CORS_ORIGIN:
       process.env.CORS_ORIGIN ||
       process.env.ALLOWED_ORIGINS ||

@@ -4,7 +4,6 @@ import sensible from "@fastify/sensible";
 import { registerRateLimit } from "./plugins/rate-limit";
 import { healthRoutes } from "./routes/health";
 import { catalogRoutes } from "./routes/catalog";
-import { orderRoutes } from "./routes/orders";
 import { adminRoutes } from "./routes/admin";
 import { adminUsersRoutes } from "./routes/admin-users";
 import { botRoutes } from "./routes/bot";
@@ -38,8 +37,7 @@ export async function buildServer(): Promise<FastifyInstance> {
       const isAllowed =
         configuredOrigins.includes(origin) ||
         (config.NODE_ENV !== "production" &&
-          (origin.includes("localhost") || origin.includes("127.0.0.1"))) ||
-        /^https:\/\/.*\.vercel\.app$/.test(origin);
+          (origin.includes("localhost") || origin.includes("127.0.0.1")));
 
       if (isAllowed) {
         cb(null, true);
@@ -92,7 +90,6 @@ export async function buildServer(): Promise<FastifyInstance> {
   // Register Routes
   await server.register(healthRoutes);
   await server.register(catalogRoutes);
-  await server.register(orderRoutes);
   await server.register(authRoutes);
   await server.register(adminRoutes);
   await server.register(adminUsersRoutes);
@@ -102,9 +99,15 @@ export async function buildServer(): Promise<FastifyInstance> {
   server.setErrorHandler((error: any, _request, reply) => {
     server.log.error(error);
     const statusCode = error.statusCode || 500;
+    const isProd = config.NODE_ENV === "production";
+    const clientMessage =
+      statusCode >= 500 && isProd
+        ? "An internal server error occurred."
+        : error.message || "Internal Server Error";
+
     reply.status(statusCode).send({
       ok: false,
-      error: error.message || "Internal Server Error",
+      error: clientMessage,
     });
   });
 

@@ -132,9 +132,15 @@ import { reviewDeposit, buildCustomerDisplayName } from "../../apps/api/src/serv
 import { isUserAuthorizedApprover } from "../../apps/bot/src/handlers/admin-deposit-review";
 
 describe("isUserAuthorizedApprover (Telegram group approver allowlist)", () => {
-  it("allows any user when allowlist is empty or whitespace", () => {
-    expect(isUserAuthorizedApprover({ id: 111, username: "anyone" }, "")).toBe(true);
-    expect(isUserAuthorizedApprover({ id: 222 }, "   ")).toBe(true);
+  it("rejects unauthorized users when allowlist and admin fallback are empty or whitespace (default-deny)", () => {
+    expect(isUserAuthorizedApprover({ id: 111, username: "anyone" }, "")).toBe(false);
+    expect(isUserAuthorizedApprover({ id: 222 }, "   ")).toBe(false);
+  });
+
+  it("authorizes user matching admin fallback when approver allowlist is empty", () => {
+    expect(isUserAuthorizedApprover({ id: 999, username: "admin" }, "", "admin, 888")).toBe(true);
+    expect(isUserAuthorizedApprover({ id: 888 }, "", "admin, 888")).toBe(true);
+    expect(isUserAuthorizedApprover({ id: 777 }, "", "admin, 888")).toBe(false);
   });
 
   it("authorizes user matching numeric Telegram ID", () => {

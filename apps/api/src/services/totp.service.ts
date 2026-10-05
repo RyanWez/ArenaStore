@@ -30,7 +30,7 @@ export const totpService = {
   },
 
   /**
-   * Verifies a 6-digit code against the configured secret, tolerating one
+   * Verifies a 6-digit code against the configured global secret, tolerating one
    * 30-second period of clock drift in either direction.
    */
   verifyCode(code: string, accountLabel: string = config.ADMIN_EMAIL): boolean {

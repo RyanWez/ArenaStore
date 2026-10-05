@@ -31,8 +31,7 @@ vi.mock("../../apps/api/src/services/xpro-client", () => ({
 }));
 
 import { catalogService } from "../../apps/api/src/services/catalog.service";
-import { orderService } from "../../apps/api/src/services/order.service";
-import { getDb, closeDb, stockReservations } from "@arena/db";
+import { getDb, closeDb, users, orders, stockReservations } from "@arena/db";
 import { seedCatalog, syntheticTelegramId } from "../fixtures/seed";
 
 afterAll(async () => {
@@ -41,18 +40,39 @@ afterAll(async () => {
 
 async function createReservationForTest(productId: number) {
   const telegramId = syntheticTelegramId();
-  const order = await orderService.createPendingOrder({
-    telegramId,
-    productId,
-    quantity: 1,
-    username: "test_customer",
-    firstName: "Test",
-  });
   const db = getDb();
+  const [user] = await db
+    .insert(users)
+    .values({
+      telegramId,
+      username: "test_customer",
+      firstName: "Test",
+      role: "CUSTOMER",
+    })
+    .returning();
+
+  const rand = Math.floor(10000 + Math.random() * 90000);
+  const [order] = await db
+    .insert(orders)
+    .values({
+      publicOrderNo: `ARN-${Date.now()}-${rand}`,
+      externalOrderId: `ext-ord-${Date.now()}-${rand}`,
+      customerId: user.id,
+      totalAmountMmk: 5000,
+      status: "PENDING_PAYMENT",
+    })
+    .returning();
+
   const [reservation] = await db
-    .select()
-    .from(stockReservations)
-    .where(eq(stockReservations.orderId, order.orderId));
+    .insert(stockReservations)
+    .values({
+      orderId: order.id,
+      productId,
+      quantity: 1,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+    })
+    .returning();
+
   expect(reservation).toBeTruthy();
   return reservation;
 }

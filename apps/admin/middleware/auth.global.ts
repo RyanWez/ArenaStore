@@ -28,26 +28,26 @@ function requiredPermissionFor(path: string): string | null {
 }
 
 export default defineNuxtRouteMiddleware(async (to) => {
-  const { token, user, fetchUser, mustChangePassword, permissions } = useAuth()
+  const { user, fetchUser, mustChangePassword, permissions } = useAuth()
 
   const isLoginPage = to.path === '/login'
   const isChangePasswordPage = to.path === '/change-password'
 
-  // If user has a token but user profile isn't in memory yet, fetch it
-  if (token.value && !user.value) {
+  // If user profile isn't in memory yet, check active session via /api/admin/auth/me
+  if (!user.value) {
     await fetchUser()
   }
 
   // If visiting /login while already authenticated, redirect to dashboard
   if (isLoginPage) {
-    if (token.value && user.value) {
+    if (user.value) {
       return navigateTo(mustChangePassword.value ? '/change-password' : '/')
     }
     return
   }
 
   // For all other pages, require authentication
-  if (!token.value || !user.value) {
+  if (!user.value) {
     return navigateTo('/login')
   }
 

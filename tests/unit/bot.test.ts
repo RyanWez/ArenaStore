@@ -342,58 +342,6 @@ describe("Phase 4 Customer Telegram Bot", () => {
       global.fetch = originalFetch;
     });
 
-    it("creates order and returns orderId, publicOrderNo, and totalMmk", async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          ok: true,
-          order: {
-            orderId: "ord-test-uuid",
-            publicOrderNo: "ARN-2026-12345",
-            totalAmountMmk: 7800,
-          },
-        }),
-      } as Response);
-
-      const { botOrderService } = await import("../../apps/bot/src/services/order.service");
-      const order = await botOrderService.createOrder({
-        telegramId: "12345678",
-        telegramUsername: "testuser",
-        customerName: "Test Customer",
-        productId: 10,
-        quantity: 2,
-      });
-
-      expect(order.orderId).toBe("ord-test-uuid");
-      expect(order.publicOrderNo).toBe("ARN-2026-12345");
-      expect(order.totalMmk).toBe(7800);
-    });
-
-    it("submits payment slip proof successfully", async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          ok: true,
-          submission: {
-            id: 888,
-            status: "SUBMITTED",
-          },
-        }),
-      } as Response);
-
-      const { botOrderService } = await import("../../apps/bot/src/services/order.service");
-      const submission = await botOrderService.submitPaymentSlip({
-        orderId: "ord-test-uuid",
-        telegramId: "12345678",
-        fileId: "AgACAgUAAxkBAAIC8...",
-        paymentMethod: "KPAY",
-        amountMmk: 7800,
-      });
-
-      expect(submission.submissionId).toBe(888);
-      expect(submission.status).toBe("SUBMITTED");
-    });
-
     it("fetches user profile stats or returns resilient defaults", async () => {
       global.fetch = originalFetch;
       const { botOrderService } = await import("../../apps/bot/src/services/order.service");

@@ -1,5 +1,6 @@
 import { Bot } from "grammy";
 import { BotContext } from "../types";
+import { botConfig } from "../config";
 import { botSettingsService } from "../services/settings.service";
 import { reviewDepositViaApi } from "../services/deposit-review.client";
 import {
@@ -13,21 +14,33 @@ import {
 
 /**
  * Checks whether a Telegram user is authorized to approve/reject deposit slips.
- * If approverIdsRaw is empty or whitespace only, every member of the configured group is authorized.
- * Otherwise, the user must match one of the tokens (either numeric Telegram ID or @username).
+ * Security Hardened: Default-Deny.
+ * The user must match one of the tokens (numeric Telegram ID or @username)
+ * in the configured approver allowlist, or in the admin mentions fallback.
+ * If no approver list is configured anywhere, authorization is denied (returns false)
+ * to prevent unauthorized group members from approving financial transactions.
  */
 export function isUserAuthorizedApprover(
   user: { id: number; username?: string },
-  approverIdsRaw: string
+  approverIdsRaw?: string,
+  adminMentionsFallback?: string
 ): boolean {
-  if (!approverIdsRaw || !approverIdsRaw.trim()) return true;
-  const allowedTokens = approverIdsRaw
+  const rawList = (approverIdsRaw && approverIdsRaw.trim())
+    ? approverIdsRaw
+    : (adminMentionsFallback && adminMentionsFallback.trim()) || "";
+
+  if (!rawList) return false;
+
+  const allowedTokens = rawList
     .split(/[\s,|]+/)
     .map((t) => t.trim().toLowerCase())
     .filter(Boolean);
-  if (allowedTokens.length === 0) return true;
+
+  if (allowedTokens.length === 0) return false;
+
   const senderIdStr = String(user.id);
   const senderUsername = (user.username || "").toLowerCase().replace(/^@/, "");
+
   return allowedTokens.some((t) => {
     const clean = t.replace(/^@/, "");
     return clean === senderIdStr || (Boolean(senderUsername) && clean === senderUsername);
@@ -64,9 +77,14 @@ export function registerAdminDepositReviewHandlers(bot: Bot<BotContext>) {
     }
 
     // Approver allowlist: if configured, only members listed in telegramApproverIds
-    // (Telegram IDs or usernames) may approve/reject. Empty = anyone in the group.
-    if (!isUserAuthorizedApprover(cb.from, settings.telegramApproverIds)) {
-      await answer("⛔ သင့်မှာ အတည်ပြုခွင့် မရှိပါ");
+    // or TELEGRAM_ADMIN_MENTIONS may approve/reject. Default-Deny if unconfigured.
+    const isAuthorized = isUserAuthorizedApprover(
+      cb.from,
+      settings.telegramApproverIds,
+      botConfig.TELEGRAM_ADMIN_MENTIONS || botConfig.TELEGRAM_APPROVER_IDS
+    );
+    if (!isAuthorized) {
+      await answer("⛔ သင့်မှာ ငွေသွင်းအတည်ပြုခွင့် မရှိပါ");
       return;
     }
 

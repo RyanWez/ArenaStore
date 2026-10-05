@@ -5,6 +5,9 @@ export default defineNuxtConfig({
   compatibilityDate: '2026-09-30',
   telemetry: false,
   devtools: { enabled: true },
+  experimental: {
+    appManifest: false,
+  },
   app: {
     head: {
       title: 'Arena Store — Admin Portal',
@@ -23,7 +26,7 @@ export default defineNuxtConfig({
       ],
     },
     pageTransition: { name: 'page', mode: 'out-in' },
-    layoutTransition: { name: 'layout', mode: 'out-in' },
+    layoutTransition: false,
   },
   runtimeConfig: {
     public: {

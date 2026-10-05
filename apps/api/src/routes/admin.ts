@@ -29,7 +29,6 @@ import { z } from "zod";
 import { config } from "../config";
 import { xproClient } from "../services/xpro-client";
 import { catalogService } from "../services/catalog.service";
-import { orderService } from "../services/order.service";
 import {
   notifyOrderRefunded,
   notifyOrderCredentialsResent,

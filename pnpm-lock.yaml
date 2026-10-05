@@ -169,6 +169,9 @@ importers:
 
   .:
     devDependencies:
+      '@types/qrcode':
+        specifier: ^1.5.6
+        version: 1.5.6
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
@@ -239,6 +242,9 @@ importers:
       otpauth:
         specifier: ^9.4.1
         version: 9.5.2
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
       tsx:
         specifier: ^4.19.3
         version: 4.23.15
@@ -249,6 +255,9 @@ importers:
       '@types/node':
         specifier: ^22.13.9
         version: 22.20.4
+      '@types/qrcode':
+        specifier: ^1.5.6
+        version: 1.5.6
       typescript:
         specifier: ^5.8.2
         version: 5.9.3
@@ -361,6 +370,9 @@ importers:
       '@types/pg':
         specifier: ^8.11.11
         version: 8.23.1
+      '@types/qrcode':
+        specifier: ^1.5.6
+        version: 1.5.6
       drizzle-orm:
         specifier: ^0.45.3
         version: 0.45.3(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(gel@2.2.1)(pg@8.23.0)
@@ -376,6 +388,9 @@ importers:
       pg:
         specifier: ^8.13.3
         version: 8.23.0
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
       vitest:
         specifier: ^3.0.7
         version: 3.2.7(@types/node@22.20.4)(jiti@2.7.0)(supports-color@10.2.2)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
@@ -2114,6 +2129,9 @@ packages:
 
   '@types/pg@8.23.1':
     resolution: {integrity: sha512-fKVHpikPdg4GKks3JuLEhvwSyvwzF23hnabPy6DD8ljVbC7+6J5dQzdv4arV6jqq57djnMgs1HKBxX4P8aBI3A==}
+
+  '@types/qrcode@1.5.6':
+    resolution: {integrity: sha512-te7NQcV2BOvdj2b1hCAHzAoMNuj65kNBMz0KBaxM6c3VGBOhU0dURQKOtH8CFNI/dsKkwlv32p26qYQTWoB5bw==}
 
   '@types/resolve@1.20.2':
     resolution: {integrity: sha512-60BCwRFOZCQhDncwQdxxeOEEkbc5dIMccYLwbxsS4TUNeVECQ/pBJ0j09mrHOl/JJvpRPGwO9SvE4nR2Nb/a4Q==}
@@ -6926,6 +6944,10 @@ snapshots:
       '@types/node': 22.20.4
       pg-protocol: 1.16.0
       pg-types: 2.2.0
+
+  '@types/qrcode@1.5.6':
+    dependencies:
+      '@types/node': 22.20.4
 
   '@types/resolve@1.20.2': {}
 

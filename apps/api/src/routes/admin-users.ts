@@ -320,7 +320,22 @@ export async function adminUsersRoutes(server: FastifyInstance) {
         .where(or(isNotNull(users.roleId), eq(users.role, "SUPERADMIN")))
         .orderBy(users.id);
 
-      return { ok: true, staff };
+      return {
+        ok: true,
+        staff: staff.map((s) => ({
+          id: s.id,
+          email: s.email,
+          username: s.username,
+          firstName: s.firstName,
+          lastName: s.lastName,
+          role: s.role,
+          roleId: s.roleId,
+          roleName: s.roleName,
+          status: s.status,
+          mustChangePassword: s.mustChangePassword,
+          createdAt: s.createdAt,
+        })),
+      };
     }
   );
 

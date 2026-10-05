@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { TOTP, Secret } from "otpauth";
+import QRCode from "qrcode";
 
 /**
  * Unit tests for the TOTP (admin 2FA) service. The service reads its secret
@@ -72,5 +73,19 @@ describe("totp service", () => {
     expect(totpService.isEnabled()).toBe(false);
     expect(totpService.verifyCode("")).toBe(true);
     expect(totpService.verifyCode("garbage")).toBe(true);
+  });
+
+
+  it("builds valid otpauth URI for QR code generation", async () => {
+    const totpService = await importService("");
+    const secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+    const uri = totpService.buildUri(secret, "admin@arenastore.mm");
+
+    expect(uri).toContain("otpauth://totp/");
+    expect(uri).toContain("Arena%20Store");
+    expect(uri).toContain(secret);
+
+    const dataUrl = await QRCode.toDataURL(uri);
+    expect(dataUrl).toMatch(/^data:image\/png;base64,/);
   });
 });

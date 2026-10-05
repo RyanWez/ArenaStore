@@ -5,6 +5,7 @@ import { getDb, users } from "@arena/db";
 import { authService } from "../services/auth.service";
 import { totpService } from "../services/totp.service";
 import { rbacService } from "../services/rbac.service";
+import { config } from "../config";
 
 const LoginSchema = z.object({
   email: z.string().min(1, "Email or username is required"),
@@ -77,9 +78,7 @@ export async function authRoutes(server: FastifyInstance) {
       });
     }
 
-    // 2FA gate: when ADMIN_TOTP_SECRET is configured, a valid 6-digit code is
-    // required after the password. Attempts are already capped by the login
-    // rate limiter above (5 per 5 min per IP+account).
+    // 2FA gate (TOTP): checked whenever ADMIN_TOTP_SECRET is configured
     if (totpService.isEnabled()) {
       const code = parseRes.data.totpCode || "";
       if (!code) {
@@ -89,7 +88,8 @@ export async function authRoutes(server: FastifyInstance) {
           code: "TOTP_REQUIRED",
         });
       }
-      if (!totpService.verifyCode(code, user.email || user.username || "")) {
+      const isTotpValid = totpService.verifyCode(code, user.email || user.username || "");
+      if (!isTotpValid) {
         return reply.status(401).send({
           ok: false,
           error: "Invalid two-factor authentication code.",
@@ -100,6 +100,18 @@ export async function authRoutes(server: FastifyInstance) {
 
     // Create session in Redis
     const token = await authService.createSession(user);
+
+    // Set HttpOnly cookie for defense-in-depth against XSS token exfiltration
+    const isProd = config.NODE_ENV === "production";
+    const cookieDirectives = [
+      `arena_admin_token=${encodeURIComponent(token)}`,
+      "Path=/",
+      "HttpOnly",
+      "SameSite=Lax",
+      `Max-Age=${60 * 60 * 24 * 7}`, // 7 days
+    ];
+    if (isProd) cookieDirectives.push("Secure");
+    reply.header("Set-Cookie", cookieDirectives.join("; "));
 
     return {
       ok: true,
@@ -157,11 +169,30 @@ export async function authRoutes(server: FastifyInstance) {
 
   // POST /api/admin/auth/logout
   server.post("/api/admin/auth/logout", async (request, reply) => {
+    let token: string | null = null;
     const authHeader = request.headers.authorization;
     if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.replace("Bearer ", "").trim();
+      token = authHeader.replace("Bearer ", "").trim();
+    } else if (request.headers.cookie) {
+      const match = request.headers.cookie.match(/arena_admin_token=([^;]+)/);
+      if (match) token = decodeURIComponent(match[1]);
+    }
+
+    if (token) {
       await authService.destroySession(token);
     }
+
+    // Clear HttpOnly cookie
+    const isProd = config.NODE_ENV === "production";
+    const cookieDirectives = [
+      "arena_admin_token=",
+      "Path=/",
+      "HttpOnly",
+      "SameSite=Lax",
+      "Max-Age=0",
+    ];
+    if (isProd) cookieDirectives.push("Secure");
+    reply.header("Set-Cookie", cookieDirectives.join("; "));
 
     return {
       ok: true,

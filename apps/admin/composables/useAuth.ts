@@ -14,15 +14,7 @@ export interface AdminRoleInfo {
 }
 
 export function useAuth() {
-  const token = useCookie<string | null>('arena_admin_token', {
-    maxAge: 60 * 60 * 24 * 7, // 7 days
-    sameSite: 'lax',
-    path: '/',
-    // HTTPS-only once built for production; `nuxt dev` on localhost stays on
-    // plain http so the cookie still works without TLS.
-    secure: import.meta.env.PROD,
-  });
-
+  const token = useState<string | null>('admin_token', () => null);
   const user = useState<AdminUser | null>('admin_user', () => null);
   const isLoading = useState<boolean>('admin_auth_loading', () => false);
   // Effective permissions resolved from the current role — drives every
@@ -31,13 +23,21 @@ export function useAuth() {
   const roleInfo = useState<AdminRoleInfo | null>('admin_role_info', () => null);
   const mustChangePassword = useState<boolean>('admin_must_change_password', () => false);
 
-  const isAuthenticated = computed(() => !!token.value && !!user.value);
+  const isAuthenticated = computed(() => !!user.value);
 
   function getAuthHeaders(): Record<string, string> {
-    if (!token.value) return {};
-    return {
-      Authorization: `Bearer ${token.value}`,
-    };
+    const headers: Record<string, string> = {};
+    if (token.value) {
+      headers.Authorization = `Bearer ${token.value}`;
+    }
+    // Forward the HttpOnly cookie when running during Nuxt Server-Side Rendering
+    if (import.meta.server) {
+      const reqHeaders = useRequestHeaders(['cookie']);
+      if (reqHeaders.cookie) {
+        headers.cookie = reqHeaders.cookie;
+      }
+    }
+    return headers;
   }
 
   async function login(email: string, password: string, totpCode?: string) {
@@ -52,6 +52,10 @@ export function useAuth() {
         token.value = res.token;
         user.value = res.user;
         mustChangePassword.value = !!res.mustChangePassword;
+        // Clean up legacy readable cookie if it was ever set previously
+        const legacySession = useCookie('arena_admin_session');
+        if (legacySession.value) legacySession.value = null;
+
         // Load role/permissions immediately so sidebar + page gates render
         // correctly on the first paint after login.
         await fetchUser();
@@ -83,14 +87,6 @@ export function useAuth() {
   }
 
   async function fetchUser() {
-    if (!token.value) {
-      user.value = null;
-      permissions.value = [];
-      roleInfo.value = null;
-      mustChangePassword.value = false;
-      return null;
-    }
-
     try {
       const res: any = await $fetch('/api/admin/auth/me', {
         headers: getAuthHeaders(),
@@ -122,18 +118,18 @@ export function useAuth() {
 
   async function logout() {
     try {
-      if (token.value) {
-        await $fetch('/api/admin/auth/logout', {
-          method: 'POST',
-          headers: getAuthHeaders(),
-        }).catch(() => {});
-      }
+      await $fetch('/api/admin/auth/logout', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      }).catch(() => {});
     } finally {
       token.value = null;
       user.value = null;
       permissions.value = [];
       roleInfo.value = null;
       mustChangePassword.value = false;
+      const legacySession = useCookie('arena_admin_session');
+      if (legacySession.value) legacySession.value = null;
       await navigateTo('/login');
     }
   }
