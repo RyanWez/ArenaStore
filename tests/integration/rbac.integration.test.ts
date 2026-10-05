@@ -21,14 +21,21 @@ vi.mock("../../apps/api/src/services/redis", () => ({
 
 vi.mock("../../apps/api/src/services/xpro-client", () => ({
   xproClient: {
-    getBalance: () => Promise.resolve({ ok: true, balance: "50.00", currency: "USD" }),
+    getBalance: () => Promise.resolve({ ok: true, balance: "50.00", balanceUsd: "50.00", balanceUsdCents: 5000, currency: "USD" }),
     getCategories: () => Promise.resolve([]),
     getProducts: () => Promise.resolve({ products: [], total: 0 }),
     createOrder: () => Promise.reject(new Error("not mocked")),
-    getHealth: () => Promise.resolve({ ok: true, service: "mock-xpro", version: "test", time: 0 }),
+    getHealth: () => Promise.resolve({ ok: true, online: true, latencyMs: 10, service: "mock-xpro", version: "test", time: 0 }),
     getProduct: () => Promise.reject(new Error("not mocked")),
     getOrder: () => Promise.reject(new Error("not mocked")),
     getUsage: () => Promise.reject(new Error("not mocked")),
+  },
+  digitalcoreClient: {
+    getBalance: () => Promise.resolve({ ok: true, balance: "0.00", balanceUsd: "0.00", balanceUsdCents: 0 }),
+    getHealth: () => Promise.resolve({ online: true, latencyMs: 15 }),
+    listProducts: () => Promise.resolve([]),
+    getProduct: () => Promise.resolve(null),
+    createOrder: () => Promise.reject(new Error("not mocked")),
   },
   XProApiError: class XProApiError extends Error {},
   XProProduct: class XProProduct {},
@@ -85,7 +92,8 @@ beforeAll(async () => {
   const [product] = await db
     .insert(products)
     .values({
-      upstreamProductId: 9001,
+      supplier: "XPRO",
+      upstreamProductId: "9001",
       nameMmk: "RBAC Test Product",
       retailPriceMmk: 6300,
       isActive: true,
@@ -93,7 +101,8 @@ beforeAll(async () => {
     .returning();
   await db.insert(productSupplierSnapshots).values({
     productId: product.id,
-    upstreamProductId: 9001,
+    supplier: "XPRO",
+    upstreamProductId: "9001",
     rawName: "RBAC Test Product",
     supplierPriceUsd: "0.99",
     supplierStock: 10,

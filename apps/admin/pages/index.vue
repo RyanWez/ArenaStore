@@ -7,7 +7,7 @@ import { useAuth } from '~/composables/useAuth'
 import { formatMyanmarDateTime } from '~/utils/date'
 
 const router = useRouter()
-const { supplierBalanceUsd, isSyncing, syncCatalog, lastSyncMessage, fetchStatus } = useSupplierStatus()
+const { supplierBalanceUsd, xproBalanceUsd, digitalcoreBalanceUsd, isSyncing, syncCatalog, lastSyncMessage, fetchStatus } = useSupplierStatus()
 const { getAuthHeaders } = useAuth()
 const toast = useToast()
 
@@ -108,7 +108,7 @@ onUnmounted(() => {
 async function handleSync() {
   try {
     await syncCatalog()
-    toast.success('XPro Supplier catalog synced successfully!', 'Sync Complete')
+    toast.success('Partner Suppliers catalog synced successfully!', 'Sync Complete')
     await fetchDashboardData(true)
   } catch (err: any) {
     toast.error(`Sync error: ${err.message}`, 'Sync Failed')
@@ -153,7 +153,7 @@ function navigateToCustomer(telegramId?: string, customerName?: string, event?: 
           </span>
         </h1>
         <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Welcome back! Manage products, review customer payment slips, and monitor live XPro supplier status.
+          Welcome back! Manage products, review customer payment slips, and monitor live partner suppliers status.
         </p>
       </div>
 
@@ -310,12 +310,14 @@ function navigateToCustomer(telegramId?: string, customerName?: string, event?: 
           <div class="h-3 w-28 rounded bg-slate-200 dark:bg-slate-800 mt-2"></div>
         </div>
         <template v-else>
-          <p class="text-2xl font-bold mt-2 text-emerald-600 dark:text-emerald-400 font-mono">
-            ${{ supplierBalanceUsd }} <span class="text-xs font-normal text-slate-400">USD</span>
-          </p>
+          <div class="mt-2 flex items-baseline gap-2 font-mono">
+            <span class="text-xl font-bold text-emerald-600 dark:text-emerald-400" title="XPro Balance">${{ xproBalanceUsd }}</span>
+            <span class="text-slate-300 dark:text-slate-700">/</span>
+            <span class="text-xl font-bold text-cyan-600 dark:text-cyan-400" title="DigitalCore Balance">${{ digitalcoreBalanceUsd }}</span>
+          </div>
           <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1.5">
             <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span>Real-time Upstream Balance</span>
+            <span>XPro & DigitalCore Balances</span>
           </p>
         </template>
       </NuxtLink>

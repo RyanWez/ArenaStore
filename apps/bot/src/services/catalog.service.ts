@@ -1,6 +1,6 @@
 import { botConfig } from "../config";
 import { getDb, products, categories, productSupplierSnapshots } from "@arena/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   calculateRetailMmk,
   calculateSellableStock,
@@ -20,7 +20,8 @@ export interface BotCategory {
 
 export interface BotProduct {
   id: number;
-  upstreamProductId?: number;
+  supplier?: string;
+  upstreamProductId?: string | number;
   categoryId: number;
   name: string;
   cleanName: string;
@@ -153,18 +154,44 @@ class BotCatalogService {
     return { categories, products };
   }
 
-  private lastBalanceFetchedAt = 0;
-  private cachedWalletBalanceUsd = 1.0;
+  private lastBalanceFetchedAt: Record<string, number> = { XPRO: 0, DIGITALCORE: 0 };
+  private cachedWalletBalances: Record<string, number> = { XPRO: 1.0, DIGITALCORE: 1.0 };
 
   /**
-   * Fetches the latest Upstream Partner wallet balance to constrain sellable stock.
+   * Fetches the latest Upstream Partner wallet balance to constrain sellable stock per supplier.
    */
-  private async getSupplierWalletBalance(): Promise<number> {
+  private async getSupplierWalletBalance(supplier: string): Promise<number> {
+    const s = supplier.toUpperCase();
     const now = Date.now();
-    if (now - this.lastBalanceFetchedAt < this.CACHE_TTL_MS) {
-      return this.cachedWalletBalanceUsd;
+    if (now - (this.lastBalanceFetchedAt[s] || 0) < this.CACHE_TTL_MS) {
+      return this.cachedWalletBalances[s] ?? 1.0;
     }
 
+    if (s === "DIGITALCORE") {
+      if (!botConfig.DIGITALCORE_API_KEY) {
+        return this.cachedWalletBalances.DIGITALCORE ?? 1.0;
+      }
+      try {
+        const res = await fetch(`${botConfig.DIGITALCORE_BASE_URL.replace(/\/+$/, "")}/api/user/me`, {
+          headers: { "Api-Key": botConfig.DIGITALCORE_API_KEY, Accept: "application/json" },
+          signal: AbortSignal.timeout(2500),
+        });
+        if (res.ok) {
+          const json: any = await res.json();
+          const bal = json?.data?.balance ?? json?.balance;
+          if (bal !== undefined) {
+            this.cachedWalletBalances.DIGITALCORE = parseFloat(String(bal)) || 0;
+            this.lastBalanceFetchedAt.DIGITALCORE = now;
+            return this.cachedWalletBalances.DIGITALCORE;
+          }
+        }
+      } catch {
+        // Keep cached
+      }
+      return this.cachedWalletBalances.DIGITALCORE ?? 1.0;
+    }
+
+    // Default: XPro
     const baseUrl = botConfig.UPSTREAM_BASE_URL.replace(/\/+$/, "");
     const headers: Record<string, string> = {
       Accept: "application/json",
@@ -181,15 +208,15 @@ class BotCatalogService {
       if (balanceRes.ok) {
         const balJson: any = await balanceRes.json();
         if (balJson.ok && balJson.balance !== undefined) {
-          this.cachedWalletBalanceUsd = parseFloat(String(balJson.balance)) || 0;
-          this.lastBalanceFetchedAt = now;
-          return this.cachedWalletBalanceUsd;
+          this.cachedWalletBalances.XPRO = parseFloat(String(balJson.balance)) || 0;
+          this.lastBalanceFetchedAt.XPRO = now;
+          return this.cachedWalletBalances.XPRO;
         }
       }
     } catch {
       // Keep cached or default fallback
     }
-    return this.cachedWalletBalanceUsd;
+    return this.cachedWalletBalances.XPRO ?? 1.0;
   }
 
   /**
@@ -207,6 +234,7 @@ class BotCatalogService {
       const prodRows = await db
         .select({
           id: products.id,
+          supplier: products.supplier,
           upstreamProductId: products.upstreamProductId,
           categoryId: products.categoryId,
           nameMmk: products.nameMmk,
@@ -222,13 +250,22 @@ class BotCatalogService {
           rawDescription: productSupplierSnapshots.rawDescription,
         })
         .from(products)
-        .leftJoin(productSupplierSnapshots, eq(products.id, productSupplierSnapshots.productId))
+        .leftJoin(
+          productSupplierSnapshots,
+          and(
+            eq(products.id, productSupplierSnapshots.productId),
+            eq(products.supplier, productSupplierSnapshots.supplier)
+          )
+        )
         .where(eq(products.isActive, true));
 
       if (prodRows.length === 0) return null;
 
-      // Query wallet balance from upstream to accurately calculate sellable capacity
-      const walletBalanceUsd = await this.getSupplierWalletBalance();
+      // Query wallet balances per supplier to accurately calculate sellable capacity
+      const [xproWalletBalanceUsd, dcWalletBalanceUsd] = await Promise.all([
+        this.getSupplierWalletBalance("XPRO"),
+        this.getSupplierWalletBalance("DIGITALCORE"),
+      ]);
 
       const catList: BotCategory[] = catRows.map((c) => {
         const parsed = parseCustomEmoji(c.name || `Category ${c.id}`);
@@ -249,9 +286,13 @@ class BotCatalogService {
           ? formatTelegramCustomEmoji(descText, "✨")
           : "";
 
+        const pSupplier = (p.supplier || "XPRO").toUpperCase();
+        const effectiveWalletBalance =
+          pSupplier === "DIGITALCORE" ? dcWalletBalanceUsd : xproWalletBalanceUsd;
+
         const stockCalc = calculateSellableStock({
           supplierStock: p.supplierStock ?? 999,
-          supplierWalletBalanceUsd: walletBalanceUsd,
+          supplierWalletBalanceUsd: effectiveWalletBalance,
           unitCostUsd: p.supplierPriceUsd || "0.00",
           localLimit: p.localStockLimit,
         });
@@ -260,6 +301,7 @@ class BotCatalogService {
 
         return {
           id: p.id,
+          supplier: p.supplier || "XPRO",
           upstreamProductId: p.upstreamProductId,
           categoryId: p.categoryId ?? 0,
           name: displayName,
@@ -365,6 +407,8 @@ class BotCatalogService {
     return [
       {
         id: 10,
+        supplier: "XPRO",
+        upstreamProductId: "10",
         categoryId: 10,
         name: "{pe:5069075201950483359}🤖 Gemini AI 18 MONTH",
         cleanName: "Gemini AI 18 MONTH",

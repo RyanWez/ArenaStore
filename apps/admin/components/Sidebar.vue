@@ -74,7 +74,7 @@ const navGroups: NavGroup[] = [
       },
       {
         to: '/supplier',
-        label: 'XPro Supplier',
+        label: 'Partner Suppliers',
         icon: 'pi pi-cloud',
         badge: { type: 'pulse', color: 'emerald' },
         permission: 'supplier.view',

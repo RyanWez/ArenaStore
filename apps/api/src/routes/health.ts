@@ -31,7 +31,7 @@ export async function healthRoutes(server: FastifyInstance) {
     let upstreamStatus = "unknown";
     try {
       const upstreamHealth = await xproClient.getHealth();
-      upstreamStatus = upstreamHealth.ok ? "healthy" : "degraded";
+      upstreamStatus = upstreamHealth.online ? "healthy" : "degraded";
     } catch (err: any) {
       console.error("[health] upstream check failed:", err?.message);
       upstreamStatus = "error";

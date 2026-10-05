@@ -27,19 +27,31 @@ const xproState = vi.hoisted(() => ({
   createOrderCalls: [] as unknown[],
 }));
 
+const dcState = vi.hoisted(() => ({
+  balance: "100.00",
+  products: [] as unknown[],
+}));
+
 vi.mock("../../apps/api/src/services/xpro-client", () => ({
   xproClient: {
-    getBalance: () => Promise.resolve({ ok: true, balance: xproState.balance, currency: "USD" }),
+    getBalance: () => Promise.resolve({ ok: true, balance: xproState.balance, balanceUsd: xproState.balance, balanceUsdCents: 5000, currency: "USD" }),
     getCategories: () => Promise.resolve(xproState.categories),
     getProducts: () => Promise.resolve({ products: xproState.products, total: xproState.products.length }),
     createOrder: (params: unknown) => {
       xproState.createOrderCalls.push(params);
       return xproState.createOrderImpl(params);
     },
-    getHealth: () => Promise.resolve({ ok: true, service: "mock-xpro", version: "test", time: 0 }),
+    getHealth: () => Promise.resolve({ ok: true, online: true, latencyMs: 10, service: "mock-xpro", version: "test", time: 0 }),
     getProduct: () => Promise.reject(new Error("not mocked")),
     getOrder: () => Promise.reject(new Error("not mocked")),
     getUsage: () => Promise.reject(new Error("not mocked")),
+  },
+  digitalcoreClient: {
+    getBalance: () => Promise.resolve({ ok: true, balance: dcState.balance, balanceUsd: dcState.balance, balanceUsdCents: 10000 }),
+    getHealth: () => Promise.resolve({ online: true, latencyMs: 15 }),
+    listProducts: () => Promise.resolve(dcState.products),
+    getProduct: () => Promise.resolve(null),
+    createOrder: () => Promise.reject(new Error("not mocked")),
   },
   XProApiError: class XProApiError extends Error {},
   XProProduct: class XProProduct {},
@@ -51,15 +63,15 @@ import { catalogService } from "../../apps/api/src/services/catalog.service";
 import { getDb, closeDb, categories, products, productSupplierSnapshots } from "@arena/db";
 
 const UPSTREAM_CATEGORY_ID = 501;
-const PRODUCT_A_UPSTREAM_ID = 6001;
-const PRODUCT_B_UPSTREAM_ID = 6002;
+const PRODUCT_A_UPSTREAM_ID = "6001";
+const PRODUCT_B_UPSTREAM_ID = "6002";
 
 function seedUpstreamFixture(): void {
   xproState.categories = [makeUpstreamCategory({ id: UPSTREAM_CATEGORY_ID })];
   xproState.products = [
-    makeUpstreamProduct({ productId: PRODUCT_A_UPSTREAM_ID }),
+    makeUpstreamProduct({ productId: Number(PRODUCT_A_UPSTREAM_ID) }),
     makeUpstreamProduct({
-      productId: PRODUCT_B_UPSTREAM_ID,
+      productId: Number(PRODUCT_B_UPSTREAM_ID),
       name: "{pe:4963072209334567688} Canva Pro 1 YEAR",
       deliveryType: "CREDENTIALS",
       price: 1.2,
@@ -168,14 +180,14 @@ describe("Catalog sync (batch upserts with admin customization preservation)", (
     // Upstream changes description, price, and stock for the same product.
     xproState.products = [
       makeUpstreamProduct({
-        productId: PRODUCT_A_UPSTREAM_ID,
+        productId: Number(PRODUCT_A_UPSTREAM_ID),
         description: "UPDATED upstream description {pe:5069075201950483359}",
         price: 0.99,
         yourPrice: 0.99,
         stock: 99,
       }),
       makeUpstreamProduct({
-        productId: PRODUCT_B_UPSTREAM_ID,
+        productId: Number(PRODUCT_B_UPSTREAM_ID),
         name: "{pe:4963072209334567688} Canva Pro 1 YEAR",
         deliveryType: "CREDENTIALS",
         price: 1.2,
@@ -206,5 +218,53 @@ describe("Catalog sync (batch upserts with admin customization preservation)", (
     expect(snapshotA.supplierPriceUsd).toBe("0.99");
     expect(snapshotA.supplierStock).toBe(99);
     expect(snapshotA.inStock).toBe(true);
+  });
+
+  it("syncs DigitalCore products into separate rows without clobbering XPro products", async () => {
+    dcState.products = [
+      {
+        supplier: "DIGITALCORE",
+        upstreamProductId: "dc_gemini_18m",
+        name: "🤖 Gemini 18M DigitalCore",
+        stock: 50,
+        inStock: true,
+        basePriceUsdCents: 55,
+        basePriceUsd: "0.55",
+        pricingTiers: [{ minQty: 1, maxQty: null, price: "0.55" }],
+        deliveryTypeHint: "LINK",
+      },
+    ];
+
+    const dcCount = await catalogService.syncDigitalCoreCatalog(4500);
+    expect(dcCount).toBe(1);
+
+    const db = getDb();
+    // 1. DigitalCore product exists with supplier = DIGITALCORE
+    const [dcProduct] = await db
+      .select()
+      .from(products)
+      .where(eq(products.upstreamProductId, "dc_gemini_18m"));
+    expect(dcProduct).toBeTruthy();
+    expect(dcProduct.supplier).toBe("DIGITALCORE");
+    expect(dcProduct.nameMmk).toBe("🤖 Gemini 18M DigitalCore");
+
+    // 2. Existing XPro products remain intact and untouched
+    const [xproProduct] = await db
+      .select()
+      .from(products)
+      .where(eq(products.upstreamProductId, PRODUCT_A_UPSTREAM_ID));
+    expect(xproProduct).toBeTruthy();
+    expect(xproProduct.supplier).toBe("XPRO");
+    expect(xproProduct.isActive).toBe(false); // paused state maintained
+    expect(xproProduct.retailPriceMmk).toBe(9999); // custom price maintained
+
+    // 3. DigitalCore snapshot exists with pricing tiers
+    const [dcSnapshot] = await db
+      .select()
+      .from(productSupplierSnapshots)
+      .where(eq(productSupplierSnapshots.productId, dcProduct.id));
+    expect(dcSnapshot).toBeTruthy();
+    expect(dcSnapshot.supplier).toBe("DIGITALCORE");
+    expect(dcSnapshot.pricingTiers).toEqual([{ minQty: 1, maxQty: null, price: "0.55" }]);
   });
 });

@@ -1,21 +1,27 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useSupplierStatus } from '~/composables/useSupplierStatus'
+import { useSupplierStatus, type SupplierDetails } from '~/composables/useSupplierStatus'
 import { usePermission } from '~/composables/usePermission'
 import { formatRelativeTime, formatMyanmarDateTime } from '~/utils/date'
 
-const { supplierBalanceUsd, supplierDetails, isOnline, isSyncing, syncCatalog, fetchStatus } = useSupplierStatus()
+const {
+  suppliersList,
+  supplierBalanceUsd,
+  xproBalanceUsd,
+  digitalcoreBalanceUsd,
+  isXProOnline,
+  isDigitalcoreOnline,
+  isSyncing,
+  syncCatalog,
+  fetchStatus,
+} = useSupplierStatus()
+
 const { can } = usePermission()
 const canSync = computed(() => can('supplier.sync'))
 
 const isPinging = ref(false)
 const isTopUpModalOpen = ref(false)
-const pingResult = ref<{
-  success: boolean
-  latencyMs: number
-  service: string
-  timestamp: string
-} | null>(null)
+const selectedSupplierForTopUp = ref<SupplierDetails | null>(null)
 
 const syncLogs = ref<Array<{
   timestamp: string
@@ -27,62 +33,41 @@ const currentTime = ref(Date.now())
 let tickerInterval: any = null
 let pollInterval: any = null
 
-const autoSyncScheduleText = computed(() => {
-  const mins = supplierDetails.value.autoSyncIntervalMinutes
-  if (!mins || mins <= 0) return 'Disabled'
-  return `Every ${mins} mins`
-})
+function getSupplierHealth(supplierId: string): boolean {
+  return supplierId === 'DIGITALCORE' ? isDigitalcoreOnline.value : isXProOnline.value
+}
 
-const lastSyncedRelative = computed(() => {
-  // Reading currentTime creates a reactive dependency so it recalculates every 10 seconds
-  if (!currentTime.value) return 'Never'
-  if (!supplierDetails.value.lastSyncedAt) return 'Never'
-  return formatRelativeTime(supplierDetails.value.lastSyncedAt)
-})
-
-const lastSyncedFull = computed(() => {
-  if (!supplierDetails.value.lastSyncedAt) return 'No sync recorded yet'
-  return formatMyanmarDateTime(supplierDetails.value.lastSyncedAt)
-})
+function getSupplierBalance(supplierId: string): string {
+  return supplierId === 'DIGITALCORE' ? digitalcoreBalanceUsd.value : xproBalanceUsd.value
+}
 
 onMounted(async () => {
   await fetchStatus()
 
-  // Update ticker every 10 seconds so "Just now" transitions to "1 min ago", "2 mins ago" etc.
   tickerInterval = setInterval(() => {
     currentTime.value = Date.now()
   }, 10000)
 
-  // Lightweight 30s poll to reflect background server syncs automatically
   pollInterval = setInterval(async () => {
     await fetchStatus().catch(() => {})
   }, 30000)
 
   const now = new Date().toLocaleTimeString()
-  const syncInfoText = supplierDetails.value.lastSyncedAt
-    ? `Last synced: ${formatRelativeTime(supplierDetails.value.lastSyncedAt)} (${formatMyanmarDateTime(supplierDetails.value.lastSyncedAt)}).`
-    : 'No sync recorded yet.'
-
   syncLogs.value = [
     {
       timestamp: now,
-      type: isOnline.value ? 'SUCCESS' : 'WARN',
-      message: `Health check: ${supplierDetails.value.endpoint} is ${isOnline.value ? 'ONLINE' : 'OFFLINE'} (${supplierDetails.value.latencyMs}ms latency).`,
-    },
-    {
-      timestamp: now,
       type: 'INFO',
-      message: `Partner wallet balance queried: $${supplierBalanceUsd.value} USD (Partner ID: ${supplierDetails.value.userId}).`,
+      message: `Multi-supplier engine loaded: XPro and DigitalCore active.`,
     },
     {
       timestamp: now,
-      type: 'INFO',
-      message: `Auto-Sync cadence: ${autoSyncScheduleText.value}. ${syncInfoText}`,
+      type: isXProOnline.value ? 'SUCCESS' : 'WARN',
+      message: `XPro: ${isXProOnline.value ? 'ONLINE' : 'OFFLINE'} · Balance: $${xproBalanceUsd.value} USD.`,
     },
     {
       timestamp: now,
-      type: 'SUCCESS',
-      message: `Catalog status: ${supplierDetails.value.categoriesCount} categories and ${supplierDetails.value.productsCount} active products in database.`,
+      type: isDigitalcoreOnline.value ? 'SUCCESS' : 'WARN',
+      message: `DigitalCore: ${isDigitalcoreOnline.value ? 'ONLINE' : 'OFFLINE'} · Balance: $${digitalcoreBalanceUsd.value} USD.`,
     },
   ]
 })
@@ -92,18 +77,18 @@ onUnmounted(() => {
   if (pollInterval) clearInterval(pollInterval)
 })
 
-async function handleSync() {
+async function handleSync(supplier: 'ALL' | 'XPRO' | 'DIGITALCORE' = 'ALL') {
   try {
     syncLogs.value.unshift({
       timestamp: new Date().toLocaleTimeString(),
       type: 'INFO',
-      message: 'Triggering upstream catalog synchronization...',
+      message: `Triggering catalog synchronization for ${supplier}...`,
     })
-    const res: any = await syncCatalog()
+    const res: any = await syncCatalog(supplier)
     syncLogs.value.unshift({
       timestamp: new Date().toLocaleTimeString(),
       type: 'SUCCESS',
-      message: `Catalog synchronization completed: ${res?.synced?.categories ?? supplierDetails.value.categoriesCount} categories, ${res?.synced?.products ?? supplierDetails.value.productsCount} products active.`,
+      message: `Catalog sync completed for ${supplier}.`,
     })
   } catch (err: any) {
     syncLogs.value.unshift({
@@ -120,24 +105,12 @@ async function handlePing() {
   try {
     await fetchStatus()
     const elapsed = Math.round(performance.now() - startTime)
-    pingResult.value = {
-      success: true,
-      latencyMs: elapsed,
-      service: 'xproseller-partner-api',
-      timestamp: new Date().toLocaleTimeString(),
-    }
     syncLogs.value.unshift({
       timestamp: new Date().toLocaleTimeString(),
       type: 'SUCCESS',
-      message: `Ping to Upstream API successful (${elapsed}ms latency).`,
+      message: `Ping to Upstream Suppliers successful (${elapsed}ms roundtrip). XPro: $${xproBalanceUsd.value}, DigitalCore: $${digitalcoreBalanceUsd.value}.`,
     })
   } catch (err: any) {
-    pingResult.value = {
-      success: false,
-      latencyMs: 0,
-      service: 'unavailable',
-      timestamp: new Date().toLocaleTimeString(),
-    }
     syncLogs.value.unshift({
       timestamp: new Date().toLocaleTimeString(),
       type: 'ERROR',
@@ -146,6 +119,11 @@ async function handlePing() {
   } finally {
     isPinging.value = false
   }
+}
+
+function openTopUp(supplier: SupplierDetails) {
+  selectedSupplierForTopUp.value = supplier
+  isTopUpModalOpen.value = true
 }
 </script>
 
@@ -156,10 +134,10 @@ async function handlePing() {
       <div>
         <h1 class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5">
           <i class="pi pi-cloud text-indigo-600 dark:text-indigo-400"></i>
-          XPro Supplier Partner API (ကုန်ပစ္စည်း တင်သွင်းသူ စနစ်)
+          <span>Partner Suppliers & API Hub (ကုန်ပစ္စည်း တင်သွင်းသူများ)</span>
         </h1>
         <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Real-time upstream connection diagnostics, USD wallet capacity tracking, and automated catalog synchronization
+          Multi-supplier status, real-time USD partner wallet tracking, and automated catalog synchronization (XPro & DigitalCore)
         </p>
       </div>
 
@@ -171,98 +149,115 @@ async function handlePing() {
           class="px-4 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors flex items-center gap-2 disabled:opacity-50"
         >
           <i class="pi pi-wifi text-xs" :class="{ 'animate-pulse': isPinging }"></i>
-          <span>{{ isPinging ? 'Pinging...' : 'Ping Supplier' }}</span>
+          <span>{{ isPinging ? 'Pinging...' : 'Ping All Suppliers' }}</span>
         </button>
 
         <button
           v-if="canSync"
           type="button"
-          @click="handleSync"
+          @click="handleSync('ALL')"
           :disabled="isSyncing"
           class="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50"
         >
           <i class="pi pi-sync text-xs" :class="{ 'animate-spin': isSyncing }"></i>
-          <span>{{ isSyncing ? 'Syncing Catalog...' : 'Sync Catalog Now' }}</span>
+          <span>{{ isSyncing ? 'Syncing...' : 'Sync All Catalogs' }}</span>
         </button>
       </div>
     </div>
 
-    <!-- Status & Balance Cards Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
-      <!-- Card 1: Connection Health -->
-      <div class="p-6 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden">
-        <div class="flex items-center justify-between">
-          <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Service Status</span>
-          <span
-            class="px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5"
-            :class="isOnline ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'"
-          >
-            <span class="w-2 h-2 rounded-full" :class="isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'"></span>
-            <span>{{ isOnline ? 'ONLINE' : 'OFFLINE' }}</span>
-          </span>
-        </div>
-        <div class="mt-4">
-          <div class="text-xl font-bold text-slate-900 dark:text-white">xproseller-partner-api</div>
-          <p class="text-xs text-slate-400 font-mono mt-1">Endpoint: {{ supplierDetails.endpoint }}</p>
-        </div>
-        <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500">
-          <span>Latency</span>
-          <span class="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">{{ pingResult ? `${pingResult.latencyMs} ms` : `${supplierDetails.latencyMs} ms` }}</span>
-        </div>
-      </div>
-
-      <!-- Card 2: USD Wallet Balance -->
-      <div class="p-6 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden">
-        <div class="flex items-center justify-between">
-          <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">USD Balance</span>
-          <span class="px-2 py-0.5 rounded-md text-[11px] font-mono font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-            Partner Wallet
-          </span>
-        </div>
-        <div class="mt-4 flex items-baseline gap-2">
-          <span class="text-3xl font-extrabold text-slate-900 dark:text-white font-mono">${{ supplierBalanceUsd }}</span>
-          <span class="text-sm font-semibold text-slate-400 uppercase">USD</span>
-        </div>
-        <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500">
-          <span>Partner User ID</span>
-          <span class="font-mono text-slate-700 dark:text-slate-300 font-semibold">{{ supplierDetails.userId }}</span>
-        </div>
-      </div>
-
-      <!-- Card 3: Catalog Statistics -->
-      <div class="p-6 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden">
-        <div class="flex items-center justify-between">
-          <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Synced Catalog</span>
-          <span class="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-violet-500/10 text-violet-400 border border-violet-500/20">
-            Active
-          </span>
-        </div>
-        <div class="mt-4 flex items-baseline gap-3">
-          <span class="text-3xl font-extrabold text-slate-900 dark:text-white font-mono">{{ supplierDetails.categoriesCount }}</span>
-          <span class="text-xs text-slate-500">Categories / {{ supplierDetails.productsCount }} Products</span>
-        </div>
-        <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800/80 flex flex-col gap-2 text-xs text-slate-500">
+    <!-- Multi-Supplier Detailed Cards Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div
+        v-for="s in suppliersList"
+        :key="s.id"
+        class="p-6 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between gap-5 relative overflow-hidden"
+      >
+        <!-- Top Row: Name, Status, Tag -->
+        <div>
           <div class="flex items-center justify-between">
-            <span>Auto-Sync Schedule</span>
-            <span class="text-indigo-600 dark:text-indigo-400 font-semibold font-mono">
-              {{ autoSyncScheduleText }}
-            </span>
-          </div>
-          <div class="flex items-center justify-between">
-            <span>Last Synced</span>
+            <div class="flex items-center gap-2">
+              <span
+                class="px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider"
+                :class="s.id === 'DIGITALCORE' ? 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20' : 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20'"
+              >
+                {{ s.name }}
+              </span>
+              <span class="text-xs text-slate-400 font-mono">{{ s.id }}</span>
+            </div>
+
             <span
-              class="font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1.5"
-              :title="lastSyncedFull"
+              class="px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5"
+              :class="getSupplierHealth(s.id || '') ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'"
             >
-              <i class="pi pi-clock text-[10px] text-slate-400"></i>
-              <span>{{ lastSyncedRelative }}</span>
+              <span class="w-2 h-2 rounded-full" :class="getSupplierHealth(s.id || '') ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'"></span>
+              <span>{{ getSupplierHealth(s.id || '') ? 'ONLINE' : 'OFFLINE' }}</span>
             </span>
           </div>
+
+          <!-- Middle Row: Endpoint & USD Balance -->
+          <div class="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+              <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">USD Partner Balance</span>
+              <div class="mt-2 flex items-baseline gap-1.5">
+                <span class="text-2xl font-extrabold text-slate-900 dark:text-white font-mono">${{ getSupplierBalance(s.id || '') }}</span>
+                <span class="text-xs font-semibold text-slate-400">USD</span>
+              </div>
+              <p class="text-[10px] text-slate-400 mt-1">Partner User: {{ s.userId }}</p>
+            </div>
+
+            <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+              <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Catalog Statistics</span>
+              <div class="mt-2 flex items-baseline gap-1.5">
+                <span class="text-2xl font-extrabold text-slate-900 dark:text-white font-mono">{{ s.productsCount }}</span>
+                <span class="text-xs text-slate-400">Products</span>
+              </div>
+              <p class="text-[10px] text-slate-400 mt-1">
+                {{ s.id === 'XPRO' ? `${s.categoriesCount} categories` : 'Direct Digital API' }} · {{ s.latencyMs }}ms latency
+              </p>
+            </div>
+          </div>
+
+          <!-- Details list -->
+          <div class="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500 space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span>Endpoint:</span>
+              <span class="font-mono text-slate-700 dark:text-slate-300 truncate max-w-[240px]">{{ s.endpoint }}</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span>Last Synced:</span>
+              <span class="font-medium text-slate-700 dark:text-slate-300">
+                {{ s.lastSyncedAt ? formatRelativeTime(s.lastSyncedAt) : 'Never' }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card Footer Actions -->
+        <div class="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            @click="openTopUp(s)"
+            class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+          >
+            <i class="pi pi-wallet text-[11px]"></i>
+            <span>Deposit / Top Up Info</span>
+          </button>
+
+          <button
+            v-if="canSync"
+            type="button"
+            @click="handleSync(s.id as any)"
+            :disabled="isSyncing"
+            class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+          >
+            <i class="pi pi-sync text-[10px]" :class="{ 'animate-spin': isSyncing }"></i>
+            <span>Sync {{ s.name }}</span>
+          </button>
         </div>
       </div>
     </div>
 
-    <!-- Wallet Safety Buffer Alert Card -->
+    <!-- Wallet Safety Buffer Alert Card (Threshold: $5.00 USD) -->
     <div class="p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
       <div class="flex items-start gap-3">
         <div class="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
@@ -270,20 +265,18 @@ async function handlePing() {
         </div>
         <div>
           <h3 class="text-sm font-bold text-amber-900 dark:text-amber-200">
-            Automated Wallet Stock Protection Active
+            Multi-Supplier Wallet Safety & Stock Protection Active (Alert Threshold: $5.00 USD)
           </h3>
           <p class="text-xs text-amber-800/80 dark:text-amber-300/80 mt-0.5 leading-relaxed max-w-2xl">
-            To prevent customer purchase failures, products with upstream cost exceeding current wallet balance (${{ supplierBalanceUsd }} USD) are automatically clamped to <strong>0 sellable stock</strong>. When you top up your XPro wallet, stock will instantly reactivate on next sync.
+            To eliminate purchase failures, items whose upstream USD cost exceeds their respective supplier's balance are automatically clamped to 0 sellable stock. If either supplier falls below $5.00 USD, an administrative warning is triggered.
           </p>
         </div>
       </div>
-      <button
-        type="button"
-        @click="isTopUpModalOpen = true"
-        class="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white transition-colors shrink-0 shadow-sm"
-      >
-        Top Up XPro Wallet
-      </button>
+      <div class="flex items-center gap-2 shrink-0">
+        <span class="px-3 py-1.5 rounded-xl text-xs font-mono font-bold bg-amber-500/20 text-amber-800 dark:text-amber-200 border border-amber-500/30">
+          Min Buffer: $5.00
+        </span>
+      </div>
     </div>
 
     <!-- Diagnostic & Activity Logs -->
@@ -305,7 +298,7 @@ async function handlePing() {
       <!-- Log Terminal Box -->
       <div class="p-4 rounded-xl bg-slate-950 font-mono text-xs text-slate-300 border border-slate-800 space-y-2 max-h-72 overflow-y-auto">
         <div v-if="syncLogs.length === 0" class="text-slate-600 text-center py-4">
-          No diagnostic logs recorded yet. Click "Ping Supplier" to test connection.
+          No diagnostic logs recorded yet. Click "Ping All Suppliers" to test connection.
         </div>
         <div v-for="(log, idx) in syncLogs" :key="idx" class="flex items-start gap-2.5">
           <span class="text-slate-500 shrink-0">[{{ log.timestamp }}]</span>
@@ -325,10 +318,10 @@ async function handlePing() {
       </div>
     </div>
 
-    <!-- Top Up Instructions Modal (Teleported to body) -->
+    <!-- Top Up Instructions Modal -->
     <Teleport to="body">
       <div
-        v-if="isTopUpModalOpen"
+        v-if="isTopUpModalOpen && selectedSupplierForTopUp"
         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm"
         @click.self="isTopUpModalOpen = false"
       >
@@ -339,7 +332,7 @@ async function handlePing() {
                 <i class="pi pi-wallet"></i>
               </div>
               <div>
-                <h3 class="font-bold text-slate-900 dark:text-white text-sm">Top Up XPro Partner Wallet</h3>
+                <h3 class="font-bold text-slate-900 dark:text-white text-sm">Top Up {{ selectedSupplierForTopUp.name }} Partner Wallet</h3>
                 <p class="text-xs text-slate-400">Direct Upstream Deposit Instructions</p>
               </div>
             </div>
@@ -354,16 +347,20 @@ async function handlePing() {
           <div class="space-y-3 text-xs">
             <div class="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 space-y-2">
               <div class="flex justify-between items-center">
-                <span class="text-slate-500">Your Partner User ID:</span>
-                <span class="font-mono font-bold text-slate-900 dark:text-white select-all">{{ supplierDetails.userId }}</span>
+                <span class="text-slate-500">Supplier:</span>
+                <span class="font-bold text-slate-900 dark:text-white">{{ selectedSupplierForTopUp.name }}</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-slate-500">Partner User ID:</span>
+                <span class="font-mono font-bold text-slate-900 dark:text-white select-all">{{ selectedSupplierForTopUp.userId }}</span>
               </div>
               <div class="flex justify-between items-center">
                 <span class="text-slate-500">Current Balance:</span>
-                <span class="font-mono font-bold text-emerald-500">${{ supplierBalanceUsd }} USD</span>
+                <span class="font-mono font-bold text-emerald-500">${{ getSupplierBalance(selectedSupplierForTopUp.id || '') }} USD</span>
               </div>
               <div class="flex justify-between items-center">
                 <span class="text-slate-500">Upstream Endpoint:</span>
-                <span class="font-mono text-slate-400 truncate max-w-[200px]">{{ supplierDetails.endpoint }}</span>
+                <span class="font-mono text-slate-400 truncate max-w-[200px]">{{ selectedSupplierForTopUp.endpoint }}</span>
               </div>
             </div>
 
@@ -373,7 +370,7 @@ async function handlePing() {
                 Deposit Guide:
               </p>
               <p class="text-[11px] leading-relaxed text-amber-800/90 dark:text-amber-300/90">
-                To add funds to your XPro API wallet, contact the upstream support with your Partner User ID (<strong>{{ supplierDetails.userId }}</strong>) and transfer USDT (TRC-20) or your preferred payment method.
+                To add funds to your {{ selectedSupplierForTopUp.name }} wallet, log in to the partner console at <strong>{{ selectedSupplierForTopUp.endpoint }}</strong> or contact upstream support with your Partner User ID (<strong>{{ selectedSupplierForTopUp.userId }}</strong>).
               </p>
             </div>
           </div>

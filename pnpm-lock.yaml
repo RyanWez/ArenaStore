@@ -218,6 +218,9 @@ importers:
       '@arena/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@arena/suppliers':
+        specifier: workspace:*
+        version: link:../../packages/suppliers
       '@fastify/cors':
         specifier: ^10.0.2
         version: 10.1.0
@@ -273,6 +276,9 @@ importers:
       '@arena/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@arena/suppliers':
+        specifier: workspace:*
+        version: link:../../packages/suppliers
       '@grammyjs/conversations':
         specifier: ^2.1.1
         version: 2.1.1(grammy@1.46.0(supports-color@10.2.2))
@@ -343,6 +349,19 @@ importers:
         specifier: ^5.8.2
         version: 5.9.3
 
+  packages/suppliers:
+    dependencies:
+      '@arena/shared':
+        specifier: workspace:*
+        version: link:../shared
+      zod:
+        specifier: ^3.24.2
+        version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.8.2
+        version: 5.9.3
+
   packages/ui:
     devDependencies:
       typescript:
@@ -357,6 +376,9 @@ importers:
       '@arena/shared':
         specifier: workspace:*
         version: link:../packages/shared
+      '@arena/suppliers':
+        specifier: workspace:*
+        version: link:../packages/suppliers
     devDependencies:
       '@fastify/cors':
         specifier: ^10.0.2

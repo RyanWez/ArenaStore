@@ -27,7 +27,7 @@ import {
 import { and, asc, desc, eq, ilike, inArray, or, ne, sql, gte } from "drizzle-orm";
 import { z } from "zod";
 import { config } from "../config";
-import { xproClient } from "../services/xpro-client";
+import { xproClient, digitalcoreClient } from "../services/xpro-client";
 import { catalogService } from "../services/catalog.service";
 import {
   notifyOrderRefunded,
@@ -53,6 +53,7 @@ const DeactivateCustomerSchema = z.object({
 });
 
 interface CachedSupplierStatus {
+  supplier: "XPRO" | "DIGITALCORE";
   balanceUsd: string | number;
   currency: string;
   health: string;
@@ -64,6 +65,7 @@ interface CachedSupplierStatus {
 }
 
 let supplierStatusCache: CachedSupplierStatus = {
+  supplier: "XPRO",
   balanceUsd: "0.00",
   currency: "USD",
   health: "ONLINE",
@@ -74,7 +76,20 @@ let supplierStatusCache: CachedSupplierStatus = {
   updatedAt: 0,
 };
 
+let digitalcoreStatusCache: CachedSupplierStatus = {
+  supplier: "DIGITALCORE",
+  balanceUsd: "0.00",
+  currency: "USD",
+  health: "ONLINE",
+  version: "1.0.0",
+  userId: "digitalcore",
+  endpoint: config.DIGITALCORE_BASE_URL,
+  latencyMs: 50,
+  updatedAt: 0,
+};
+
 let inFlightSupplierRefresh: Promise<CachedSupplierStatus> | null = null;
+let inFlightDigitalcoreRefresh: Promise<CachedSupplierStatus> | null = null;
 
 async function refreshSupplierStatus(force = false): Promise<CachedSupplierStatus> {
   const now = Date.now();
@@ -92,8 +107,8 @@ async function refreshSupplierStatus(force = false): Promise<CachedSupplierStatu
     const startPing = Date.now();
     try {
       const [balanceResult, healthResult] = await Promise.allSettled([
-        xproClient.getBalance(4000, 1),
-        xproClient.getHealth(4000, 1),
+        xproClient.getBalance(4000),
+        xproClient.getHealth(4000),
       ]);
       const latency = Math.max(1, Date.now() - startPing);
 
@@ -103,22 +118,19 @@ async function refreshSupplierStatus(force = false): Promise<CachedSupplierStatu
       let version = supplierStatusCache.version;
       let userId = supplierStatusCache.userId;
 
-      if (balanceResult.status === "fulfilled" && balanceResult.value?.ok) {
-        balance = String(balanceResult.value.balance);
-        currency = balanceResult.value.currency || "USD";
-        if (balanceResult.value.userId) {
-          userId = balanceResult.value.userId;
-        }
+      if (balanceResult.status === "fulfilled" && balanceResult.value) {
+        balance = balanceResult.value.balanceUsd;
+        currency = "USD";
       }
 
-      if (healthResult.status === "fulfilled" && healthResult.value?.ok) {
+      if (healthResult.status === "fulfilled" && healthResult.value.online) {
         health = "ONLINE";
-        version = healthResult.value.version || version;
-      } else if (balanceResult.status === "fulfilled" && balanceResult.value?.ok) {
+      } else if (balanceResult.status === "fulfilled") {
         health = "ONLINE";
       }
 
       supplierStatusCache = {
+        supplier: "XPRO",
         balanceUsd: balance,
         currency,
         health,
@@ -144,9 +156,73 @@ async function refreshSupplierStatus(force = false): Promise<CachedSupplierStatu
   return inFlightSupplierRefresh;
 }
 
+async function refreshDigitalcoreStatus(force = false): Promise<CachedSupplierStatus> {
+  const now = Date.now();
+  if (!force && now - digitalcoreStatusCache.updatedAt < 30_000 && digitalcoreStatusCache.updatedAt > 0) {
+    return digitalcoreStatusCache;
+  }
+
+  if (inFlightDigitalcoreRefresh) {
+    return inFlightDigitalcoreRefresh;
+  }
+
+  inFlightDigitalcoreRefresh = (async () => {
+    const startPing = Date.now();
+    try {
+      const [balanceResult, healthResult] = await Promise.allSettled([
+        digitalcoreClient.getBalance(4000),
+        digitalcoreClient.getHealth(4000),
+      ]);
+      const latency = Math.max(1, Date.now() - startPing);
+
+      let balance = digitalcoreStatusCache.balanceUsd;
+      let currency = digitalcoreStatusCache.currency;
+      let health = "OFFLINE";
+      let version = digitalcoreStatusCache.version;
+      let userId = digitalcoreStatusCache.userId;
+
+      if (balanceResult.status === "fulfilled" && balanceResult.value) {
+        balance = balanceResult.value.balanceUsd;
+        currency = "USD";
+      }
+
+      if (healthResult.status === "fulfilled" && healthResult.value.online) {
+        health = "ONLINE";
+      } else if (balanceResult.status === "fulfilled") {
+        health = "ONLINE";
+      }
+
+      digitalcoreStatusCache = {
+        supplier: "DIGITALCORE",
+        balanceUsd: balance,
+        currency,
+        health,
+        version,
+        userId,
+        endpoint: config.DIGITALCORE_BASE_URL,
+        latencyMs: latency,
+        updatedAt: Date.now(),
+      };
+      return digitalcoreStatusCache;
+    } catch {
+      digitalcoreStatusCache = {
+        ...digitalcoreStatusCache,
+        health: "OFFLINE",
+        updatedAt: Date.now(),
+      };
+      return digitalcoreStatusCache;
+    } finally {
+      inFlightDigitalcoreRefresh = null;
+    }
+  })();
+
+  return inFlightDigitalcoreRefresh;
+}
+
 export async function adminRoutes(server: FastifyInstance) {
   // Proactively warm up supplier status in background on server startup
   refreshSupplierStatus(true).catch(() => {});
+  refreshDigitalcoreStatus(true).catch(() => {});
 
   // GET /api/admin/stats (Dashboard overview summary stats)
   server.get(
@@ -189,6 +265,9 @@ export async function adminRoutes(server: FastifyInstance) {
       // Fire background probe on initial server boot without awaiting
       refreshSupplierStatus().catch(() => {});
     }
+    if (digitalcoreStatusCache.updatedAt === 0) {
+      refreshDigitalcoreStatus().catch(() => {});
+    }
 
     return {
       ok: true,
@@ -201,6 +280,18 @@ export async function adminRoutes(server: FastifyInstance) {
         activeProductsCount: Number(productsResult?.activeProductsCount || 0),
         supplierBalanceUsd: Number(supplierStatusCache.balanceUsd) || 0,
         supplierHealth: supplierStatusCache.health,
+        digitalcoreBalanceUsd: Number(digitalcoreStatusCache.balanceUsd) || 0,
+        digitalcoreHealth: digitalcoreStatusCache.health,
+        suppliers: {
+          XPRO: {
+            balanceUsd: Number(supplierStatusCache.balanceUsd) || 0,
+            health: supplierStatusCache.health,
+          },
+          DIGITALCORE: {
+            balanceUsd: Number(digitalcoreStatusCache.balanceUsd) || 0,
+            health: digitalcoreStatusCache.health,
+          },
+        },
       },
     };
   });
@@ -221,89 +312,207 @@ export async function adminRoutes(server: FastifyInstance) {
     }
   );
 
+  // Helper handler for supplier status
+  async function handleSupplierStatus() {
+    const [status, dcStatus] = await Promise.all([
+      refreshSupplierStatus(),
+      refreshDigitalcoreStatus(),
+    ]);
+    const db = getDb();
+    const [[catResult], [xproProdResult], [dcProdResult]] = await Promise.all([
+      db.select({ count: sql<number>`count(${categories.id})` }).from(categories),
+      db.select({ count: sql<number>`count(${products.id})` }).from(products).where(eq(products.supplier, "XPRO")),
+      db.select({ count: sql<number>`count(${products.id})` }).from(products).where(eq(products.supplier, "DIGITALCORE")),
+    ]);
+
+    let lastSyncedAt = catalogService.getLastSyncedAt();
+    let dcLastSyncedAt: string | null = null;
+    try {
+      const rows = await db
+        .select()
+        .from(appSettings)
+        .where(
+          or(
+            eq(appSettings.key, "catalog_last_synced_at"),
+            eq(appSettings.key, "catalog_last_synced_at_DIGITALCORE")
+          )
+        );
+      for (const r of rows) {
+        if (r.key === "catalog_last_synced_at" && !lastSyncedAt) lastSyncedAt = r.value;
+        if (r.key === "catalog_last_synced_at_DIGITALCORE") dcLastSyncedAt = r.value;
+      }
+    } catch {}
+
+    const xproSupplier = {
+      id: "XPRO",
+      name: "XPro",
+      balanceUsd: status.balanceUsd,
+      currency: status.currency,
+      health: status.health,
+      version: status.version,
+      userId: status.userId || "8777968077",
+      endpoint: status.endpoint || "http://paid2.daki.cc:4153",
+      latencyMs: status.latencyMs || 45,
+      categoriesCount: Number(catResult?.count || 0),
+      productsCount: Number(xproProdResult?.count || 0),
+      autoSyncIntervalMinutes: config.CATALOG_SYNC_INTERVAL_MINUTES,
+      lastSyncedAt: lastSyncedAt || null,
+    };
+
+    const dcSupplier = {
+      id: "DIGITALCORE",
+      name: "DigitalCore",
+      balanceUsd: dcStatus.balanceUsd,
+      currency: dcStatus.currency,
+      health: dcStatus.health,
+      version: dcStatus.version,
+      userId: dcStatus.userId || "digitalcore",
+      endpoint: dcStatus.endpoint || config.DIGITALCORE_BASE_URL,
+      latencyMs: dcStatus.latencyMs || 50,
+      categoriesCount: 1,
+      productsCount: Number(dcProdResult?.count || 0),
+      autoSyncIntervalMinutes: config.CATALOG_SYNC_INTERVAL_MINUTES,
+      lastSyncedAt: dcLastSyncedAt || null,
+    };
+
+    return {
+      ok: true,
+      supplier: xproSupplier,
+      suppliers: [xproSupplier, dcSupplier],
+    };
+  }
+
   // GET /api/admin/supplier/status (For top bar wallet widget & supplier diagnostics)
   server.get(
     "/api/admin/supplier/status",
     { preHandler: requirePermission("supplier.view") },
-    async (_request, reply) => {
-    try {
-      const status = await refreshSupplierStatus();
-      const db = getDb();
-      const [[catResult], [prodResult]] = await Promise.all([
-        db.select({ count: sql<number>`count(${categories.id})` }).from(categories),
-        db.select({ count: sql<number>`count(${products.id})` }).from(products),
-      ]);
-
-      let lastSyncedAt = catalogService.getLastSyncedAt();
-      if (!lastSyncedAt) {
-        const [row] = await db
-          .select()
-          .from(appSettings)
-          .where(eq(appSettings.key, "catalog_last_synced_at"))
-          .limit(1);
-        if (row?.value) {
-          lastSyncedAt = row.value;
-        } else {
-          const [latestSnapshot] = await db
-            .select({ syncedAt: productSupplierSnapshots.syncedAt })
-            .from(productSupplierSnapshots)
-            .orderBy(desc(productSupplierSnapshots.syncedAt))
-            .limit(1);
-          if (latestSnapshot?.syncedAt) {
-            lastSyncedAt = latestSnapshot.syncedAt.toISOString();
-          }
-        }
+    async () => {
+      try {
+        return await handleSupplierStatus();
+      } catch {
+        return {
+          ok: true,
+          supplier: {
+            balanceUsd: supplierStatusCache.balanceUsd,
+            currency: supplierStatusCache.currency,
+            health: "OFFLINE",
+            version: "1.0",
+            userId: supplierStatusCache.userId || "8777968077",
+            endpoint: supplierStatusCache.endpoint || "http://paid2.daki.cc:4153",
+            latencyMs: 0,
+            categoriesCount: 0,
+            productsCount: 0,
+            autoSyncIntervalMinutes: config.CATALOG_SYNC_INTERVAL_MINUTES,
+            lastSyncedAt: catalogService.getLastSyncedAt() || null,
+          },
+          suppliers: [
+            {
+              id: "XPRO",
+              name: "XPro",
+              balanceUsd: supplierStatusCache.balanceUsd,
+              currency: supplierStatusCache.currency,
+              health: "OFFLINE",
+              version: "1.0",
+              userId: supplierStatusCache.userId || "8777968077",
+              endpoint: supplierStatusCache.endpoint || "http://paid2.daki.cc:4153",
+              latencyMs: 0,
+              categoriesCount: 0,
+              productsCount: 0,
+              autoSyncIntervalMinutes: config.CATALOG_SYNC_INTERVAL_MINUTES,
+              lastSyncedAt: catalogService.getLastSyncedAt() || null,
+            },
+            {
+              id: "DIGITALCORE",
+              name: "DigitalCore",
+              balanceUsd: digitalcoreStatusCache.balanceUsd,
+              currency: digitalcoreStatusCache.currency,
+              health: "OFFLINE",
+              version: "1.0",
+              userId: "digitalcore",
+              endpoint: config.DIGITALCORE_BASE_URL,
+              latencyMs: 0,
+              categoriesCount: 0,
+              productsCount: 0,
+              autoSyncIntervalMinutes: config.CATALOG_SYNC_INTERVAL_MINUTES,
+              lastSyncedAt: null,
+            },
+          ],
+        };
       }
-
-      return {
-        ok: true,
-        supplier: {
-          balanceUsd: status.balanceUsd,
-          currency: status.currency,
-          health: status.health,
-          version: status.version,
-          userId: status.userId || "8777968077",
-          endpoint: status.endpoint || "http://paid2.daki.cc:4153",
-          latencyMs: status.latencyMs || 45,
-          categoriesCount: Number(catResult?.count || 0),
-          productsCount: Number(prodResult?.count || 0),
-          autoSyncIntervalMinutes: config.CATALOG_SYNC_INTERVAL_MINUTES,
-          lastSyncedAt: lastSyncedAt || null,
-        },
-      };
-    } catch {
-      return {
-        ok: true,
-        supplier: {
-          balanceUsd: supplierStatusCache.balanceUsd,
-          currency: supplierStatusCache.currency,
-          health: "OFFLINE",
-          version: "1.0",
-          userId: supplierStatusCache.userId || "8777968077",
-          endpoint: supplierStatusCache.endpoint || "http://paid2.daki.cc:4153",
-          latencyMs: 0,
-          categoriesCount: 0,
-          productsCount: 0,
-          autoSyncIntervalMinutes: config.CATALOG_SYNC_INTERVAL_MINUTES,
-          lastSyncedAt: catalogService.getLastSyncedAt() || null,
-        },
-      };
     }
-  });
+  );
 
-  // POST /api/admin/supplier/sync (Sync catalog from XPro)
-  server.post(
-    "/api/admin/supplier/sync",
+  // GET /api/admin/suppliers/status (Multi-supplier status endpoint)
+  server.get(
+    "/api/admin/suppliers/status",
+    { preHandler: requirePermission("supplier.view") },
+    async () => {
+      return await handleSupplierStatus();
+    }
+  );
+
+  // POST /api/admin/suppliers/:supplier/sync (Sync catalog for specific supplier or all)
+  server.post<{ Params: { supplier: string } }>(
+    "/api/admin/suppliers/:supplier/sync",
     { preHandler: requirePermission("supplier.sync") },
     async (request, reply) => {
       try {
-        const result = await catalogService.syncFullCatalog();
+        const target = request.params.supplier.toUpperCase();
+        let result: any;
+        if (target === "DIGITALCORE") {
+          result = await catalogService.syncSupplier("DIGITALCORE");
+        } else if (target === "XPRO") {
+          result = await catalogService.syncSupplier("XPRO");
+        } else {
+          result = await catalogService.syncFullCatalog();
+        }
 
         await writeAudit({
           actorId: getRbac(request)?.userId ?? null,
           action: "SUPPLIER_SYNC",
           entityType: "SUPPLIER",
-          entityId: "xpro",
+          entityId: target.toLowerCase(),
+          details: { result },
+        });
+
+        return {
+          ok: true,
+          synced: result,
+          lastSyncedAt: catalogService.getLastSyncedAt(),
+        };
+      } catch (err: any) {
+        return reply.status(500).send({
+          ok: false,
+          error: `Sync error: ${err.message}`,
+        });
+      }
+    }
+  );
+
+  // POST /api/admin/supplier/sync (Sync catalog from upstream suppliers)
+  server.post(
+    "/api/admin/supplier/sync",
+    { preHandler: requirePermission("supplier.sync") },
+    async (request, reply) => {
+      try {
+        const body = (request.body as { supplier?: string } | undefined) || {};
+        const query = (request.query as { supplier?: string } | undefined) || {};
+        const targetSupplier = (body.supplier || query.supplier || "ALL").toUpperCase();
+
+        let result: any;
+        if (targetSupplier === "DIGITALCORE") {
+          result = await catalogService.syncSupplier("DIGITALCORE");
+        } else if (targetSupplier === "XPRO") {
+          result = await catalogService.syncSupplier("XPRO");
+        } else {
+          result = await catalogService.syncFullCatalog();
+        }
+
+        await writeAudit({
+          actorId: getRbac(request)?.userId ?? null,
+          action: "SUPPLIER_SYNC",
+          entityType: "SUPPLIER",
+          entityId: targetSupplier.toLowerCase(),
           details: { result },
         });
 
@@ -336,6 +545,7 @@ export async function adminRoutes(server: FastifyInstance) {
       const productRows = await db
         .select({
           id: products.id,
+          supplier: products.supplier,
           upstreamProductId: products.upstreamProductId,
           categoryId: products.categoryId,
           categoryName: categories.name,
@@ -351,17 +561,33 @@ export async function adminRoutes(server: FastifyInstance) {
           supplierStock: productSupplierSnapshots.supplierStock,
           deliveryType: productSupplierSnapshots.deliveryType,
           inStock: productSupplierSnapshots.inStock,
+          pricingTiers: productSupplierSnapshots.pricingTiers,
         })
         .from(products)
         .leftJoin(categories, eq(products.categoryId, categories.id))
-        .leftJoin(productSupplierSnapshots, eq(products.id, productSupplierSnapshots.productId))
+        .leftJoin(
+          productSupplierSnapshots,
+          and(
+            eq(products.id, productSupplierSnapshots.productId),
+            eq(products.supplier, productSupplierSnapshots.supplier)
+          )
+        )
         .orderBy(products.id);
 
-      let walletBalanceUsd = String(supplierStatusCache.balanceUsd || "0.00");
+      let xproWalletBalanceUsd = String(supplierStatusCache.balanceUsd || "0.00");
+      let digitalcoreWalletBalanceUsd = String(digitalcoreStatusCache.balanceUsd || "0.00");
       try {
-        const balRes = await xproClient.getBalance(2500, 1);
-        if (balRes.ok) {
-          walletBalanceUsd = String(balRes.balance);
+        const [xRes, dcRes] = await Promise.allSettled([
+          xproClient.getBalance(2500),
+          digitalcoreClient.getBalance(2500),
+        ]);
+        if (xRes.status === "fulfilled" && xRes.value) {
+          const val = xRes.value as any;
+          xproWalletBalanceUsd = String(val.balanceUsd ?? val.balance ?? xproWalletBalanceUsd);
+        }
+        if (dcRes.status === "fulfilled" && dcRes.value) {
+          const val = dcRes.value as any;
+          digitalcoreWalletBalanceUsd = String(val.balanceUsd ?? val.balance ?? digitalcoreWalletBalanceUsd);
         }
       } catch {
         // Fallback to cache if available
@@ -380,9 +606,13 @@ export async function adminRoutes(server: FastifyInstance) {
       }
 
       const mappedProducts = productRows.map((p) => {
+        const pSupplier = (p.supplier || "XPRO").toUpperCase();
+        const effectiveWalletBalance =
+          pSupplier === "DIGITALCORE" ? digitalcoreWalletBalanceUsd : xproWalletBalanceUsd;
+
         const stockCalc = calculateSellableStock({
           supplierStock: p.supplierStock ?? 999,
-          supplierWalletBalanceUsd: walletBalanceUsd,
+          supplierWalletBalanceUsd: effectiveWalletBalance,
           unitCostUsd: p.supplierPriceUsd || "0.00",
           localLimit: p.localStockLimit,
         });
@@ -396,6 +626,7 @@ export async function adminRoutes(server: FastifyInstance) {
 
         const row: Record<string, unknown> = {
           id: p.id,
+          supplier: pSupplier,
           supplierProductId: p.upstreamProductId,
           categoryId: p.categoryId,
           categoryName: stripCustomEmojiPlaceholders(p.categoryName || "") || "Uncategorized",
@@ -403,6 +634,7 @@ export async function adminRoutes(server: FastifyInstance) {
           nameMmk: p.nameMmk,
           description: p.descriptionMmk || "",
           supplierPriceUsd: p.supplierPriceUsd || "0.00",
+          pricingTiers: p.pricingTiers || null,
           customPriceMmk: p.retailPriceMmk,
           retailPriceMmk: p.retailPriceMmk,
           pricingMode: "CUSTOM_OVERRIDE",
@@ -432,7 +664,12 @@ export async function adminRoutes(server: FastifyInstance) {
 
       return {
         ok: true,
-        walletBalanceUsd: canSeeSupplierWallet ? walletBalanceUsd : null,
+        walletBalanceUsd: canSeeSupplierWallet ? xproWalletBalanceUsd : null,
+        digitalcoreWalletBalanceUsd: canSeeSupplierWallet ? digitalcoreWalletBalanceUsd : null,
+        balances: {
+          XPRO: canSeeSupplierWallet ? xproWalletBalanceUsd : null,
+          DIGITALCORE: canSeeSupplierWallet ? digitalcoreWalletBalanceUsd : null,
+        },
         products: mappedProducts,
       };
     }

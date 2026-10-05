@@ -1,0 +1,1521 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Documentation | DigitalCore</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet">
+    <link rel="icon" type="image/jpeg" href="assets/logo.jpg">
+    <link rel="stylesheet" href="style.css?v=67">
+
+    <style>
+        :root {
+            --docs-sidebar-w: 280px;
+            --badge-get: #10b981;
+            --badge-post: #3b82f6;
+            --badge-put: #f59e0b;
+            --badge-del: #ef4444;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            font-family: var(--font-sans);
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* Click / Active Animation matching Support button */
+        .contact-btn,
+        .copy-btn,
+        .theme-toggle-btn,
+        .slug-pill,
+        .sidebar-link {
+            transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s, border-color 0.2s, color 0.2s;
+            cursor: pointer;
+        }
+
+        .contact-btn:hover,
+        .copy-btn:hover,
+        .theme-toggle-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .contact-btn:active,
+        .copy-btn:active,
+        .theme-toggle-btn:active,
+        .slug-pill:active {
+            transform: translateY(1px) scale(0.97);
+        }
+
+        .docs-container {
+            display: flex;
+            max-width: 1560px;
+            margin: 0 auto;
+            padding-top: 5rem;
+            min-height: 100vh;
+        }
+
+        /* Sidebar Navigation */
+        .docs-sidebar {
+            width: var(--docs-sidebar-w);
+            position: sticky;
+            top: 5rem;
+            height: calc(100vh - 5rem);
+            overflow-y: auto;
+            padding: 2rem 1.5rem 2rem 2rem;
+            border-right: 1px solid var(--border-subtle);
+            flex-shrink: 0;
+            scrollbar-width: thin;
+        }
+
+        .docs-sidebar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .docs-sidebar::-webkit-scrollbar-thumb {
+            background: var(--border-subtle);
+            border-radius: 4px;
+        }
+
+        .sidebar-section {
+            margin-bottom: 2rem;
+        }
+
+        .sidebar-title {
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
+        }
+
+        .sidebar-link {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 0.45rem 0.75rem;
+            border-radius: 8px;
+            color: #ccc;
+            text-decoration: none;
+            font-size: 0.88rem;
+            font-weight: 500;
+            margin-bottom: 2px;
+        }
+
+        .sidebar-link:hover, .sidebar-link.active {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .method-tag {
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .method-tag.get {
+            background: rgba(16, 185, 129, 0.15);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .method-tag.post {
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        /* Content Area */
+        .docs-content {
+            flex: 1;
+            padding: 3rem 4rem 6rem;
+            max-width: 1180px;
+            min-width: 0;
+        }
+
+        .docs-hero {
+            margin-bottom: 3.5rem;
+            padding-bottom: 2.5rem;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .docs-hero h1 {
+            font-size: 3.2rem;
+            font-weight: 800;
+            letter-spacing: -1.5px;
+            margin-bottom: 1rem;
+            background: linear-gradient(180deg, #ffffff 0%, #a1a1aa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .docs-hero p {
+            font-size: 1.15rem;
+            color: var(--text-muted);
+            line-height: 1.6;
+            max-width: 820px;
+        }
+
+        .base-url-box {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            padding: 8px 16px;
+            margin-top: 1.5rem;
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+        }
+
+        .base-url-box span.label {
+            color: var(--text-muted);
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+
+        .base-url-box code {
+            color: var(--gold);
+            font-weight: 600;
+        }
+
+        /* Callout Box */
+        .callout-box {
+            background: rgba(255, 179, 0, 0.05);
+            border: 1px solid rgba(255, 179, 0, 0.25);
+            border-radius: 16px;
+            padding: 1.5rem 1.75rem;
+            margin-bottom: 3rem;
+            position: relative;
+        }
+
+        .callout-box.info {
+            background: rgba(59, 130, 246, 0.05);
+            border-color: rgba(59, 130, 246, 0.25);
+        }
+
+        .callout-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 700;
+            font-size: 1.05rem;
+            margin-bottom: 0.6rem;
+            color: #fff;
+        }
+
+        .callout-header svg {
+            color: var(--gold);
+            flex-shrink: 0;
+        }
+
+        .callout-box.info .callout-header svg {
+            color: #60a5fa;
+        }
+
+        .callout-body {
+            color: #d1d5db;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        .callout-body a {
+            color: var(--gold);
+            text-decoration: underline;
+            text-underline-offset: 3px;
+            font-weight: 600;
+        }
+
+        /* Section Headings */
+        .doc-section {
+            margin-bottom: 4.5rem;
+            scroll-margin-top: 6.5rem;
+        }
+
+        .doc-section-title {
+            font-size: 2rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .doc-section-desc {
+            color: var(--text-muted);
+            font-size: 1rem;
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+
+        /* Endpoint Card */
+        .endpoint-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-subtle);
+            border-radius: 18px;
+            padding: 2rem;
+            margin-bottom: 2.5rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+            transition: border-color 0.2s, background 0.3s ease;
+            max-width: 100%;
+        }
+
+        .endpoint-card:hover {
+            border-color: var(--border-hover);
+        }
+
+        .endpoint-header {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 1.25rem;
+            padding-bottom: 1.25rem;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .endpoint-path-wrap {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .endpoint-method {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            font-weight: 800;
+            padding: 4px 10px;
+            border-radius: 6px;
+            letter-spacing: 0.04em;
+        }
+
+        .endpoint-method.get {
+            background: rgba(16, 185, 129, 0.18);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.4);
+        }
+
+        .endpoint-method.post {
+            background: rgba(59, 130, 246, 0.18);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.4);
+        }
+
+        .endpoint-path {
+            font-family: var(--font-mono);
+            font-size: 1.15rem;
+            font-weight: 600;
+            color: #ffffff;
+            letter-spacing: -0.02em;
+        }
+
+        .endpoint-desc {
+            font-size: 1rem;
+            color: #d1d5db;
+            margin-bottom: 1.75rem;
+            line-height: 1.6;
+        }
+
+        /* Parameter Tables */
+        .subheading {
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
+            margin-bottom: 0.75rem;
+        }
+
+        .params-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1.75rem;
+            font-size: 0.9rem;
+        }
+
+        .params-table th {
+            text-align: left;
+            padding: 10px 14px;
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--text-muted);
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .params-table td {
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--border-subtle);
+            color: #d1d5db;
+            vertical-align: top;
+        }
+
+        .param-name {
+            font-family: var(--font-mono);
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .param-type {
+            font-family: var(--font-mono);
+            color: #a1a1aa;
+            font-size: 0.8rem;
+        }
+
+        .param-req {
+            display: inline-block;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+
+        .param-req.required {
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .param-req.optional {
+            background: rgba(255, 255, 255, 0.06);
+            color: #9ca3af;
+        }
+
+        /* Code Snippet Box with Horizontal Scroll Constraints */
+        .code-box {
+            background: #090a0d;
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 1.5rem;
+            position: relative;
+            max-width: 100%;
+        }
+
+        .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border-bottom: 1px solid var(--border-subtle);
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .code-content {
+            padding: 16px;
+            margin: 0;
+            overflow-x: auto;
+            max-width: 100%;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            line-height: 1.55;
+            color: #e5e7eb;
+            white-space: pre;
+            scrollbar-width: thin;
+        }
+
+        .code-content::-webkit-scrollbar {
+            height: 6px;
+        }
+
+        .code-content::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+        }
+
+        .copy-btn {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--border-subtle);
+            color: #ccc;
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .copy-btn:hover {
+            background: rgba(255, 255, 255, 0.12);
+            color: #fff;
+            border-color: var(--border-hover);
+        }
+
+        /* Interactive Products Table */
+        .products-table-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-subtle);
+            border-radius: 18px;
+            overflow: hidden;
+            margin-bottom: 3.5rem;
+            transition: background 0.3s ease, border-color 0.2s;
+        }
+
+        .products-table-header {
+            padding: 1.5rem;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            border-bottom: 1px solid var(--border-subtle);
+            background: rgba(255, 255, 255, 0.015);
+        }
+
+        .table-search-input {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            color: #fff;
+            padding: 8px 14px 8px 36px;
+            font-size: 0.9rem;
+            outline: none;
+            width: 280px;
+            transition: border-color 0.2s;
+        }
+
+        .table-search-input:focus {
+            border-color: var(--gold);
+        }
+
+        .search-wrap {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 12px;
+            color: var(--text-muted);
+            pointer-events: none;
+        }
+
+        .prod-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.92rem;
+        }
+
+        .prod-table th {
+            text-align: left;
+            padding: 14px 18px;
+            background: rgba(255, 255, 255, 0.025);
+            color: var(--text-muted);
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-subtle);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .prod-table td {
+            padding: 16px 18px;
+            border-bottom: 1px solid var(--border-subtle);
+            color: #d1d5db;
+            vertical-align: middle;
+        }
+
+        .prod-table tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .prod-name-cell {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .prod-logo-img {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            object-fit: cover;
+            background: #18181b;
+        }
+
+        .slug-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: #f3f4f6;
+        }
+
+        .slug-pill:hover {
+            background: rgba(255, 179, 0, 0.12);
+            border-color: rgba(255, 179, 0, 0.35);
+            color: var(--gold);
+        }
+
+        .stock-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .stock-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #10b981;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.8);
+        }
+
+        .stock-dot.out {
+            background: #ef4444;
+            box-shadow: 0 0 8px rgba(239, 68, 68, 0.8);
+        }
+
+        .tier-badge-chip {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-subtle);
+            border-radius: 6px;
+            padding: 2px 8px;
+            font-size: 0.78rem;
+            margin: 2px;
+            font-family: var(--font-mono);
+        }
+
+        /* Toast Notification */
+        .copy-toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: #10b981;
+            color: #000;
+            font-weight: 700;
+            font-size: 0.88rem;
+            padding: 10px 18px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .copy-toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        /* ============================================================ */
+        /* LIGHT THEME COMPREHENSIVE FIXES FOR DOCS                     */
+        /* ============================================================ */
+        body.light-theme {
+            --bg-dark: #f2f2f7;
+            --bg-card: rgba(255, 255, 255, 0.8);
+            --border-subtle: rgba(0, 0, 0, 0.08);
+            --border-hover: rgba(0, 0, 0, 0.2);
+            --text-main: #18181b;
+            --text-muted: #64748b;
+        }
+
+        body.light-theme .logo-text {
+            color: #18181b !important;
+        }
+
+        body.light-theme .docs-sidebar {
+            border-right-color: rgba(0, 0, 0, 0.08);
+        }
+
+        body.light-theme .sidebar-link {
+            color: #475569;
+        }
+
+        body.light-theme .sidebar-link:hover,
+        body.light-theme .sidebar-link.active {
+            color: #0f172a;
+            background: rgba(0, 0, 0, 0.05);
+        }
+
+        body.light-theme .docs-hero h1 {
+            background: linear-gradient(180deg, #0f172a 0%, #475569 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        body.light-theme .base-url-box {
+            background: #ffffff;
+            border-color: rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+        }
+
+        body.light-theme .callout-box {
+            background: #fffbeb;
+            border-color: #fde68a;
+        }
+
+        body.light-theme .callout-header {
+            color: #92400e;
+        }
+
+        body.light-theme .callout-body {
+            color: #78350f;
+        }
+
+        body.light-theme .callout-box.info {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+        }
+
+        body.light-theme .callout-box.info .callout-header {
+            color: #1e40af;
+        }
+
+        body.light-theme .callout-box.info .callout-body {
+            color: #1e3a8a;
+        }
+
+        body.light-theme .endpoint-card {
+            background: #ffffff;
+            border-color: rgba(0, 0, 0, 0.08);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+        }
+
+        body.light-theme .endpoint-path {
+            color: #0f172a;
+        }
+
+        body.light-theme .endpoint-desc {
+            color: #334155;
+        }
+
+        body.light-theme .params-table th {
+            background: rgba(0, 0, 0, 0.03);
+            color: #475569;
+            border-bottom-color: rgba(0, 0, 0, 0.08);
+        }
+
+        body.light-theme .params-table td {
+            color: #334155;
+            border-bottom-color: rgba(0, 0, 0, 0.06);
+        }
+
+        body.light-theme .param-name {
+            color: #0f172a;
+        }
+
+        body.light-theme .param-type {
+            color: #64748b;
+        }
+
+        body.light-theme .code-box {
+            background: #f8fafc;
+            border-color: #e2e8f0;
+        }
+
+        body.light-theme .code-header {
+            background: #f1f5f9;
+            border-bottom-color: #e2e8f0;
+            color: #64748b;
+        }
+
+        body.light-theme .code-content {
+            color: #0f172a;
+        }
+
+        body.light-theme .code-content::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        body.light-theme .copy-btn {
+            background: #ffffff;
+            border-color: #cbd5e1;
+            color: #475569;
+        }
+
+        body.light-theme .copy-btn:hover {
+            background: #f8fafc;
+            color: #0f172a;
+            border-color: #94a3b8;
+        }
+
+        body.light-theme .products-table-card {
+            background: #ffffff;
+            border-color: rgba(0, 0, 0, 0.08);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+        }
+
+        body.light-theme .products-table-header {
+            background: #f8fafc;
+            border-bottom-color: rgba(0, 0, 0, 0.06);
+        }
+
+        body.light-theme .table-search-input {
+            background: #ffffff;
+            border-color: #cbd5e1;
+            color: #0f172a;
+        }
+
+        body.light-theme .prod-table th {
+            background: rgba(0, 0, 0, 0.02);
+            color: #64748b;
+            border-bottom-color: rgba(0, 0, 0, 0.06);
+        }
+
+        body.light-theme .prod-table td {
+            color: #334155;
+            border-bottom-color: rgba(0, 0, 0, 0.06);
+        }
+
+        body.light-theme .prod-table tr:hover td {
+            background: rgba(0, 0, 0, 0.015);
+        }
+
+        body.light-theme .prod-name-cell {
+            color: #0f172a;
+        }
+
+        body.light-theme .slug-pill {
+            background: #f1f5f9;
+            border-color: #e2e8f0;
+            color: #0f172a;
+        }
+
+        body.light-theme .slug-pill:hover {
+            background: rgba(255, 179, 0, 0.15);
+            border-color: rgba(255, 179, 0, 0.4);
+            color: #b45309;
+        }
+
+        body.light-theme .tier-badge-chip {
+            background: #f1f5f9;
+            border-color: #e2e8f0;
+            color: #334155;
+        }
+
+        @media (max-width: 1024px) {
+            .docs-sidebar {
+                display: none;
+            }
+            .docs-content {
+                padding: 2rem 1.5rem 5rem;
+            }
+            .docs-hero h1 {
+                font-size: 2.4rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Top Navbar -->
+    <nav class="navbar">
+        <div class="logo">
+            <a href="/" style="display: flex; align-items: center; text-decoration: none;">
+                <img src="assets/logo.jpg" alt="DigitalCore Logo" style="height: 40px; border-radius: 7px;">
+            </a>
+        </div>
+        <div class="nav-links">
+            <a href="/" class="contact-btn" style="display: flex; align-items: center; gap: 8px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                    <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+                General
+            </a>
+            <a href="https://t.me/DCoreStoreBot" target="_blank" class="contact-btn" style="display: flex; align-items: center; gap: 8px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 0 0-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
+                </svg>
+                Telegram Bot
+            </a>
+            <a href="http://t.me/DGTsupply" target="_blank" class="contact-btn" style="display: flex; align-items: center; gap: 8px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+                Support
+            </a>
+            <button id="themeToggleBtn" class="theme-toggle-btn" aria-label="Toggle theme">
+                <svg class="theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="5"></circle>
+                    <line x1="12" y1="1" x2="12" y2="3"></line>
+                    <line x1="12" y1="21" x2="12" y2="23"></line>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                    <line x1="1" y1="12" x2="3" y2="12"></line>
+                    <line x1="21" y1="12" x2="23" y2="12"></line>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                </svg>
+                <svg class="theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                </svg>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <div class="docs-container">
+        <!-- Sidebar Navigation -->
+        <aside class="docs-sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-title">Getting Started</div>
+                <a href="#overview" class="sidebar-link">Overview</a>
+                <a href="#authentication" class="sidebar-link">Authentication</a>
+                <a href="#product-ids" class="sidebar-link">Available Products &amp; IDs</a>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">API Endpoints</div>
+                <a href="#endpoint-products" class="sidebar-link">
+                    <span class="method-tag get">GET</span>
+                    /products &amp; /product
+                </a>
+                <a href="#endpoint-me" class="sidebar-link">
+                    <span class="method-tag get">GET</span>
+                    /me
+                </a>
+                <a href="#endpoint-buy" class="sidebar-link">
+                    <span class="method-tag post">POST</span>
+                    /buy
+                </a>
+                <a href="#endpoint-history" class="sidebar-link">
+                    <span class="method-tag get">GET</span>
+                    /history
+                </a>
+                <a href="#endpoint-order" class="sidebar-link">
+                    <span class="method-tag get">GET</span>
+                    /order
+                </a>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">Reference</div>
+                <a href="#errors" class="sidebar-link">Error Codes</a>
+            </div>
+        </aside>
+
+        <!-- Documentation Content Area -->
+        <main class="docs-content">
+            <!-- Hero Header -->
+            <header class="docs-hero" id="overview">
+                <h1>DigitalCore API</h1>
+                <p>
+                    A high-speed, wholesale REST API for automated stock synchronization, instant key delivery, and balance-backed purchasing with sub-millisecond execution. Built for resellers, automated bots, and enterprise integrations.
+                </p>
+                <div class="base-url-box">
+                    <span class="label">Base URL</span>
+                    <code id="baseUrlText">https://digitalcore.top</code>
+                    <button class="copy-btn" onclick="copyText('https://digitalcore.top')">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        Copy
+                    </button>
+                </div>
+            </header>
+
+            <!-- Authentication Notice & Guide -->
+            <section class="doc-section" id="authentication">
+                <h2 class="doc-section-title">Authentication</h2>
+                <p class="doc-section-desc">
+                    Every request to the user API requires your unique personal API Key.
+                </p>
+
+                <!-- Crucial Telegram Bot Notice -->
+                <div class="callout-box">
+                    <div class="callout-header">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        </svg>
+                        How to Get Your API Key
+                    </div>
+                    <div class="callout-body">
+                        <strong>API keys cannot be generated directly on this website.</strong>
+                        <br>
+                        Your API key is permanently linked to your Telegram account and Telegram bot balance. To get your API key:
+                        <ol style="margin: 0.75rem 0 0.75rem 1.5rem; line-height: 1.8;">
+                            <li>Open our official Telegram Bot: <a href="https://t.me/DCoreStoreBot" target="_blank">@DCoreStoreBot</a></li>
+                            <li>Navigate to <strong>⚙️ Reseller API in the main menu</strong>.</li>
+                            <li>Your personal <code>Api-Key</code> is displayed there. Copy it and keep it secret.</li>
+                        </ol>
+                        All purchases made through the API will deduct funds from your Telegram bot balance and deliver keys directly to your order response.
+                    </div>
+                </div>
+
+                <div class="subheading">Required Request Header</div>
+                <p style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.95rem;">
+                    Pass your API key in the <code>Api-Key</code> header with every request (also accepts <code>X-Api-Key</code> or <code>Authorization: Bearer &lt;key&gt;</code>):
+                </p>
+
+                <div class="code-box">
+                    <div class="code-header">
+                        <span>HTTP Header</span>
+                        <button class="copy-btn" onclick="copyText('Api-Key: a1b2c3d4-e5f6-7890-abcd-ef1234567890')">Copy</button>
+                    </div>
+                    <pre class="code-content"><code>Api-Key: a1b2c3d4-e5f6-7890-abcd-ef1234567890</code></pre>
+                </div>
+            </section>
+
+            <!-- Available Products Table -->
+            <section class="doc-section" id="product-ids">
+                <h2 class="doc-section-title">Available Products &amp; IDs</h2>
+                <p class="doc-section-desc">
+                    Live inventory and exact product IDs (slugs) currently available in the catalog. Use the slug in <code>GET /product?id=...</code> and <code>POST /buy?id=...</code>.
+                </p>
+
+                <div class="products-table-card">
+                    <div class="products-table-header">
+                        <div style="font-weight: 700; font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
+                            <span>Active Products</span>
+                            <span id="productCountBadge" style="background: rgba(255,255,255,0.06); padding: 2px 8px; border-radius: 20px; font-size: 0.8rem; color: var(--gold);">...</span>
+                        </div>
+                        <div class="search-wrap">
+                            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                            </svg>
+                            <input type="text" id="productSearchInput" class="table-search-input" placeholder="Search by name or slug..." oninput="filterProductsTable()">
+                        </div>
+                    </div>
+
+                    <div style="overflow-x: auto;">
+                        <table class="prod-table" id="productsTable">
+                            <thead>
+                                <tr>
+                                    <th>Product</th>
+                                    <th>API Slug (id)</th>
+                                    <th>Live Stock</th>
+                                    <th>Price From</th>
+                                    <th>Wholesale Tiers</th>
+                                </tr>
+                            </thead>
+                            <tbody id="productsTableBody">
+                                <tr>
+                                    <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                                        Loading available products from server...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ENDPOINTS -->
+
+            <!-- 1. GET /api/user/products & /product -->
+            <section class="doc-section" id="endpoint-products">
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <div class="endpoint-path-wrap">
+                            <span class="endpoint-method get">GET</span>
+                            <span class="endpoint-path">/api/user/products</span>
+                            <span style="color: var(--text-muted); font-size: 0.95rem; font-weight: 500;">&amp;</span>
+                            <span class="endpoint-path">/api/user/product</span>
+                        </div>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button class="copy-btn" onclick="copyText('https://digitalcore.top/api/user/products')">Copy /products</button>
+                            <button class="copy-btn" onclick="copyText('https://digitalcore.top/api/user/product?id=gemini_pro_18_months')">Copy /product</button>
+                        </div>
+                    </div>
+
+                    <div class="endpoint-desc">
+                        Retrieve the complete catalog of active products or query detailed pricing and stock for an individual product by passing its <code>id</code> query parameter (slug or numeric ID).
+                    </div>
+
+                    <div class="subheading">Query Parameters</div>
+                    <table class="params-table">
+                        <thead>
+                            <tr>
+                                <th>Parameter</th>
+                                <th>Endpoint</th>
+                                <th>Type</th>
+                                <th>Required</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="param-name">—</span></td>
+                                <td><code>/api/user/products</code></td>
+                                <td><span class="param-type">—</span></td>
+                                <td><span class="param-req optional">None</span></td>
+                                <td>Returns a list of all publicly available products with stock, base prices, and wholesale discount tiers.</td>
+                            </tr>
+                            <tr>
+                                <td><span class="param-name">id</span></td>
+                                <td><code>/api/user/product</code></td>
+                                <td><span class="param-type">string</span></td>
+                                <td><span class="param-req required">Required</span></td>
+                                <td>Product slug (e.g. <code>gemini_pro_18_months</code>) or numeric ID. Returns a single product object. Returns 404 if not found or Hidden.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="subheading">Example 1: Fetch All Products (GET /api/user/products)</div>
+                    <div class="code-box">
+                        <div class="code-header">
+                            <span>curl</span>
+                            <button class="copy-btn" onclick="copyText('curl -s -H &quot;Api-Key: YOUR_API_KEY&quot; https://digitalcore.top/api/user/products')">Copy</button>
+                        </div>
+                        <pre class="code-content"><code>curl -s -H "Api-Key: YOUR_API_KEY" \
+  https://digitalcore.top/api/user/products</code></pre>
+                    </div>
+
+                    <div class="subheading">Response (200 OK — Array)</div>
+                    <div class="code-box">
+                        <div class="code-header">
+                            <span>JSON</span>
+                            <button class="copy-btn" onclick="copyText(document.getElementById('code-resp-products').innerText)">Copy</button>
+                        </div>
+                        <pre class="code-content" id="code-resp-products"><code>[
+  {
+    "id": "gemini_pro_18_months",
+    "name": "Gemini Pro 18 Months",
+    "stock": 1237,
+    "price": 0.55,
+    "priceFrom": 0.49,
+    "tiers": [
+      {"minQty": 1, "maxQty": 49, "price": 0.55},
+      {"minQty": 50, "maxQty": 99, "price": 0.52},
+      {"minQty": 100, "maxQty": null, "price": 0.49}
+    ]
+  },
+  {
+    "id": "chatgpt_plus_1_month",
+    "name": "ChatGPT Plus 1 Month",
+    "stock": 420,
+    "price": 13.50,
+    "priceFrom": 11.90,
+    "tiers": [
+      {"minQty": 1, "maxQty": 9, "price": 13.50},
+      {"minQty": 10, "maxQty": 49, "price": 12.50},
+      {"minQty": 50, "maxQty": null, "price": 11.90}
+    ]
+  },
+  {
+    "id": "claude_pro_1_month",
+    "name": "Claude Pro 1 Month",
+    "stock": 185,
+    "price": 16.00,
+    "priceFrom": 14.50,
+    "tiers": [
+      {"minQty": 1, "maxQty": 4, "price": 16.00},
+      {"minQty": 5, "maxQty": null, "price": 14.50}
+    ]
+  }
+]</code></pre>
+                    </div>
+
+                    <div class="subheading" style="margin-top: 2rem;">Example 2: Fetch Single Product (GET /api/user/product?id=...)</div>
+                    <div class="code-box">
+                        <div class="code-header">
+                            <span>curl</span>
+                            <button class="copy-btn" onclick="copyText('curl -s -H &quot;Api-Key: YOUR_API_KEY&quot; &quot;https://digitalcore.top/api/user/product?id=gemini_pro_18_months&quot;')">Copy</button>
+                        </div>
+                        <pre class="code-content"><code>curl -s -H "Api-Key: YOUR_API_KEY" \
+  "https://digitalcore.top/api/user/product?id=gemini_pro_18_months"</code></pre>
+                    </div>
+
+                    <div class="subheading">Response (200 OK — Single Object)</div>
+                    <div class="code-box">
+                        <div class="code-header">
+                            <span>JSON</span>
+                            <button class="copy-btn" onclick="copyText(document.getElementById('code-resp-product').innerText)">Copy</button>
+                        </div>
+                        <pre class="code-content" id="code-resp-product"><code>{
+  "id": "gemini_pro_18_months",
+  "name": "Gemini Pro 18 Months",
+  "stock": 1237,
+  "price": 0.55,
+  "priceFrom": 0.49,
+  "tiers": [
+    {"minQty": 1, "maxQty": 49, "price": 0.55},
+    {"minQty": 50, "maxQty": 99, "price": 0.52},
+    {"minQty": 100, "maxQty": null, "price": 0.49}
+  ]
+}</code></pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. GET /api/user/me -->
+            <section class="doc-section" id="endpoint-me">
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <div class="endpoint-path-wrap">
+                            <span class="endpoint-method get">GET</span>
+                            <span class="endpoint-path">/api/user/me</span>
+                        </div>
+                        <button class="copy-btn" onclick="copyText('https://digitalcore.top/api/user/me')">Copy URL</button>
+                    </div>
+
+                    <div class="endpoint-desc">
+                        Returns account summary for the authenticated user, including current available Telegram bot balance and total count of completed orders.
+                    </div>
+
+                    <div class="subheading">Request Example</div>
+                    <div class="code-box">
+                        <div class="code-header">
+                            <span>curl</span>
+                            <button class="copy-btn" onclick="copyText('curl -s -H &quot;Api-Key: YOUR_API_KEY&quot; https://digitalcore.top/api/user/me')">Copy</button>
+                        </div>
+                        <pre class="code-content"><code>curl -s -H "Api-Key: YOUR_API_KEY" \
+  https://digitalcore.top/api/user/me</code></pre>
+                    </div>
+
+                    <div class="subheading">Response Example (200 OK)</div>
+                    <div class="code-box">
+                        <div class="code-header">
+                            <span>JSON</span>
+                            <button class="copy-btn" onclick="copyText(document.getElementById('code-resp-me').innerText)">Copy</button>
+                        </div>
+                        <pre class="code-content" id="code-resp-me"><code>{
+  "balance": 142.0,
+  "total_orders": "30"
+}</code></pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. POST /api/user/buy -->
+            <section class="doc-section" id="endpoint-buy">
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <div class="endpoint-path-wrap">
+                            <span class="endpoint-method post">POST</span>
+                            <span class="endpoint-path">/api/user/buy</span>
+                        </div>
+                        <button class="copy-btn" onclick="copyText('https://digitalcore.top/api/user/buy?id=gemini_pro_18_months&count=1')">Copy URL</button>
+                    </div>
+
+                    <div class="endpoint-desc">
+                        Instantly purchases products using your Telegram bot account balance.
+                        <br><br>
+                        <strong>Zero Race Condition Guarantee:</strong> Uses database row-locking and atomic transactional key reservation. If stock is insufficient or balance is low, the transaction is fully rolled back, preventing double-spending and overselling under high concurrency.
+                    </div>
+
+                    <div class="subheading">Parameters (URL Query or JSON Body)</div>
+                    <table class="params-table">
+                        <thead>
+                            <tr>
+                                <th>Parameter</th>
+                                <th>Type</th>
+                                <th>Required</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="param-name">id</span></td>
+                                <td><span class="param-type">string</span></td>
+                                <td><span class="param-req required">Required</span></td>
+                                <td>Target product slug (e.g. <code>gemini_pro_18_months</code>) or numeric ID.</td>
+                            </tr>
+                            <tr>
+                                <td><span class="param-name">count</span></td>
+                                <td><span class="param-type">integer</span></td>
+                                <td><span class="param-req optional">Optional</span></td>
+                                <td>Quantity to purchase (default: <code>1</code>, max: <code>1000</code>). Tier pricing applies automatically.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="subheading">Request Example (Query Parameters)</div>
+                    <div class="code-box">
+                        <div class="code-header">
+                            <span>curl (query string)</span>
+                            <button class="copy-btn" onclick="copyText('curl -s -X POST -H &quot;Api-Key: YOUR_API_KEY&quot; &quot;https://digitalcore.top/api/user/buy?id=gemini_pro_18_months&amp;count=1&quot;')">Copy</button>
+                        </div>
+                        <pre class="code-content"><code>curl -s -X POST -H "Api-Key: YOUR_API_KEY" \
+  "https://digitalcore.top/api/user/buy?id=gemini_pro_18_months&count=1"</code></pre>
+                    </div>
+
+                    <div class="subheading">Request Example (JSON Body)</div>
+                    <div class="code-box">
+                        <div class="code-header">
+                            <span>curl (JSON payload)</span>
+                            <button class="copy-btn" onclick="copyText('curl -s -X POST -H &quot;Api-Key: YOUR_API_KEY&quot; -H &quot;Content-Type: application/json&quot; -d &apos;{&quot;id&quot;: &quot;gemini_pro_18_months&quot;, &quot;count&quot;: 1}&apos; https://digitalcore.top/api/user/buy')">Copy</button>
+                        </div>
+                        <pre class="code-content"><code>curl -s -X POST \
+  -H "Api-Key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"id": "gemini_pro_18_months", "count": 1}' \
+  https://digitalcore.top/api/user/buy</code></pre>
+                    </div>
+
+                    <div class="subheading">Response Example (200 OK Success)</div>
+                    <div class="code-box">
+                        <div class="code-header">
+                            <span>JSON</span>
+                            <button class="copy-btn" onclick="copyText(document.getElementById('code-resp-buy').innerText)">Copy</button>
+                        </div>
+                        <pre class="code-content" id="code-resp-buy"><code>{
+  "success": true,
+  "order_id": "ORD-3232432",
+  "view_url": "https://digitalcore.top/order?number=a2de1869-3524-41d8-1bc2-f0722d73e071",
+  "total_amount": 0.55,
+  "quantity": 1,
+  "items": [
+    "https://g.co/gemini/share/sample_activation_token_123"
+  ]
+}</code></pre>
+                    </div>
+
+                    <div class="subheading">Response Example (400 Out of Stock / Insufficient Balance)</div>
+                    <div class="code-box">
+                        <div class="code-header">
+                            <span>JSON Error</span>
+                            <button class="copy-btn" onclick="copyText('{&quot;success&quot;: false, &quot;msg&quot;: &quot;OUT_OF_STOCK&quot;}')">Copy</button>
+                        </div>
+                        <pre class="code-content"><code>{
+  "success": false,
+  "msg": "OUT_OF_STOCK"
+}</code></pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 5. GET /api/user/history -->
+            <section class="doc-section" id="endpoint-history">
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <div class="endpoint-path-wrap">
+                            <span class="endpoint-method get">GET</span>
+                            <span class="endpoint-path">/api/user/history</span>
+                        </div>
+                        <button class="copy-btn" onclick="copyText('https://digitalcore.top/api/user/history?page=1')">Copy URL</button>
+                    </div>
+
+                    <div class="endpoint-desc">
+                        Returns your paginated order history (50 orders per page), sorted chronologically from newest to oldest.
+                    </div>
+
+                    <div class="subheading">Query Parameters</div>
+                    <table class="params-table">
+                        <thead>
+                            <tr>
+                                <th>Parameter</th>
+                                <th>Type</th>
+                                <th>Required</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="param-name">page</span></td>
+                                <td><span class="param-type">integer</span></td>
+                                <td><span class="param-req optional">Optional</span></td>
+                                <td>Page number (default: <code>1</code>). Page 1 returns items 0–50, page 2 returns 50–100, etc.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="subheading">Request Example</div>
+                    <div class="code-box">
+                        <div class="code-header">
+                            <span>curl</span>
+                            <button class="copy-btn" onclick="copyText('curl -s -H &quot;Api-Key: YOUR_API_KEY&quot; &quot;https://digitalcore.top/api/user/history?page=1&quot;')">Copy</button>
+                        </div>
+                        <pre class="code-content"><code>curl -s -H "Api-Key: YOUR_API_KEY" \
+  "https://digitalcore.top/api/user/history?page=1"</code></pre>
+                    </div>
+
+                    <div class="subheading">Response Example (200 OK)</div>
+                    <div class="code-box">
+                        <div class="code-header">
+                            <span>JSON</span>
+                            <button class="copy-btn" onclick="copyText(document.getElementById('code-resp-history').innerText)">Copy</button>
+                        </div>
+                        <pre class="code-content" id="code-resp-history"><code>[
+  {
+    "id": "ORD-3232432",
+    "create_timestamp": 1764354344,
+    "total_amount": 0.55,
+    "quantity": 1
+  },
+  {
+    "id": "ORD-3232431",
+    "create_timestamp": 1764351210,
+    "total_amount": 10.40,
+    "quantity": 20
+  }
+]</code></pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 6. GET /api/user/order -->
+            <section class="doc-section" id="endpoint-order">
+                <div class="endpoint-card">
+                    <div class="endpoint-header">
+                        <div class="endpoint-path-wrap">
+                            <span class="endpoint-method get">GET</span>
+                            <span class="endpoint-path">/api/user/order</span>
+                        </div>
+                        <button class="copy-btn" onclick="copyText('https://digitalcore.top/api/user/order?id=ORD-3232432')">Copy URL</button>
+                    </div>
+
+                    <div class="endpoint-desc">
+                        Fetches single order details and delivered key items. Access is strictly verified against your authenticated account (you can only view your own orders).
+                    </div>
+
+                    <div class="subheading">Query Parameters</div>
+                    <table class="params-table">
+                        <thead>
+                            <tr>
+                                <th>Parameter</th>
+                                <th>Type</th>
+                                <th>Required</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="param-name">id</span></td>
+                                <td><span class="param-type">string</span></td>
+                                <td><span class="param-req required">Required</span></td>
+                                <td>Order number (e.g. <code>ORD-3232432</code>).</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="subheading">Request Example</div>
+                    <div class="code-box">
+                        <div class="code-header">
+                            <span>curl</span>
+                            <button class="copy-btn" onclick="copyText('curl -s -H &quot;Api-Key: YOUR_API_KEY&quot; &quot;https://digitalcore.top/api/user/order?id=ORD-3232432&quot;')">Copy</button>
+                        </div>
+                        <pre class="code-content"><code>curl -s -H "Api-Key: YOUR_API_KEY" \
+  "https://digitalcore.top/api/user/order?id=ORD-3232432"</code></pre>
+                    </div>
+
+                    <div class="subheading">Response Example (200 OK)</div>
+                    <div class="code-box">
+                        <div class="code-header">
+                            <span>JSON</span>
+                            <button class="copy-btn" onclick="copyText(document.getElementById('code-resp-order').innerText)">Copy</button>
+                        </div>
+                        <pre class="code-content" id="code-resp-order"><code>{
+  "order_id": "ORD-3232432",
+  "view_url": "https://digitalcore.top/order?number=a2de1869-3524-41d8-1bc2-f0722d73e071",
+  "total_amount": 0.55,
+  "quantity": 1,
+  "items": [
+    "https://g.co/gemini/share/sample_activation_token_123"
+  ]
+}</code></pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Error Codes Reference -->
+            <section class="doc-section" id="errors">
+                <h2 class="doc-section-title">Error Codes Reference</h2>
+                <p class="doc-section-desc">
+                    Standard error codes returned by the API inside <code>{"success": false, "msg": "..."}</code>:
+                </p>
+
+                <table class="params-table">
+                    <thead>
+                        <tr>
+                            <th>Status Code</th>
+                            <th>Error Message (<code>msg</code>)</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>401 Unauthorized</code></td>
+                            <td><code>MISSING_API_KEY</code></td>
+                            <td>The <code>Api-Key</code> header was omitted from the request.</td>
+                        </tr>
+                        <tr>
+                            <td><code>401 Unauthorized</code></td>
+                            <td><code>INVALID_API_KEY</code></td>
+                            <td>The provided API key is invalid or does not match any registered account.</td>
+                        </tr>
+                        <tr>
+                            <td><code>400 Bad Request</code></td>
+                            <td><code>INSUFFICIENT_BALANCE</code></td>
+                            <td>Your Telegram bot balance is lower than the order total amount. Top up in bot first.</td>
+                        </tr>
+                        <tr>
+                            <td><code>400 Bad Request</code></td>
+                            <td><code>OUT_OF_STOCK</code></td>
+                            <td>Not enough keys available in stock to fulfill the requested quantity.</td>
+                        </tr>
+                        <tr>
+                            <td><code>400 Bad Request</code></td>
+                            <td><code>ID_REQUIRED</code></td>
+                            <td>The <code>id</code> parameter is missing from the request.</td>
+                        </tr>
+                        <tr>
+                            <td><code>400 Bad Request</code></td>
+                            <td><code>INVALID_COUNT</code></td>
+                            <td>The <code>count</code> quantity must be a positive integer &gt;= 1.</td>
+                        </tr>
+                        <tr>
+                            <td><code>400 Bad Request</code></td>
+                            <td><code>MAX_COUNT_EXCEEDED</code></td>
+                            <td>Maximum purchase volume is 1,000 items per single order request.</td>
+                        </tr>
+                        <tr>
+                            <td><code>404 Not Found</code></td>
+                            <td><code>PRODUCT_NOT_FOUND</code></td>
+                            <td>Product does not exist or has been hidden by administration.</td>
+                        </tr>
+                        <tr>
+                            <td><code>404 Not Found</code></td>
+                            <td><code>ORDER_NOT_FOUND</code></td>
+                            <td>Order number was not found or belongs to another user account.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+        </main>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="copyToast" class="copy-toast">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <span id="copyToastText">Copied to clipboard!</span>
+    </div>
+
+    <script src="/docs.js?v=1"></script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v31edd6df95cf4e85bb4c19e7a9bdbcba1788362987495" integrity="sha512-iIg7k2xntmwu6/uSb5tpc/hySgZc4eoL31yB29W6tJFo2akwjPWcEqnCEdJvGexCL0KEQwVYv5BlowfhVz26hg==" data-cf-beacon='{"version":"2024.11.0","token":"eb08d913634e475ea53e2520ee88ad5b","r":1,"spa":2}' crossorigin="anonymous"></script>
+</body>
+
+</html>

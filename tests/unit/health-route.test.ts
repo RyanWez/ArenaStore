@@ -31,7 +31,7 @@ describe("GET /health", () => {
 
   it("returns 200 ok when the database and upstream are healthy", async () => {
     dbExecute.mockResolvedValue(undefined);
-    upstreamGetHealth.mockResolvedValue({ ok: true, service: "xproseller-partner-api" });
+    upstreamGetHealth.mockResolvedValue({ online: true, latencyMs: 15 });
 
     const res = await app.inject({ method: "GET", url: "/health" });
 
@@ -45,7 +45,7 @@ describe("GET /health", () => {
 
   it("returns 503 degraded when the database is unreachable", async () => {
     dbExecute.mockRejectedValue(new Error("connect ECONNREFUSED 127.0.0.1:5432"));
-    upstreamGetHealth.mockResolvedValue({ ok: true, service: "xproseller-partner-api" });
+    upstreamGetHealth.mockResolvedValue({ online: true, latencyMs: 15 });
 
     const res = await app.inject({ method: "GET", url: "/health" });
 
@@ -75,7 +75,7 @@ describe("GET /health", () => {
 
   it("returns 200 with the degraded flag when upstream reports ok:false", async () => {
     dbExecute.mockResolvedValue(undefined);
-    upstreamGetHealth.mockResolvedValue({ ok: false, service: "xproseller-partner-api" });
+    upstreamGetHealth.mockResolvedValue({ online: false, latencyMs: 500 });
 
     const res = await app.inject({ method: "GET", url: "/health" });
 

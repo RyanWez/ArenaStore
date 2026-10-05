@@ -101,3 +101,37 @@ export function formatMmk(amount: number, suffix: string = "Ks"): string {
   const rounded = toIntegerMmk(amount);
   return `${rounded.toLocaleString("en-US")} ${suffix}`.trim();
 }
+
+export interface PricingTierItem {
+  minQty: number;
+  maxQty: number | null;
+  price: number | string;
+}
+
+/**
+ * Calculates effective unit cost in USD cents for a given quantity based on wholesale tiers.
+ * Integer cents safe, no JS floating-point arithmetic.
+ */
+export function effectiveUnitCostUsdCents(
+  tiers: PricingTierItem[],
+  quantity: number
+): number {
+  if (!tiers || tiers.length === 0) {
+    throw new Error("No pricing tiers provided.");
+  }
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    throw new Error(`Quantity must be a positive integer: ${quantity}`);
+  }
+
+  const sortedTiers = [...tiers].sort((a, b) => a.minQty - b.minQty);
+  for (const t of sortedTiers) {
+    if (quantity >= t.minQty && (t.maxQty === null || quantity <= t.maxQty)) {
+      return usdToCents(t.price);
+    }
+  }
+
+  // Fallback to highest tier if quantity exceeds all bounds
+  const highest = sortedTiers[sortedTiers.length - 1];
+  return usdToCents(highest.price);
+}
+

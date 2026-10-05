@@ -35,13 +35,13 @@ let slugCounter = 0;
 
 export interface SeededCatalog {
   category: { id: number; slug: string };
-  product: { id: number; upstreamProductId: number };
+  product: { id: number; upstreamProductId: string | number };
 }
 
 export interface SeedCatalogOptions {
   /** Explicit products.id (used to match the bot's fallback product id). */
   productId?: number;
-  upstreamProductId?: number;
+  upstreamProductId?: string | number;
   slugSuffix?: string;
   priceUsd?: string;
   stock?: number;
@@ -55,7 +55,7 @@ export async function seedCatalog(options: SeedCatalogOptions = {}): Promise<See
 
   slugCounter += 1;
   const slug = `test-cat-${PROCESS_TAG}-${slugCounter}${options.slugSuffix ? `-${options.slugSuffix}` : ""}`;
-  const upstreamProductId = options.upstreamProductId ?? UPSTREAM_BASE + slugCounter;
+  const upstreamProductId = String(options.upstreamProductId ?? UPSTREAM_BASE + slugCounter);
 
   const [category] = await db
     .insert(categories)
@@ -69,6 +69,7 @@ export async function seedCatalog(options: SeedCatalogOptions = {}): Promise<See
     .returning();
 
   const productValues: any = {
+    supplier: "XPRO",
     upstreamProductId,
     categoryId: category.id,
     nameMmk: `Test Product ${slugCounter}`,
@@ -96,6 +97,7 @@ export async function seedCatalog(options: SeedCatalogOptions = {}): Promise<See
     .insert(productSupplierSnapshots)
     .values({
       productId: product.id,
+      supplier: "XPRO",
       upstreamProductId,
       rawName: `Test Product ${slugCounter}`,
       rawDescription: "Synthetic test product description",
@@ -105,7 +107,7 @@ export async function seedCatalog(options: SeedCatalogOptions = {}): Promise<See
       inStock: (options.stock ?? 50) > 0,
     })
     .onConflictDoUpdate({
-      target: productSupplierSnapshots.productId,
+      target: [productSupplierSnapshots.productId, productSupplierSnapshots.supplier],
       set: {
         supplierStock: options.stock ?? 50,
         inStock: (options.stock ?? 50) > 0,

@@ -26,9 +26,9 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   // Analytics & Profit
   { key: "analytics.view", page: "Analytics", label: "View financial analytics & profit reports", type: "view" },
 
-  // XPro Supplier
-  { key: "supplier.view", page: "XPro Supplier", label: "View supplier status & wallet balance", type: "view" },
-  { key: "supplier.sync", page: "XPro Supplier", label: "Sync catalog from supplier", type: "action" },
+  // Partner Suppliers
+  { key: "supplier.view", page: "Partner Suppliers", label: "View supplier status & wallet balance", type: "view" },
+  { key: "supplier.sync", page: "Partner Suppliers", label: "Sync catalog from supplier", type: "action" },
 
   // Products
   { key: "products.view", page: "Products", label: "View products & categories", type: "view" },

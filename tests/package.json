@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "@arena/db": "workspace:*",
-    "@arena/shared": "workspace:*"
+    "@arena/shared": "workspace:*",
+    "@arena/suppliers": "workspace:*"
   },
   "devDependencies": {
     "@fastify/cors": "^10.0.2",

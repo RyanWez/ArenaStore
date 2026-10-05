@@ -22,6 +22,7 @@ export const TEST_DB_URL =
 
 /** Unroutable localhost port — any accidental real upstream call fails instantly. */
 export const TEST_UPSTREAM_BASE_URL = "http://127.0.0.1:9";
+export const TEST_DIGITALCORE_BASE_URL = "http://127.0.0.1:9";
 
 export const TEST_DELIVERY_ENCRYPTION_KEY = "arena-integration-test-delivery-key-32b!!";
 export const TEST_ADMIN_SESSION_SECRET = "arena-integration-test-session-secret-32b!!";
@@ -43,6 +44,9 @@ export const TEST_ENV: Record<string, string> = {
   UPSTREAM_BASE_URL: TEST_UPSTREAM_BASE_URL,
   UPSTREAM_API_KEY: "",
   UPSTREAM_PARTNER_API_KEY: "",
+  DIGITALCORE_BASE_URL: TEST_DIGITALCORE_BASE_URL,
+  DIGITALCORE_API_KEY: "",
+  SUPPLIERS_ENABLED: "xpro,digitalcore",
   // Keep the catalog sync scheduler off in every test environment.
   CATALOG_SYNC_INTERVAL_MINUTES: "0",
   TELEGRAM_BOT_TOKEN: "",

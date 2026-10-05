@@ -8,7 +8,7 @@ export const orderDeliveries = pgTable(
     orderId: uuid("order_id")
       .notNull()
       .references(() => orders.id, { onDelete: "cascade" }),
-    upstreamOrderId: integer("upstream_order_id"),
+    upstreamOrderId: varchar("upstream_order_id", { length: 64 }),
     deliveryType: varchar("delivery_type", { length: 32 }).notNull().default("CREDENTIALS"),
     encryptedPayload: text("encrypted_payload").notNull(),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }).defaultNow().notNull(),

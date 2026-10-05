@@ -24,6 +24,12 @@ const envSchema = z.object({
     .url()
     .default("http://paid2.daki.cc:4153/api/partner/v1"),
   UPSTREAM_API_KEY: z.string().default(""),
+  DIGITALCORE_BASE_URL: z
+    .string()
+    .url()
+    .default("https://digitalcore.top"),
+  DIGITALCORE_API_KEY: z.string().default(""),
+  SUPPLIERS_ENABLED: z.string().default("xpro"),
   DELIVERY_ENCRYPTION_KEY: z
     .string()
     .min(16)
@@ -101,6 +107,15 @@ export function loadConfig(): AppConfig {
       process.env.UPSTREAM_PARTNER_API_KEY ||
       process.env.UPTREAM_API_KEY ||
       "",
+    DIGITALCORE_BASE_URL:
+      process.env.DIGITALCORE_BASE_URL ||
+      "https://digitalcore.top",
+    DIGITALCORE_API_KEY:
+      process.env.DIGITALCORE_API_KEY ||
+      "",
+    SUPPLIERS_ENABLED:
+      process.env.SUPPLIERS_ENABLED ||
+      "xpro",
   };
 
   const parsed = envSchema.safeParse(rawEnv);
@@ -134,3 +149,12 @@ export function loadConfig(): AppConfig {
 }
 
 export const config = loadConfig();
+
+export function getEnabledSuppliers(): ("XPRO" | "DIGITALCORE")[] {
+  const raw = (config.SUPPLIERS_ENABLED || "xpro").toLowerCase().split(",").map((s) => s.trim());
+  const list: ("XPRO" | "DIGITALCORE")[] = [];
+  if (raw.includes("xpro")) list.push("XPRO");
+  if (raw.includes("digitalcore")) list.push("DIGITALCORE");
+  return list.length > 0 ? list : ["XPRO"];
+}
+

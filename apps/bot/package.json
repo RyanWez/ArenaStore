@@ -11,6 +11,7 @@
   "dependencies": {
     "@arena/db": "workspace:*",
     "@arena/shared": "workspace:*",
+    "@arena/suppliers": "workspace:*",
     "@grammyjs/conversations": "^2.1.1",
     "@grammyjs/menu": "^1.2.1",
     "@sentry/node": "11.3.0",

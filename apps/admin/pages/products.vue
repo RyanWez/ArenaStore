@@ -6,7 +6,7 @@ import { useAuth } from '~/composables/useAuth'
 import { useStoreSettings } from '~/composables/useStoreSettings'
 import { usePermission } from '~/composables/usePermission'
 
-const { supplierBalanceUsd, isSyncing, syncCatalog: runSync } = useSupplierStatus()
+const { xproBalanceUsd, digitalcoreBalanceUsd, isSyncing, syncCatalog: runSync } = useSupplierStatus()
 const { getAuthHeaders } = useAuth()
 const { settings: storeSettings, fetchSettings: fetchStoreSettings } = useStoreSettings()
 const toast = useToast()
@@ -27,12 +27,14 @@ const isBulkUpdating = ref(false)
 
 interface ProductItem {
   id: number
-  upstreamProductId: number
+  supplier: 'XPRO' | 'DIGITALCORE'
+  upstreamProductId: string | number
   nameMmk: string
   rawName: string
   categoryName: string
   descriptionMmk: string
   supplierPriceUsd: string
+  pricingTiers?: any
   retailPriceMmk: number
   supplierStock: number
   localStockLimit: number | null
@@ -42,7 +44,10 @@ interface ProductItem {
 
 function getProductWalletCapacity(product: ProductItem): number {
   const usdCost = parseFloat(product.supplierPriceUsd) || 0
-  const walletBal = parseFloat(supplierBalanceUsd.value) || 0
+  const walletBal =
+    product.supplier === 'DIGITALCORE'
+      ? parseFloat(digitalcoreBalanceUsd.value) || 0
+      : parseFloat(xproBalanceUsd.value) || 0
   if (usdCost <= 0) return product.supplierStock
   return Math.floor(walletBal / usdCost)
 }
@@ -65,6 +70,7 @@ watch(searchQuery, (newVal) => {
   }, 250)
 })
 
+const supplierFilter = ref<'ALL' | 'XPRO' | 'DIGITALCORE'>('ALL')
 const stockFilter = ref<'ALL' | 'IN_STOCK' | 'OUT_OF_STOCK'>('ALL')
 const statusFilter = ref<'ALL' | 'ACTIVE' | 'PAUSED'>('ALL')
 const categoryFilter = ref('ALL')
@@ -93,6 +99,8 @@ const categoriesList = computed(() => {
   return Array.from(set).sort((a, b) => a.localeCompare(b))
 })
 
+const xproCount = computed(() => productsList.value.filter((p) => (p.supplier || 'XPRO') === 'XPRO').length)
+const dcCount = computed(() => productsList.value.filter((p) => p.supplier === 'DIGITALCORE').length)
 const activeCount = computed(() => productsList.value.filter((p) => p.isActive).length)
 const pausedCount = computed(() => productsList.value.filter((p) => !p.isActive).length)
 const inStockCount = computed(() => productsList.value.filter((p) => getProductSellableStock(p) > 0).length)
@@ -114,12 +122,14 @@ async function fetchProducts(isSilent = false) {
     if (res.ok && Array.isArray(res.products)) {
       productsList.value = res.products.map((p: any) => ({
         id: p.id,
+        supplier: (p.supplier || 'XPRO').toUpperCase(),
         upstreamProductId: p.supplierProductId || p.upstreamProductId || p.id,
         nameMmk: p.nameMmk || p.name,
         rawName: p.name || p.nameMmk,
         categoryName: p.categoryName || 'General',
         descriptionMmk: p.descriptionMmk || p.description || '',
         supplierPriceUsd: p.supplierPriceUsd || '0.00',
+        pricingTiers: p.pricingTiers || null,
         retailPriceMmk: p.retailPriceMmk || 0,
         supplierStock: p.supplierStock ?? 999,
         localStockLimit: p.localStockLimit,
@@ -139,10 +149,10 @@ async function fetchProducts(isSilent = false) {
   }
 }
 
-async function handleSyncCatalog() {
+async function handleSyncCatalog(targetSupplier: 'ALL' | 'XPRO' | 'DIGITALCORE' = supplierFilter.value) {
   try {
-    await runSync()
-    toast.success('Catalog synced successfully from upstream!', 'Sync Complete')
+    await runSync(targetSupplier)
+    toast.success(`Catalog synced successfully for ${targetSupplier === 'ALL' ? 'all suppliers' : targetSupplier}!`, 'Sync Complete')
     await fetchProducts(true)
   } catch (err: any) {
     toast.error('Sync failed: ' + (err.message || 'Unknown error'))
@@ -164,6 +174,9 @@ const filteredProducts = computed(() => {
       p.categoryName.toLowerCase().includes(q) ||
       String(p.upstreamProductId).includes(q)
 
+    const matchesSupplier =
+      supplierFilter.value === 'ALL' || (p.supplier || 'XPRO') === supplierFilter.value
+
     const matchesStock =
       stockFilter.value === 'ALL' ||
       (stockFilter.value === 'IN_STOCK' && getProductSellableStock(p) > 0) ||
@@ -177,7 +190,7 @@ const filteredProducts = computed(() => {
     const matchesCategory =
       categoryFilter.value === 'ALL' || p.categoryName === categoryFilter.value
 
-    return matchesSearch && matchesStock && matchesStatus && matchesCategory
+    return matchesSearch && matchesSupplier && matchesStock && matchesStatus && matchesCategory
   })
 })
 
@@ -185,7 +198,7 @@ const filteredProducts = computed(() => {
 const currentPage = ref(1)
 const pageSize = ref(10)
 
-watch([debouncedSearch, stockFilter, statusFilter, categoryFilter, pageSize], () => {
+watch([debouncedSearch, supplierFilter, stockFilter, statusFilter, categoryFilter, pageSize], () => {
   currentPage.value = 1
 })
 
@@ -499,12 +512,12 @@ async function executeConfirmAction() {
         <button
           v-if="canSyncSupplier"
           type="button"
-          @click="handleSyncCatalog"
+          @click="handleSyncCatalog(supplierFilter)"
           :disabled="isSyncing"
           class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20 active:scale-95 transition-all disabled:opacity-50"
         >
           <i class="pi pi-sync text-xs" :class="{ 'animate-spin': isSyncing }"></i>
-          <span>{{ isSyncing ? 'Syncing Catalog...' : 'Sync Upstream Catalog' }}</span>
+          <span>{{ isSyncing ? 'Syncing Catalog...' : supplierFilter === 'ALL' ? 'Sync All Suppliers' : `Sync ${supplierFilter === 'DIGITALCORE' ? 'DigitalCore' : 'XPro'}` }}</span>
         </button>
       </div>
     </div>
@@ -515,64 +528,99 @@ async function executeConfirmAction() {
       <div class="p-3 sm:p-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col gap-3">
         <!-- Top Toolbar Row: Filter Pills & Search -->
         <div class="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
-          <!-- Status & Stock Tabs -->
-          <div class="flex items-center gap-1.5 overflow-x-auto text-xs font-semibold scrollbar-none flex-wrap">
-            <!-- All -->
-            <button
-              type="button"
-              @click="statusFilter = 'ALL'; stockFilter = 'ALL'"
-              :class="statusFilter === 'ALL' && stockFilter === 'ALL' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/20' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
-              class="px-3.5 py-1.5 rounded-xl transition-colors shrink-0 font-semibold"
-            >
-              All ({{ productsList.length }})
-            </button>
+          <div class="flex items-center gap-2 overflow-x-auto text-xs font-semibold scrollbar-none flex-wrap">
+            <!-- Supplier Filter Tabs (All / XPro / DigitalCore) -->
+            <div class="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl text-xs font-semibold shrink-0">
+              <button
+                type="button"
+                @click="supplierFilter = 'ALL'"
+                :class="supplierFilter === 'ALL' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'"
+                class="px-3 py-1 rounded-lg transition-all"
+              >
+                All Suppliers ({{ productsList.length }})
+              </button>
+              <button
+                type="button"
+                @click="supplierFilter = 'XPRO'"
+                :class="supplierFilter === 'XPRO' ? 'bg-purple-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-purple-600 dark:hover:text-purple-400'"
+                class="px-3 py-1 rounded-lg transition-all flex items-center gap-1.5"
+              >
+                <span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+                <span>XPro ({{ xproCount }})</span>
+              </button>
+              <button
+                type="button"
+                @click="supplierFilter = 'DIGITALCORE'"
+                :class="supplierFilter === 'DIGITALCORE' ? 'bg-cyan-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400'"
+                class="px-3 py-1 rounded-lg transition-all flex items-center gap-1.5"
+              >
+                <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+                <span>DigitalCore ({{ dcCount }})</span>
+              </button>
+            </div>
 
-            <!-- Active / Selling -->
-            <button
-              type="button"
-              @click="statusFilter = 'ACTIVE'"
-              :class="statusFilter === 'ACTIVE' ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
-              class="px-3.5 py-1.5 rounded-xl transition-colors shrink-0 font-semibold flex items-center gap-1.5"
-            >
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-              <span>Selling ({{ activeCount }})</span>
-            </button>
-
-            <!-- Paused / Disabled -->
-            <button
-              type="button"
-              @click="statusFilter = 'PAUSED'"
-              :class="statusFilter === 'PAUSED' ? 'bg-amber-600 text-white shadow-sm shadow-amber-600/20' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
-              class="px-3.5 py-1.5 rounded-xl transition-colors shrink-0 font-semibold flex items-center gap-1.5"
-            >
-              <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-              <span>Paused ({{ pausedCount }})</span>
-            </button>
-
-            <!-- In Stock Divider -->
+            <!-- Divider -->
             <div class="h-4 w-[1px] bg-slate-200 dark:bg-slate-800 mx-1 hidden sm:block"></div>
 
-            <!-- In Stock -->
-            <button
-              type="button"
-              @click="stockFilter = stockFilter === 'IN_STOCK' ? 'ALL' : 'IN_STOCK'"
-              :class="stockFilter === 'IN_STOCK' ? 'bg-slate-800 dark:bg-slate-700 text-white' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
-              class="px-3 py-1.5 rounded-xl transition-colors shrink-0 text-xs flex items-center gap-1 font-medium"
-            >
-              <i class="pi pi-check text-[10px]"></i>
-              <span>In Stock ({{ inStockCount }})</span>
-            </button>
+            <!-- Status & Stock Tabs -->
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <!-- All -->
+              <button
+                type="button"
+                @click="statusFilter = 'ALL'; stockFilter = 'ALL'"
+                :class="statusFilter === 'ALL' && stockFilter === 'ALL' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/20' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+                class="px-3.5 py-1.5 rounded-xl transition-colors shrink-0 font-semibold"
+              >
+                All ({{ productsList.length }})
+              </button>
 
-            <!-- Out of Stock -->
-            <button
-              type="button"
-              @click="stockFilter = stockFilter === 'OUT_OF_STOCK' ? 'ALL' : 'OUT_OF_STOCK'"
-              :class="stockFilter === 'OUT_OF_STOCK' ? 'bg-rose-600/90 text-white shadow-sm shadow-rose-600/20' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
-              class="px-3 py-1.5 rounded-xl transition-colors shrink-0 text-xs flex items-center gap-1 font-medium"
-            >
-              <i class="pi pi-times-circle text-[10px]"></i>
-              <span>Out of Stock ({{ outOfStockCount }})</span>
-            </button>
+              <!-- Active / Selling -->
+              <button
+                type="button"
+                @click="statusFilter = 'ACTIVE'"
+                :class="statusFilter === 'ACTIVE' ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/20' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+                class="px-3.5 py-1.5 rounded-xl transition-colors shrink-0 font-semibold flex items-center gap-1.5"
+              >
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                <span>Selling ({{ activeCount }})</span>
+              </button>
+
+              <!-- Paused / Disabled -->
+              <button
+                type="button"
+                @click="statusFilter = 'PAUSED'"
+                :class="statusFilter === 'PAUSED' ? 'bg-amber-600 text-white shadow-sm shadow-amber-600/20' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+                class="px-3.5 py-1.5 rounded-xl transition-colors shrink-0 font-semibold flex items-center gap-1.5"
+              >
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                <span>Paused ({{ pausedCount }})</span>
+              </button>
+
+              <!-- In Stock Divider -->
+              <div class="h-4 w-[1px] bg-slate-200 dark:bg-slate-800 mx-1 hidden sm:block"></div>
+
+              <!-- In Stock -->
+              <button
+                type="button"
+                @click="stockFilter = stockFilter === 'IN_STOCK' ? 'ALL' : 'IN_STOCK'"
+                :class="stockFilter === 'IN_STOCK' ? 'bg-slate-800 dark:bg-slate-700 text-white' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+                class="px-3 py-1.5 rounded-xl transition-colors shrink-0 text-xs flex items-center gap-1 font-medium"
+              >
+                <i class="pi pi-check text-[10px]"></i>
+                <span>In Stock ({{ inStockCount }})</span>
+              </button>
+
+              <!-- Out of Stock -->
+              <button
+                type="button"
+                @click="stockFilter = stockFilter === 'OUT_OF_STOCK' ? 'ALL' : 'OUT_OF_STOCK'"
+                :class="stockFilter === 'OUT_OF_STOCK' ? 'bg-rose-600/90 text-white shadow-sm shadow-rose-600/20' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+                class="px-3 py-1.5 rounded-xl transition-colors shrink-0 text-xs flex items-center gap-1 font-medium"
+              >
+                <i class="pi pi-times-circle text-[10px]"></i>
+                <span>Out of Stock ({{ outOfStockCount }})</span>
+              </button>
+            </div>
           </div>
 
           <!-- Right Controls: Category Filter + Search Input -->
@@ -624,7 +672,7 @@ async function executeConfirmAction() {
             <span v-if="canSeeSupplierWallet" class="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
             <div v-if="canSeeSupplierWallet" class="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-medium">
               <i class="pi pi-wallet text-[11px]"></i>
-              <span>Supplier Wallet: <strong class="font-mono">${{ supplierBalanceUsd }}</strong></span>
+              <span>XPro: <strong class="font-mono">${{ xproBalanceUsd }}</strong> · DigitalCore: <strong class="font-mono">${{ digitalcoreBalanceUsd }}</strong></span>
             </div>
           </div>
 
@@ -733,13 +781,33 @@ async function executeConfirmAction() {
                     >
                       {{ cleanProductName(p.nameMmk) }}
                     </span>
+                    <!-- Supplier Badge -->
+                    <span
+                      v-if="p.supplier === 'DIGITALCORE'"
+                      class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 uppercase tracking-wide shrink-0"
+                    >
+                      DigitalCore
+                    </span>
+                    <span
+                      v-else
+                      class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 uppercase tracking-wide shrink-0"
+                    >
+                      XPro
+                    </span>
                   </div>
-                  <div class="flex items-center gap-1.5 mt-1">
+                  <div class="flex items-center gap-1.5 mt-1 flex-wrap">
                     <span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60">
                       {{ cleanProductName(p.categoryName) }}
                     </span>
                     <span class="text-[11px] text-slate-400 font-mono">
                       ID: {{ p.upstreamProductId }} · {{ p.deliveryType }}
+                    </span>
+                    <span
+                      v-if="p.pricingTiers && p.pricingTiers.length > 0"
+                      class="px-1.5 py-0.2 rounded text-[9px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                      :title="`${p.pricingTiers.length} wholesale tiers available`"
+                    >
+                      Wholesale Tiers
                     </span>
                   </div>
                 </td>
@@ -785,14 +853,14 @@ async function executeConfirmAction() {
                     <span
                       v-if="getProductWalletCapacity(p) < p.supplierStock && p.supplierStock > 0"
                       class="text-[11px] text-amber-500 cursor-help"
-                      :title="`Constrained by XPro wallet balance ($${supplierBalanceUsd} USD). Can only fulfill ${getProductWalletCapacity(p)} units.`"
+                      :title="`Constrained by ${p.supplier} wallet balance ($${p.supplier === 'DIGITALCORE' ? digitalcoreBalanceUsd : xproBalanceUsd} USD). Can only fulfill ${getProductWalletCapacity(p)} units.`"
                     >
                       <i class="pi pi-exclamation-triangle"></i>
                     </span>
                   </div>
                   <div v-if="getProductSellableStock(p) === 0 && getProductWalletCapacity(p) === 0" class="text-[11px] text-rose-500 dark:text-rose-400 font-medium mt-0.5 flex items-center gap-1">
                     <i class="pi pi-wallet text-[10px]"></i>
-                    <span>Wallet low (${{ (parseFloat(supplierBalanceUsd) || 0).toFixed(2) }} vs ${{ p.supplierPriceUsd }})</span>
+                    <span>Wallet low (${{ (parseFloat(p.supplier === 'DIGITALCORE' ? digitalcoreBalanceUsd : xproBalanceUsd) || 0).toFixed(2) }} vs ${{ p.supplierPriceUsd }})</span>
                   </div>
                   <div v-else-if="getProductWalletCapacity(p) < p.supplierStock" class="text-[11px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">
                     Wallet cap: {{ getProductWalletCapacity(p) }} units

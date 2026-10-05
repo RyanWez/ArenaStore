@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { XProClient, XProApiError } from "../../apps/api/src/services/xpro-client";
+import { XProClient, XProApiError, SupplierError } from "@arena/suppliers";
 
 describe("XPro Partner API Client", () => {
   const originalFetch = global.fetch;
@@ -27,8 +27,8 @@ describe("XPro Partner API Client", () => {
     const client = new XProClient({ baseUrl: "http://mock-api.local" });
     const health = await client.getHealth();
 
-    expect(health.ok).toBe(true);
-    expect(health.service).toBe("xproseller-partner-api");
+    expect(health.online).toBe(true);
+    expect(health.latencyMs).toBeGreaterThanOrEqual(0);
   });
 
   it("fetches partner balance with Authorization header", async () => {
@@ -52,8 +52,8 @@ describe("XPro Partner API Client", () => {
 
     const res = await client.getBalance();
 
-    expect(res.ok).toBe(true);
-    expect(res.balance).toBe("1.00");
+    expect(res.balanceUsd).toBe("1.00");
+    expect(res.balanceUsdCents).toBe(100);
     expect(mockFetch).toHaveBeenCalledWith(
       "http://mock-api.local/balance",
       expect.objectContaining({
@@ -97,15 +97,15 @@ describe("XPro Partner API Client", () => {
     });
 
     const res = await client.createOrder({
-      productId: 12,
+      upstreamProductId: "12",
       quantity: 1,
       externalOrderId: "arn-unique-12345",
     });
 
-    expect(res.ok).toBe(true);
-    expect(res.order.orderId).toBe(481);
-    expect(res.order.externalOrderId).toBe("arn-unique-12345");
-    expect(res.delivery.lines).toEqual(["user@gmail.com:pass123"]);
+    expect(res.upstreamOrderId).toBe("481");
+    expect(res.items).toEqual(["user@gmail.com:pass123"]);
+    expect(res.quantity).toBe(1);
+    expect(res.totalUsdCents).toBe(69);
   });
 
   it("throws XProApiError with correct code on upstream error", async () => {
@@ -129,11 +129,11 @@ describe("XPro Partner API Client", () => {
 
     await expect(
       client.createOrder({
-        productId: 99,
+        upstreamProductId: "99",
         quantity: 10,
         externalOrderId: "arn-fail-1",
       })
-    ).rejects.toThrowError(XProApiError);
+    ).rejects.toThrowError(SupplierError);
   });
 
   it("retries on 500 error before succeeding", async () => {
@@ -158,7 +158,7 @@ describe("XPro Partner API Client", () => {
     });
 
     const res = await client.getBalance();
-    expect(res.balance).toBe("5.00");
+    expect(res.balanceUsd).toBe("5.00");
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 });

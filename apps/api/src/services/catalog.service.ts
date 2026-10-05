@@ -1,12 +1,13 @@
 import { eq, and, lt, sql } from "drizzle-orm";
 import { getDb, categories, products, productSupplierSnapshots, stockReservations, appSettings } from "@arena/db";
 import { calculateRetailMmk, calculateSellableStock, formatMmk, stripCustomEmojiPlaceholders, parseCustomEmoji } from "@arena/shared";
-import { xproClient, XProProduct, XProCategory } from "./xpro-client";
-import { config } from "../config";
+import { xproClient, digitalcoreClient, XProProduct, XProCategory } from "./xpro-client";
+import { config, getEnabledSuppliers } from "../config";
 
 export interface LocalizedProduct {
   id: number;
-  upstreamProductId: number;
+  supplier?: string;
+  upstreamProductId: string | number;
   categoryId: number | null;
   nameMmk: string;
   descriptionMmk: string | null;
@@ -15,6 +16,7 @@ export interface LocalizedProduct {
   retailPriceMmk: number;
   formattedRetailPriceMmk: string;
   supplierPriceUsd: string;
+  pricingTiers?: any;
   supplierStock: number;
   sellableStock: number;
   deliveryType: string;
@@ -25,6 +27,14 @@ export interface LocalizedProduct {
 
 export class CatalogService {
   private lastSyncedAt: string | null = null;
+  private cachedBalances: Record<string, string> = {
+    XPRO: "0.00",
+    DIGITALCORE: "0.00",
+  };
+  private lastBalanceFetchTime: Record<string, number> = {
+    XPRO: 0,
+    DIGITALCORE: 0,
+  };
 
   getLastSyncedAt(): string | null {
     return this.lastSyncedAt;
@@ -114,7 +124,8 @@ export class CatalogService {
       }
 
       productValues.push({
-        upstreamProductId: upstreamId,
+        supplier: "XPRO",
+        upstreamProductId: String(upstreamId),
         categoryId: matchedCategoryId,
         nameMmk: item.name,
         descriptionMmk: item.description || null,
@@ -123,7 +134,7 @@ export class CatalogService {
         isActive: true,
       });
 
-      validUpstreamItems.push({ item, upstreamId, usdPrice });
+      validUpstreamItems.push({ item, upstreamId: String(upstreamId), usdPrice });
     }
 
     if (productValues.length === 0) return 0;
@@ -132,7 +143,7 @@ export class CatalogService {
       .insert(products)
       .values(productValues)
       .onConflictDoUpdate({
-        target: products.upstreamProductId,
+        target: [products.supplier, products.upstreamProductId],
         set: {
           categoryId: sql`EXCLUDED.category_id`,
           nameMmk: sql`EXCLUDED.name_mmk`,
@@ -142,18 +153,20 @@ export class CatalogService {
       })
       .returning();
 
-    const localProdByUpstreamId = new Map<number, number>();
+    const localProdByUpstreamId = new Map<string, number>();
     for (const p of localProducts) {
       localProdByUpstreamId.set(p.upstreamProductId, p.id);
     }
 
     const snapshotValues = validUpstreamItems.map(({ item, upstreamId, usdPrice }) => ({
       productId: localProdByUpstreamId.get(upstreamId)!,
+      supplier: "XPRO",
       upstreamProductId: upstreamId,
       rawName: item.name,
       rawDescription: item.description || null,
       deliveryType: (item as any).deliveryType || "CREDENTIALS",
       supplierPriceUsd: String(usdPrice),
+      pricingTiers: null,
       supplierStock: item.stock ?? 0,
       inStock: item.inStock !== false && (item.stock ?? 0) > 0,
       syncedAt: new Date(),
@@ -163,13 +176,14 @@ export class CatalogService {
       .insert(productSupplierSnapshots)
       .values(snapshotValues)
       .onConflictDoUpdate({
-        target: productSupplierSnapshots.productId,
+        target: [productSupplierSnapshots.productId, productSupplierSnapshots.supplier],
         set: {
           upstreamProductId: sql`EXCLUDED.upstream_product_id`,
           rawName: sql`EXCLUDED.raw_name`,
           rawDescription: sql`EXCLUDED.raw_description`,
           deliveryType: sql`EXCLUDED.delivery_type`,
           supplierPriceUsd: sql`EXCLUDED.supplier_price_usd`,
+          pricingTiers: sql`EXCLUDED.pricing_tiers`,
           supplierStock: sql`EXCLUDED.supplier_stock`,
           inStock: sql`EXCLUDED.in_stock`,
           syncedAt: new Date(),
@@ -264,7 +278,8 @@ export class CatalogService {
       }
 
       productValues.push({
-        upstreamProductId: upstreamId,
+        supplier: "XPRO",
+        upstreamProductId: String(upstreamId),
         categoryId: matchedCategoryId,
         nameMmk: item.name,
         descriptionMmk: item.description || null,
@@ -273,62 +288,66 @@ export class CatalogService {
         isActive: true,
       });
 
-      validUpstreamItems.push({ item, upstreamId, usdPrice });
+      validUpstreamItems.push({ item, upstreamId: String(upstreamId), usdPrice });
     }
 
-    if (productValues.length === 0) {
-      return { categories: upstreamCategories.length, products: 0 };
+    let xproProductCount = 0;
+    if (productValues.length > 0) {
+      // 5. Batch upsert products in 1 query
+      const localProducts = await db
+        .insert(products)
+        .values(productValues)
+        .onConflictDoUpdate({
+          target: [products.supplier, products.upstreamProductId],
+          set: {
+            categoryId: sql`EXCLUDED.category_id`,
+            nameMmk: sql`EXCLUDED.name_mmk`,
+            descriptionMmk: sql`EXCLUDED.description_mmk`,
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+
+      const localProdByUpstreamId = new Map<string, number>();
+      for (const p of localProducts) {
+        localProdByUpstreamId.set(p.upstreamProductId, p.id);
+      }
+
+      // 6. Batch upsert snapshots in 1 query
+      const snapshotValues = validUpstreamItems.map(({ item, upstreamId, usdPrice }) => ({
+        productId: localProdByUpstreamId.get(upstreamId)!,
+        supplier: "XPRO",
+        upstreamProductId: upstreamId,
+        rawName: item.name,
+        rawDescription: item.description || null,
+        deliveryType: (item as any).deliveryType || "CREDENTIALS",
+        supplierPriceUsd: String(usdPrice),
+        pricingTiers: null,
+        supplierStock: item.stock ?? 0,
+        inStock: item.inStock !== false && (item.stock ?? 0) > 0,
+        syncedAt: new Date(),
+      }));
+
+      await db
+        .insert(productSupplierSnapshots)
+        .values(snapshotValues)
+        .onConflictDoUpdate({
+          target: [productSupplierSnapshots.productId, productSupplierSnapshots.supplier],
+          set: {
+            upstreamProductId: sql`EXCLUDED.upstream_product_id`,
+            rawName: sql`EXCLUDED.raw_name`,
+            rawDescription: sql`EXCLUDED.raw_description`,
+            deliveryType: sql`EXCLUDED.delivery_type`,
+            supplierPriceUsd: sql`EXCLUDED.supplier_price_usd`,
+            pricingTiers: sql`EXCLUDED.pricing_tiers`,
+            supplierStock: sql`EXCLUDED.supplier_stock`,
+            inStock: sql`EXCLUDED.in_stock`,
+            syncedAt: new Date(),
+          },
+        });
+
+      xproProductCount = validUpstreamItems.length;
     }
-
-    // 5. Batch upsert products in 1 query
-    const localProducts = await db
-      .insert(products)
-      .values(productValues)
-      .onConflictDoUpdate({
-        target: products.upstreamProductId,
-        set: {
-          categoryId: sql`EXCLUDED.category_id`,
-          nameMmk: sql`EXCLUDED.name_mmk`,
-          descriptionMmk: sql`EXCLUDED.description_mmk`,
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-
-    const localProdByUpstreamId = new Map<number, number>();
-    for (const p of localProducts) {
-      localProdByUpstreamId.set(p.upstreamProductId, p.id);
-    }
-
-    // 6. Batch upsert snapshots in 1 query
-    const snapshotValues = validUpstreamItems.map(({ item, upstreamId, usdPrice }) => ({
-      productId: localProdByUpstreamId.get(upstreamId)!,
-      upstreamProductId: upstreamId,
-      rawName: item.name,
-      rawDescription: item.description || null,
-      deliveryType: (item as any).deliveryType || "CREDENTIALS",
-      supplierPriceUsd: String(usdPrice),
-      supplierStock: item.stock ?? 0,
-      inStock: item.inStock !== false && (item.stock ?? 0) > 0,
-      syncedAt: new Date(),
-    }));
-
-    await db
-      .insert(productSupplierSnapshots)
-      .values(snapshotValues)
-      .onConflictDoUpdate({
-        target: productSupplierSnapshots.productId,
-        set: {
-          upstreamProductId: sql`EXCLUDED.upstream_product_id`,
-          rawName: sql`EXCLUDED.raw_name`,
-          rawDescription: sql`EXCLUDED.raw_description`,
-          deliveryType: sql`EXCLUDED.delivery_type`,
-          supplierPriceUsd: sql`EXCLUDED.supplier_price_usd`,
-          supplierStock: sql`EXCLUDED.supplier_stock`,
-          inStock: sql`EXCLUDED.in_stock`,
-          syncedAt: new Date(),
-        },
-      });
 
     const now = new Date();
     this.lastSyncedAt = now.toISOString();
@@ -349,10 +368,165 @@ export class CatalogService {
       })
       .catch(() => {});
 
-    return {
-      categories: upstreamCategories.length,
-      products: validUpstreamItems.length,
-    };
+    // Sync DigitalCore if enabled
+    const enabled = getEnabledSuppliers();
+    let dcProductCount = 0;
+    if (enabled.includes("DIGITALCORE")) {
+      try {
+        dcProductCount = await this.syncDigitalCoreCatalog(exchangeRateMmk);
+      } catch (err) {
+        console.error("[CatalogService] Failed to sync DigitalCore catalog:", err);
+      }
+    }
+
+    return { categories: upstreamCategories.length, products: xproProductCount + dcProductCount };
+  }
+
+  /**
+   * Synchronizes catalog from DigitalCore partner API.
+   * Preserves admin manual category overrides.
+   */
+  async syncDigitalCoreCatalog(exchangeRateMmk: number = config.DEFAULT_EXCHANGE_RATE_MMK): Promise<number> {
+    const dcProducts = await digitalcoreClient.listProducts();
+    if (!dcProducts || dcProducts.length === 0) return 0;
+    const db = getDb();
+
+    // Default category 'uncategorized'
+    let defaultCat = await db.query.categories.findFirst({
+      where: eq(categories.slug, "uncategorized"),
+    });
+    if (!defaultCat) {
+      const [newCat] = await db
+        .insert(categories)
+        .values({
+          name: "Uncategorized",
+          slug: "uncategorized",
+          iconEmoji: "📦",
+          sortOrder: 999,
+          isActive: true,
+        })
+        .onConflictDoNothing()
+        .returning();
+      if (newCat) defaultCat = newCat;
+      else {
+        defaultCat = await db.query.categories.findFirst({
+          where: eq(categories.slug, "uncategorized"),
+        });
+      }
+    }
+
+    const productValues: any[] = [];
+    const validItems: any[] = [];
+
+    for (const item of dcProducts) {
+      const upstreamId = item.upstreamProductId;
+      if (!upstreamId) continue;
+
+      const usdPrice = item.basePriceUsd;
+      const initialPricing = calculateRetailMmk({
+        upstreamUsdCost: usdPrice,
+        exchangeRateMmk,
+        marginPercentage: config.DEFAULT_MARGIN_PERCENTAGE,
+      });
+
+      productValues.push({
+        supplier: "DIGITALCORE",
+        upstreamProductId: upstreamId,
+        categoryId: defaultCat?.id || null,
+        nameMmk: item.name,
+        descriptionMmk: item.description || null,
+        retailPriceMmk: initialPricing.retailPriceMmk,
+        localStockLimit: null,
+        isActive: true,
+      });
+
+      validItems.push({ item, upstreamId, usdPrice });
+    }
+
+    if (productValues.length === 0) return 0;
+
+    // Do NOT clobber custom categories assigned by admin
+    const localProducts = await db
+      .insert(products)
+      .values(productValues)
+      .onConflictDoUpdate({
+        target: [products.supplier, products.upstreamProductId],
+        set: {
+          nameMmk: sql`EXCLUDED.name_mmk`,
+          descriptionMmk: sql`EXCLUDED.description_mmk`,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+
+    const localProdByUpstreamId = new Map<string, number>();
+    for (const p of localProducts) {
+      localProdByUpstreamId.set(p.upstreamProductId, p.id);
+    }
+
+    const snapshotValues = validItems.map(({ item, upstreamId, usdPrice }) => ({
+      productId: localProdByUpstreamId.get(upstreamId)!,
+      supplier: "DIGITALCORE",
+      upstreamProductId: upstreamId,
+      rawName: item.name,
+      rawDescription: item.description || null,
+      deliveryType: "LINK",
+      supplierPriceUsd: String(usdPrice),
+      pricingTiers: item.pricingTiers || null,
+      supplierStock: item.stock ?? 0,
+      inStock: item.inStock && (item.stock ?? 0) > 0,
+      syncedAt: new Date(),
+    }));
+
+    await db
+      .insert(productSupplierSnapshots)
+      .values(snapshotValues)
+      .onConflictDoUpdate({
+        target: [productSupplierSnapshots.productId, productSupplierSnapshots.supplier],
+        set: {
+          upstreamProductId: sql`EXCLUDED.upstream_product_id`,
+          rawName: sql`EXCLUDED.raw_name`,
+          rawDescription: sql`EXCLUDED.raw_description`,
+          deliveryType: sql`EXCLUDED.delivery_type`,
+          supplierPriceUsd: sql`EXCLUDED.supplier_price_usd`,
+          pricingTiers: sql`EXCLUDED.pricing_tiers`,
+          supplierStock: sql`EXCLUDED.supplier_stock`,
+          inStock: sql`EXCLUDED.in_stock`,
+          syncedAt: new Date(),
+        },
+      });
+
+    const now = new Date();
+    await db
+      .insert(appSettings)
+      .values({
+        key: "catalog_last_synced_at_DIGITALCORE",
+        value: now.toISOString(),
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: appSettings.key,
+        set: {
+          value: now.toISOString(),
+          updatedAt: now,
+        },
+      })
+      .catch(() => {});
+
+    return validItems.length;
+  }
+
+  /**
+   * Syncs catalog for a specific supplier ("XPRO" | "DIGITALCORE").
+   */
+  async syncSupplier(supplier: "XPRO" | "DIGITALCORE", exchangeRateMmk?: number): Promise<{ supplier: string; count: number }> {
+    if (supplier === "XPRO") {
+      const res = await this.syncFullCatalog(exchangeRateMmk);
+      return { supplier: "XPRO", count: res.products };
+    } else {
+      const count = await this.syncDigitalCoreCatalog(exchangeRateMmk);
+      return { supplier: "DIGITALCORE", count };
+    }
   }
 
   /**
@@ -367,13 +541,35 @@ export class CatalogService {
   }): Promise<LocalizedProduct[]> {
     const db = getDb();
 
-    // Query active wallet balance from upstream (fallback to 0 on failure)
-    let walletBalanceUsd: string | number = "0.00";
-    try {
-      const balanceRes = await xproClient.getBalance();
-      walletBalanceUsd = balanceRes.balance;
-    } catch {
-      // Continue with 0 if upstream balance fails
+    // Query active wallet balance per supplier concurrently with caching & graceful failure
+    const nowMs = Date.now();
+    const balancePromises: [Promise<any>, Promise<any>] = [
+      nowMs - (this.lastBalanceFetchTime.XPRO || 0) < 15000
+        ? Promise.resolve({ balanceUsd: this.cachedBalances.XPRO })
+        : xproClient.getBalance(2500).catch((err) => {
+            console.warn("[CatalogService] XPro getBalance error:", err?.message);
+            return { balanceUsd: this.cachedBalances.XPRO };
+          }),
+      nowMs - (this.lastBalanceFetchTime.DIGITALCORE || 0) < 15000
+        ? Promise.resolve({ balanceUsd: this.cachedBalances.DIGITALCORE })
+        : digitalcoreClient.getBalance(2500).catch((err) => {
+            console.warn("[CatalogService] DigitalCore getBalance error:", err?.message);
+            return { balanceUsd: this.cachedBalances.DIGITALCORE };
+          }),
+    ];
+
+    const [xRes, dcRes] = await Promise.allSettled(balancePromises);
+    if (xRes.status === "fulfilled" && xRes.value) {
+      const val = xRes.value as any;
+      const b = String(val.balanceUsd ?? val.balance ?? this.cachedBalances.XPRO);
+      this.cachedBalances.XPRO = b;
+      this.lastBalanceFetchTime.XPRO = nowMs;
+    }
+    if (dcRes.status === "fulfilled" && dcRes.value) {
+      const val = dcRes.value as any;
+      const b = String(val.balanceUsd ?? val.balance ?? this.cachedBalances.DIGITALCORE);
+      this.cachedBalances.DIGITALCORE = b;
+      this.lastBalanceFetchTime.DIGITALCORE = nowMs;
     }
 
     // Fetch products with snapshots (all, or a single one when productId is given)
@@ -383,7 +579,13 @@ export class CatalogService {
         snapshot: productSupplierSnapshots,
       })
       .from(products)
-      .innerJoin(productSupplierSnapshots, eq(products.id, productSupplierSnapshots.productId))
+      .innerJoin(
+        productSupplierSnapshots,
+        and(
+          eq(products.id, productSupplierSnapshots.productId),
+          eq(products.supplier, productSupplierSnapshots.supplier)
+        )
+      )
       .where(
         and(
           options?.productId ? eq(products.id, options.productId) : undefined,
@@ -421,10 +623,12 @@ export class CatalogService {
       }
 
       const activeReservedUnits = reservedByProduct.get(product.id) || 0;
+      const pSupplier = (product.supplier || "XPRO").toUpperCase();
+      const effectiveWalletBalance = this.cachedBalances[pSupplier] ?? "0.00";
 
       const stockCalc = calculateSellableStock({
         supplierStock: snapshot.supplierStock,
-        supplierWalletBalanceUsd: walletBalanceUsd,
+        supplierWalletBalanceUsd: effectiveWalletBalance,
         unitCostUsd: snapshot.supplierPriceUsd,
         localLimit: product.localStockLimit,
         activeReservedUnits,
@@ -432,6 +636,7 @@ export class CatalogService {
 
       result.push({
         id: product.id,
+        supplier: pSupplier,
         upstreamProductId: product.upstreamProductId,
         categoryId: product.categoryId,
         nameMmk: product.nameMmk,

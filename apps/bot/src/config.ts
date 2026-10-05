@@ -12,6 +12,9 @@ const envSchema = z.object({
   API_BASE_URL: z.string().url().default("http://localhost:4000"),
   UPSTREAM_BASE_URL: z.string().url().default("http://paid2.daki.cc:4153/api/partner/v1"),
   UPSTREAM_API_KEY: z.string().default(""),
+  DIGITALCORE_BASE_URL: z.string().url().default("https://digitalcore.top"),
+  DIGITALCORE_API_KEY: z.string().default(""),
+  SUPPLIERS_ENABLED: z.string().default("xpro"),
   DEFAULT_EXCHANGE_RATE_MMK: z.coerce.number().default(4500),
   DEFAULT_MARGIN_PERCENTAGE: z.coerce.number().default(25),
   SUPPORT_USERNAME: z.string().default("ryanwez"),
@@ -52,6 +55,15 @@ export function loadBotConfig(): BotConfig {
       process.env.UPSTREAM_PARTNER_API_KEY ||
       process.env.UPTREAM_API_KEY ||
       "",
+    DIGITALCORE_BASE_URL:
+      process.env.DIGITALCORE_BASE_URL ||
+      "https://digitalcore.top",
+    DIGITALCORE_API_KEY:
+      process.env.DIGITALCORE_API_KEY ||
+      "",
+    SUPPLIERS_ENABLED:
+      process.env.SUPPLIERS_ENABLED ||
+      "xpro",
     DELIVERY_ENCRYPTION_KEY:
       process.env.DELIVERY_ENCRYPTION_KEY ||
       "arena-store-default-dev-encryption-key-32bytes!",

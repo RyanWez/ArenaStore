@@ -1,4 +1,4 @@
-import { TEST_DB_URL, TEST_UPSTREAM_BASE_URL } from "./test-env";
+import { TEST_DB_URL, TEST_UPSTREAM_BASE_URL, TEST_DIGITALCORE_BASE_URL } from "./test-env";
 
 /**
  * Defense-in-depth guard that runs before EVERY integration test file.
@@ -45,6 +45,26 @@ function assertSafeTestEnvironment(): void {
     throw new Error(
       "[Safety] Integration tests refused: an upstream API key is present in the test environment. " +
         "Tests must run with both UPSTREAM_API_KEY and UPSTREAM_PARTNER_API_KEY cleared."
+    );
+  }
+
+  let digitalcoreHost = "";
+  try {
+    digitalcoreHost = new URL(process.env.DIGITALCORE_BASE_URL || TEST_DIGITALCORE_BASE_URL).hostname;
+  } catch {
+    throw new Error("[Safety] DIGITALCORE_BASE_URL in the test environment is not a valid URL.");
+  }
+  if (!localHosts.includes(digitalcoreHost)) {
+    throw new Error(
+      `[Safety] Integration tests refused: DIGITALCORE_BASE_URL must point at localhost during tests ` +
+        `(got "${digitalcoreHost}") so no real DigitalCore request can ever be made.`
+    );
+  }
+
+  if (process.env.DIGITALCORE_API_KEY) {
+    throw new Error(
+      "[Safety] Integration tests refused: DIGITALCORE_API_KEY is present in the test environment. " +
+        "Tests must run with DIGITALCORE_API_KEY cleared."
     );
   }
 }

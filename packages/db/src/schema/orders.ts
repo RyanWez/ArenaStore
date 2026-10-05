@@ -13,6 +13,7 @@ export const orders = pgTable(
       .references(() => users.id),
     status: varchar("status", { length: 32 }).notNull().default("PENDING_PAYMENT"),
     totalAmountMmk: integer("total_amount_mmk").notNull(),
+    supplier: varchar("supplier", { length: 16 }),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -21,6 +22,7 @@ export const orders = pgTable(
     index("idx_orders_public_no").on(table.publicOrderNo),
     index("idx_orders_external_id").on(table.externalOrderId),
     index("idx_orders_customer_id").on(table.customerId),
+    index("idx_orders_supplier").on(table.supplier),
     index("idx_orders_status").on(table.status),
     index("idx_orders_created_at").on(table.createdAt),
   ]

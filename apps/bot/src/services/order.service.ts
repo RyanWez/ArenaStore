@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { botConfig } from "../config";
 import { botCatalog } from "./catalog.service";
 import { placeUpstreamOrder, XProOrderError } from "./xpro-order";
+import { createSupplierClient, SupplierError, type SupplierId } from "@arena/suppliers";
 import { encryptPayload, decryptPayload, formatCredentialsText } from "./encryption";
 import {
   getDb,
@@ -541,10 +542,17 @@ export class BotOrderService {
         };
       }
 
+      if (!product.upstreamProductId) {
+        return {
+          success: false,
+          error: "PRODUCT_NOT_FOUND",
+          errorMessage: "⚠️ ပစ္စည်း အချက်အလက် မပြည့်စုံပါသဖြင့် အော်ဒါတင်၍ မရသေးပါခင်ဗျာ။",
+        };
+      }
       const totalMmk = product.retailPriceMmk * params.quantity;
       const publicOrderNo = `ARN-${Date.now().toString().slice(-6)}`;
       const externalOrderId = publicOrderNo;
-      const targetUpstreamId = product.upstreamProductId || product.id;
+      const targetUpstreamId = product.upstreamProductId;
 
       // 1. Fetch user & wallet records
       const memCurrent = this.memoryWallets.get(params.telegramId) || 0;
@@ -614,28 +622,68 @@ export class BotOrderService {
         remainingBalance = memCurrent - totalMmk;
       }
 
-      // 3. Call Upstream XPro Partner API with externalOrderId for strict idempotency
+      // 3. Call Upstream Supplier API (XPro or DigitalCore) with strict error handling & atomic refund
       let deliveryLines: string[] = [];
       let deliveryType = product.deliveryType || "CREDENTIALS";
-      let upstreamOrderId: number | null = null;
+      let upstreamOrderId: string | null = null;
       let upstreamUnitPrice = product.supplierPriceUsd;
 
       const isTest = process.env.NODE_ENV === "test" || process.env.VITEST !== undefined;
+      const supplierId: SupplierId = product.supplier === "DIGITALCORE" ? "DIGITALCORE" : "XPRO";
 
-      if (!isTest && botConfig.UPSTREAM_API_KEY) {
+      if (!isTest) {
+        const apiKey = supplierId === "DIGITALCORE" ? botConfig.DIGITALCORE_API_KEY : botConfig.UPSTREAM_API_KEY;
+        const baseUrl = supplierId === "DIGITALCORE" ? botConfig.DIGITALCORE_BASE_URL : botConfig.UPSTREAM_BASE_URL;
+
+        if (!apiKey) {
+          // FOOTGUN PREVENTED: Never fake deliveries in production when API key is missing!
+          if (debitedWalletId !== null) {
+            try {
+              const db = getDb();
+              await db
+                .update(wallets)
+                .set({
+                  balanceMmk: sql`${wallets.balanceMmk} + ${totalMmk}`,
+                  totalSpentMmk: sql`GREATEST(0, ${wallets.totalSpentMmk} - ${totalMmk})`,
+                  updatedAt: new Date(),
+                })
+                .where(eq(wallets.id, debitedWalletId));
+            } catch (refundErr: any) {
+              console.error("[BotOrderService] Critical: Wallet refund failed on unconfigured supplier:", refundErr.message);
+            }
+          }
+
+          return {
+            success: false,
+            error: "SUPPLIER_CONFIG_ERROR",
+            errorMessage: "⚠️ ဆာဗာ စနစ် ပြင်ဆင်နေဆဲ ဖြစ်ပါသဖြင့် ဤပစ္စည်းအား ခေတ္တ ဝယ်ယူ၍ မရနိုင်သေးပါခင်ဗျာ။ သင့် Wallet မှ ငွေကို ပြန်လည် ထည့်သွင်းပေးထားပါသည်။",
+          };
+        }
+
         try {
-          const upstreamRes = await placeUpstreamOrder({
-            productId: targetUpstreamId,
+          const client = createSupplierClient(supplierId, {
+            baseUrl,
+            apiKey,
+            timeoutMs: 15000,
+          });
+
+          const upstreamRes = await client.createOrder({
+            upstreamProductId: String(targetUpstreamId),
             quantity: params.quantity,
             externalOrderId,
           });
 
-          upstreamOrderId = upstreamRes.order.orderId;
-          deliveryType = upstreamRes.delivery.type || deliveryType;
-          deliveryLines = upstreamRes.delivery.lines || [];
-          upstreamUnitPrice = String(upstreamRes.order.unitPrice || product.supplierPriceUsd);
+          upstreamOrderId = upstreamRes.upstreamOrderId ? String(upstreamRes.upstreamOrderId) : null;
+          deliveryType = (upstreamRes.raw as any)?.delivery?.type || product.deliveryType || "CREDENTIALS";
+          deliveryLines = upstreamRes.items || [];
+          if (upstreamRes.viewUrl && !deliveryLines.includes(upstreamRes.viewUrl)) {
+            deliveryLines.push(upstreamRes.viewUrl);
+          }
+          upstreamUnitPrice = String(
+            (upstreamRes.raw as any)?.order?.unitPrice || product.supplierPriceUsd
+          );
         } catch (err: any) {
-          console.error("[BotOrderService] Upstream purchase failed:", err.message);
+          console.error(`[BotOrderService] Upstream purchase failed (${supplierId}):`, err.message);
 
           // ATOMIC REFUND: Rollback the debited balance immediately on upstream failure!
           if (debitedWalletId !== null) {
@@ -651,6 +699,37 @@ export class BotOrderService {
                 .where(eq(wallets.id, debitedWalletId));
             } catch (refundErr: any) {
               console.error("[BotOrderService] Critical: Wallet refund failed after upstream error:", refundErr.message);
+            }
+          }
+
+          if (err instanceof SupplierError) {
+            if (err.code === "INSUFFICIENT_BALANCE") {
+              return {
+                success: false,
+                error: "SUPPLIER_OUTAGE",
+                errorMessage: "⚠️ ပစ္စည်းလက်ကျန် ပြတ်လပ်နေပါသည်ခင်ဗျာ။ သင့် Wallet မှ ငွေကို နုတ်ယူခြင်း မရှိပါ။",
+              };
+            }
+            if (err.code === "OUT_OF_STOCK") {
+              return {
+                success: false,
+                error: "OUT_OF_STOCK",
+                errorMessage: "⚠️ ပစ္စည်းလက်ကျန် ပြတ်လပ်သွားပါပြီခင်ဗျာ။ သင့် Wallet မှ ငွေကို နုတ်ယူခြင်း မရှိပါ။",
+              };
+            }
+            if (err.code === "PRODUCT_NOT_FOUND") {
+              return {
+                success: false,
+                error: "PRODUCT_NOT_FOUND",
+                errorMessage: "⚠️ ဤပစ္စည်း ရောင်းချခြင်း ယာယီရပ်ဆိုင်းထားပါသည်ခင်ဗျာ။",
+              };
+            }
+            if (err.code === "AMBIGUOUS_TIMEOUT") {
+              return {
+                success: false,
+                error: "SUPPLIER_TIMEOUT",
+                errorMessage: "⚠️ ဆာဗာမှ တုံ့ပြန်မှု နှောင့်နှေးနေပါသည်။ သင့် ငွေစာရင်းကို စစ်ဆေးပြီး လိုအပ်ပါက Admin မှ ဆက်သွယ်ပေးပါမည်။",
+              };
             }
           }
 
@@ -685,7 +764,7 @@ export class BotOrderService {
           };
         }
       } else {
-        // Mock fallback only in test mode
+        // Mock fallback ONLY in test mode
         deliveryLines = [
           product.deliveryType === "LINK"
             ? `https://partner.arena.store/invite/claim?order=${publicOrderNo}&token=arena_${Date.now()}`
@@ -713,7 +792,7 @@ export class BotOrderService {
               amountMmk: -totalMmk,
               type: "ORDER_DEBIT",
               referenceId: publicOrderNo,
-              notes: `Purchase: ${product.cleanName} x ${params.quantity} (Upstream #${upstreamOrderId || "direct"})`,
+              notes: `Purchase: ${product.cleanName} x ${params.quantity} (${supplierId} #${upstreamOrderId || "direct"})`,
             });
 
             // B. Insert order
@@ -721,7 +800,8 @@ export class BotOrderService {
               .insert(orders)
               .values({
                 publicOrderNo,
-                externalOrderId: upstreamOrderId ? `XPRO-${upstreamOrderId}` : publicOrderNo,
+                externalOrderId: upstreamOrderId ? `${supplierId}-${upstreamOrderId}` : publicOrderNo,
+                supplier: supplierId,
                 customerId: user.id,
                 status: "DELIVERED",
                 totalAmountMmk: totalMmk,

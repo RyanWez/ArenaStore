@@ -10,7 +10,7 @@ import { useToast } from '~/composables/useToast'
 const route = useRoute()
 const { isCollapsed, toggleCollapse, toggleMobile } = useSidebar()
 const { isDark, toggleTheme } = useTheme()
-const { supplierBalanceUsd, isOnline, isSyncing, syncCatalog, fetchStatus } = useSupplierStatus()
+const { xproBalanceUsd, digitalcoreBalanceUsd, isXProOnline, isDigitalcoreOnline, isSyncing, syncCatalog, fetchStatus } = useSupplierStatus()
 const { settings: storeSettings, fetchSettings: fetchStoreSettings } = useStoreSettings()
 const toast = useToast()
 
@@ -24,7 +24,7 @@ const pageTitle = computed(() => {
   }
   switch (route.path) {
     case '/supplier':
-      return 'XPro Supplier'
+      return 'Partner Suppliers'
     case '/products':
       return 'Products'
     case '/orders':
@@ -47,8 +47,8 @@ onMounted(() => {
 
 async function handleQuickSync() {
   try {
-    await syncCatalog()
-    toast.success('XPro Supplier catalog synced successfully!', 'Sync Complete')
+    await syncCatalog('ALL')
+    toast.success('All suppliers catalogs synced successfully!', 'Sync Complete')
   } catch (err: any) {
     toast.error(`Sync error: ${err.message}`, 'Sync Failed')
   }
@@ -103,18 +103,29 @@ async function handleQuickSync() {
         <span>1 USD = {{ formattedExchangeRate }} MMK</span>
       </div>
 
-      <!-- Upstream XPro Balance Widget -->
-      <div class="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
-        <span class="w-2 h-2 rounded-full" :class="isOnline ? 'bg-emerald-500' : 'bg-red-500'"></span>
-        <span class="font-mono font-semibold">XPro: ${{ supplierBalanceUsd }}</span>
+      <!-- Upstream Suppliers Balances Widget -->
+      <div class="flex items-center gap-1.5 sm:gap-2">
+        <!-- XPro Balance -->
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20" title="XPro Supplier Balance">
+          <span class="w-2 h-2 rounded-full" :class="isXProOnline ? 'bg-emerald-500' : 'bg-red-500'"></span>
+          <span class="font-mono font-semibold">XPro: ${{ xproBalanceUsd }}</span>
+        </div>
+
+        <!-- DigitalCore Balance -->
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border border-cyan-500/20" title="DigitalCore Supplier Balance">
+          <span class="w-2 h-2 rounded-full" :class="isDigitalcoreOnline ? 'bg-cyan-500' : 'bg-red-500'"></span>
+          <span class="font-mono font-semibold">DigitalCore: ${{ digitalcoreBalanceUsd }}</span>
+        </div>
+
+        <!-- Quick Sync Button -->
         <button
           type="button"
           @click="handleQuickSync"
           :disabled="isSyncing"
-          title="Sync upstream catalog now"
-          class="hover:opacity-75 disabled:opacity-50 ml-0.5"
+          title="Sync upstream catalogs now"
+          class="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors"
         >
-          <i class="pi pi-sync text-[11px]" :class="{ 'animate-spin': isSyncing }"></i>
+          <i class="pi pi-sync text-[12px]" :class="{ 'animate-spin': isSyncing }"></i>
         </button>
       </div>
 
