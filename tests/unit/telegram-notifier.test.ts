@@ -3,6 +3,7 @@ import {
   sendTelegramMessage,
   notifyOrderRefunded,
   notifyOrderCredentialsResent,
+  notifyLowSupplierBalance,
 } from "../../apps/api/src/services/telegram-notifier";
 import { config } from "../../apps/api/src/config";
 
@@ -200,6 +201,32 @@ describe("Telegram Notifier Service", () => {
       const { text } = lastSentMessage();
       expect(text).toContain("&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;");
       expect(text).not.toContain("<script>");
+    });
+  });
+
+  describe("notifyLowSupplierBalance", () => {
+    it("sends low supplier balance alert with properly closed blockquote", async () => {
+      mockTelegramOk();
+      config.TELEGRAM_GROUP_CHAT_ID = "-1001234567890";
+
+      const sent = await notifyLowSupplierBalance({
+        supplier: "DIGITALCORE",
+        balanceUsd: "0.25",
+        thresholdUsd: 5.0,
+      });
+
+      expect(sent).toBe(true);
+      const { chatId, text } = lastSentMessage();
+      expect(chatId).toBe("-1001234567890");
+      expect(text).toContain("<blockquote>");
+      expect(text).toContain("</blockquote>");
+      const openTags = (text.match(/<blockquote>/g) || []).length;
+      const closeTags = (text.match(/<\/blockquote>/g) || []).length;
+      expect(openTags).toBe(closeTags);
+      expect(text).toContain("LOW SUPPLIER BALANCE ALERT");
+      expect(text).toContain("DIGITALCORE");
+      expect(text).toContain("0.25");
+      expect(text).toContain("5.00");
     });
   });
 });

@@ -206,7 +206,7 @@ export async function notifyLowSupplierBalance(params: {
     `<blockquote>${warning} <b>LOW SUPPLIER BALANCE ALERT</b> ❞\n\n` +
     `• <b>Supplier:</b> <code>${escapeHtml(supplier)}</code>\n` +
     `• <b>Current Balance:</b> <b>$${escapeHtml(balanceUsd)} USD</b>\n` +
-    `• <b>Threshold:</b> $${thresholdUsd.toFixed(2)} USD\n\n` +
+    `• <b>Threshold:</b> $${thresholdUsd.toFixed(2)} USD</blockquote>\n\n` +
     `${money} ကျေးဇူးပြု၍ ${escapeHtml(supplier)} အကောင့်သို့ ငွေကြိုတင်ဖြည့်သွင်းပေးပါရန် အသိပေးအပ်ပါသည်။`;
 
   return sendTelegramMessage(chatId, text);
