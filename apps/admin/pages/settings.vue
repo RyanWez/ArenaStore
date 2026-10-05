@@ -10,25 +10,16 @@ const { getAuthHeaders } = useAuth()
 const { settings, fetchSettings, saveSettings, isSaving, isLoading } = useStoreSettings()
 const { can } = usePermission()
 
-// Each settings section is only editable with its matching permission — the
-// API enforces the same split on GET (field filtering) and PUT (whitelist).
-const canEditPricing = computed(() => can('settings.pricing'))
+// Granular card-level permissions
 const canEditPayments = computed(() => can('settings.payments'))
 const canEditOperations = computed(() => can('settings.operations'))
-const canEditAnySettings = computed(() => canEditPricing.value || canEditPayments.value || canEditOperations.value)
+const canEditAnySettings = computed(() => canEditPayments.value || canEditOperations.value)
 
+// Section-level saving indicator ('payments' | 'rules' | 'relay' | 'all')
+const savingSection = ref<string | null>(null)
 const showSuccessBanner = ref(false)
-const isRecalculating = ref(false)
-const isAutoRepricing = ref(false)
+const bannerMessage = ref('')
 const isTestingGroupNotify = ref(false)
-
-// Shared label for the header save button — reflects the phase handleSave is in
-// (settings PUT → automatic catalog recalculation).
-const saveButtonLabel = computed(() => {
-  if (isAutoRepricing.value) return 'Updating prices...'
-  if (isSaving.value) return 'Saving...'
-  return 'Save Configuration'
-})
 
 // Password Change State
 const currentPassword = ref('')
@@ -44,60 +35,143 @@ onMounted(async () => {
   await fetchSettings(true)
 })
 
-// Sample live calculation preview
-const sampleCostUsd = ref(1.00)
-const calculatedBaseMmk = computed(() => Math.round(sampleCostUsd.value * (settings.value.usdToMmkRate || 4500)))
-const calculatedRetailMmk = computed(() => {
-  const base = calculatedBaseMmk.value
-  const withMargin = base * (1 + (settings.value.defaultMarginPct || 25) / 100)
-  return Math.ceil(withMargin / 100) * 100 // Rounded up to nearest 100 MMK
-})
-const calculatedProfitMmk = computed(() => calculatedRetailMmk.value - calculatedBaseMmk.value)
-
-function formatNumber(num: number): string {
-  return new Intl.NumberFormat('en-US').format(num)
-}
-
-async function handleSave() {
-  isSaving.value = true
-  try {
-    const result = await saveSettings(settings.value)
-    if (!result.success) {
-      toast.error('Failed to save settings: ' + (result.error || 'Unknown error'))
-      return
-    }
-
-    // saveSettings clears its own loading flag once the PUT resolves, but the
-    // automatic recalculation below is the slower half — keep the buttons in
-    // loading state until it finishes too, so the UI never looks "done" before
-    // the success toast arrives.
-    isAutoRepricing.value = true
-    try {
-      const repriceRes: any = await $fetch('/api/admin/settings/recalculate-prices', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-      })
-
-      showSuccessBanner.value = true
-      const count = repriceRes?.updatedCount || 0
-      toast.success(
-        `Settings saved & ${count} products updated to ${formatNumber(settings.value.usdToMmkRate)} MMK (+${settings.value.defaultMarginPct}% margin)!`,
-        'Catalog Updated'
-      )
-    } catch (err: any) {
-      showSuccessBanner.value = true
-      toast.success('Store rates and payment accounts saved to database!', 'Settings Saved')
-    }
-  } finally {
-    isAutoRepricing.value = false
-    isSaving.value = false
-  }
-
+function triggerSuccessBanner(msg: string) {
+  bannerMessage.value = msg
+  showSuccessBanner.value = true
   setTimeout(() => {
     showSuccessBanner.value = false
   }, 4500)
 }
 
+// 1. Save only Myanmar Payment Accounts card
+async function handleSavePayments() {
+  if (!canEditPayments.value) {
+    toast.error('Permission denied: You cannot edit payment accounts.')
+    return
+  }
+
+  savingSection.value = 'payments'
+  try {
+    const res = await saveSettings({
+      kpayAccountName: settings.value.kpayAccountName,
+      kpayPhone: settings.value.kpayPhone,
+      wavepayAccountName: settings.value.wavepayAccountName,
+      wavepayPhone: settings.value.wavepayPhone,
+      ayapayAccountName: settings.value.ayapayAccountName,
+      ayapayPhone: settings.value.ayapayPhone,
+      uabpayAccountName: settings.value.uabpayAccountName,
+      uabpayPhone: settings.value.uabpayPhone,
+    })
+
+    if (res.success) {
+      toast.success('Myanmar payment accounts saved successfully!', 'Payments Updated')
+      triggerSuccessBanner('Payment accounts successfully saved to database & updated for Telegram Bot checkouts!')
+    } else {
+      toast.error('Failed to save payments: ' + (res.error || 'Unknown error'))
+    }
+  } finally {
+    savingSection.value = null
+  }
+}
+
+// 2. Save Customer Support & Store Rules card
+async function handleSaveRules() {
+  if (!canEditOperations.value) {
+    toast.error('Permission denied: You cannot edit store rules.')
+    return
+  }
+
+  savingSection.value = 'rules'
+  try {
+    const res = await saveSettings({
+      supportTelegramHandle: settings.value.supportTelegramHandle,
+      orderTimeoutMinutes: settings.value.orderTimeoutMinutes,
+      isMaintenanceMode: settings.value.isMaintenanceMode,
+    })
+
+    if (res.success) {
+      toast.success('Customer support handle and store operating rules saved!', 'Store Rules Updated')
+      triggerSuccessBanner('Customer support and operating rules updated successfully!')
+    } else {
+      toast.error('Failed to save store rules: ' + (res.error || 'Unknown error'))
+    }
+  } finally {
+    savingSection.value = null
+  }
+}
+
+// 3. Save Telegram Deposit Relay card
+async function handleSaveRelay() {
+  if (!canEditOperations.value) {
+    toast.error('Permission denied: You cannot edit Telegram relay settings.')
+    return
+  }
+
+  savingSection.value = 'relay'
+  try {
+    const res = await saveSettings({
+      telegramGroupChatId: settings.value.telegramGroupChatId,
+      telegramDepositTopicId: settings.value.telegramDepositTopicId,
+      telegramAdminMentions: settings.value.telegramAdminMentions,
+      telegramApproverIds: settings.value.telegramApproverIds,
+    })
+
+    if (res.success) {
+      toast.success('Deposit slip relay configuration saved!', 'Relay Updated')
+      triggerSuccessBanner('Telegram deposit slip relay and mentions successfully saved!')
+    } else {
+      toast.error('Failed to save relay settings: ' + (res.error || 'Unknown error'))
+    }
+  } finally {
+    savingSection.value = null
+  }
+}
+
+// 4. Save All Permitted Settings (Header Action)
+async function handleSaveAll() {
+  if (!canEditAnySettings.value) {
+    toast.error('Permission denied: No settings edit permissions granted.')
+    return
+  }
+
+  savingSection.value = 'all'
+  try {
+    const payload: Record<string, any> = {}
+
+    if (canEditPayments.value) {
+      payload.kpayAccountName = settings.value.kpayAccountName
+      payload.kpayPhone = settings.value.kpayPhone
+      payload.wavepayAccountName = settings.value.wavepayAccountName
+      payload.wavepayPhone = settings.value.wavepayPhone
+      payload.ayapayAccountName = settings.value.ayapayAccountName
+      payload.ayapayPhone = settings.value.ayapayPhone
+      payload.uabpayAccountName = settings.value.uabpayAccountName
+      payload.uabpayPhone = settings.value.uabpayPhone
+    }
+
+    if (canEditOperations.value) {
+      payload.supportTelegramHandle = settings.value.supportTelegramHandle
+      payload.orderTimeoutMinutes = settings.value.orderTimeoutMinutes
+      payload.isMaintenanceMode = settings.value.isMaintenanceMode
+      payload.telegramGroupChatId = settings.value.telegramGroupChatId
+      payload.telegramDepositTopicId = settings.value.telegramDepositTopicId
+      payload.telegramAdminMentions = settings.value.telegramAdminMentions
+      payload.telegramApproverIds = settings.value.telegramApproverIds
+    }
+
+    const res = await saveSettings(payload)
+    if (res.success) {
+      toast.success('All permitted store settings saved successfully!', 'Settings Saved')
+      triggerSuccessBanner('All permitted store settings updated and synced across Telegram Bot!')
+    } else {
+      toast.error('Failed to save settings: ' + (res.error || 'Unknown error'))
+    }
+  } finally {
+    savingSection.value = null
+  }
+}
+
+// Test Telegram Group Relay
 async function handleTestGroupNotify() {
   if (!settings.value.telegramGroupChatId.trim()) {
     toast.error('Group Chat ID အရင်ထည့်ပါဆာ။', 'Deposit Relay')
@@ -126,33 +200,7 @@ async function handleTestGroupNotify() {
   }
 }
 
-async function handleRecalculatePrices() {
-  if (!confirm(`Are you sure you want to recalculate all product retail prices using 1 USD = ${formatNumber(settings.value.usdToMmkRate)} MMK and ${settings.value.defaultMarginPct}% default margin?`)) {
-    return
-  }
-
-  isRecalculating.value = true
-  try {
-    // First ensure settings are saved
-    await saveSettings(settings.value)
-
-    const res: any = await $fetch('/api/admin/settings/recalculate-prices', {
-      method: 'POST',
-      headers: getAuthHeaders(),
-    })
-
-    if (res.ok) {
-      toast.success(res.message, 'Catalog Repriced')
-    } else {
-      toast.error('Recalculation failed: ' + (res.error || 'Unknown error'))
-    }
-  } catch (err: any) {
-    toast.error('Recalculation error: ' + (err.message || 'Network error'))
-  } finally {
-    isRecalculating.value = false
-  }
-}
-
+// Change Admin Password
 async function handleChangePassword() {
   passwordError.value = ''
   passwordSuccess.value = ''
@@ -209,11 +257,13 @@ async function handleChangePassword() {
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
         <h1 class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5">
-          <i class="pi pi-sliders-h text-indigo-600 dark:text-indigo-400"></i>
-          Rates & Store Settings (စနစ်ပြင်ဆင်မှုများ)
+          <div class="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center font-bold text-base">
+            <i class="pi pi-cog"></i>
+          </div>
+          Store Settings (ဆိုင်အထွေထွေ ပြင်ဆင်ချက်များ)
         </h1>
         <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Configure live USD to MMK exchange rate, automated profit margins, Myanmar payment accounts, bot parameters, and admin security
+          Manage Myanmar payment accounts, Telegram bot operations, order reservation timeouts, and admin password
         </p>
       </div>
 
@@ -223,7 +273,7 @@ async function handleChangePassword() {
           @click="fetchSettings(true)"
           :disabled="isLoading"
           title="Reload latest settings from database"
-          class="px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all flex items-center gap-1.5"
+          class="px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all flex items-center gap-1.5 cursor-pointer"
         >
           <i class="pi pi-sync text-xs" :class="{ 'animate-spin': isLoading }"></i>
           <span class="hidden sm:inline">Refresh</span>
@@ -232,13 +282,13 @@ async function handleChangePassword() {
         <button
           v-if="canEditAnySettings"
           type="button"
-          @click="handleSave"
-          :disabled="isSaving || isAutoRepricing"
+          @click="handleSaveAll"
+          :disabled="savingSection !== null || isSaving"
           class="px-5 py-2.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-all shadow-md shadow-indigo-600/20 flex items-center gap-2 disabled:opacity-50 cursor-pointer"
         >
-          <i v-if="isSaving || isAutoRepricing" class="pi pi-spin pi-spinner text-xs"></i>
+          <i v-if="savingSection === 'all'" class="pi pi-spin pi-spinner text-xs"></i>
           <i v-else class="pi pi-check text-xs"></i>
-          <span>{{ saveButtonLabel }}</span>
+          <span>{{ savingSection === 'all' ? 'Saving All...' : 'Save All Permitted Settings' }}</span>
         </button>
       </div>
     </div>
@@ -250,145 +300,37 @@ async function handleChangePassword() {
     >
       <div class="flex items-center gap-2">
         <i class="pi pi-check-circle text-base text-emerald-500"></i>
-        <span>Settings successfully saved to Neon PostgreSQL & synced across Telegram Bot!</span>
+        <span>{{ bannerMessage }}</span>
       </div>
-      <button type="button" @click="showSuccessBanner = false" class="hover:opacity-75">
+      <button type="button" @click="showSuccessBanner = false" class="hover:opacity-75 cursor-pointer">
         <i class="pi pi-times text-xs"></i>
       </button>
     </div>
 
-    <form @submit.prevent="handleSave" class="space-y-6">
-      <!-- Section 1: Exchange Rate & Margins -->
-      <fieldset :disabled="!canEditPricing" class="rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-6 min-w-0 disabled:opacity-75">
-        <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
-          <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center font-bold text-sm">
-              <i class="pi pi-dollar"></i>
-            </div>
-            <div>
-              <h2 class="text-base font-bold text-slate-900 dark:text-white">Exchange Rate & Pricing Formula</h2>
-              <p class="text-xs text-slate-500">Determines how upstream USD wholesale costs are converted to customer MMK prices</p>
-            </div>
+    <!-- CARD 1: Myanmar Payment Accounts (hidden entirely without settings.payments) -->
+    <div v-if="canEditPayments" class="rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-6">
+      <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center font-bold text-sm">
+            <i class="pi pi-credit-card"></i>
           </div>
-          <span class="px-2.5 py-1 rounded-lg text-[11px] font-mono font-semibold bg-amber-500/10 text-amber-500 border border-amber-500/20">
-            Real-time DB Sync
+          <div>
+            <h2 class="text-base font-bold text-slate-900 dark:text-white">Payment Accounts (ငွေလက်ခံမည့် အကောင့်များ)</h2>
+            <p class="text-xs text-slate-500">Displayed dynamically to customers in Telegram Bot during wallet top-ups and checkouts</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <span
+            class="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1"
+          >
+            <i class="pi pi-check-circle text-[10px]"></i>
+            Editable
           </span>
         </div>
+      </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <!-- USD to MMK Rate -->
-          <div class="space-y-1.5">
-            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-              USD to MMK Exchange Rate (1 USD = ? Kyats)
-            </label>
-            <div class="relative">
-              <input
-                v-model.number="settings.usdToMmkRate"
-                type="number"
-                step="50"
-                min="1000"
-                max="20000"
-                required
-                class="w-full pl-4 pr-16 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-              />
-              <span class="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">
-                MMK
-              </span>
-            </div>
-            <p class="text-[11px] text-slate-400">Current market reference: ~4,500 – 4,800 MMK / 1 USD</p>
-          </div>
-
-          <!-- Default Margin % -->
-          <div class="space-y-1.5">
-            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-              Default Profit Margin (% Markup on Wholesale Cost)
-            </label>
-            <div class="relative">
-              <input
-                v-model.number="settings.defaultMarginPct"
-                type="number"
-                step="1"
-                min="0"
-                max="300"
-                required
-                class="w-full pl-4 pr-12 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-              />
-              <span class="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">
-                %
-              </span>
-            </div>
-            <p class="text-[11px] text-slate-400">Applies as base profit margin when syncing catalog from XPro supplier</p>
-          </div>
-        </div>
-
-        <!-- Live Calculation Preview Simulator -->
-        <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 space-y-3">
-          <div class="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-300">
-            <span class="flex items-center gap-1.5">
-              <i class="pi pi-calculator text-indigo-500"></i>
-              Live Pricing Preview Simulator
-            </span>
-            <div class="flex items-center gap-2">
-              <span class="text-slate-400">Supplier Cost:</span>
-              <input
-                v-model.number="sampleCostUsd"
-                type="number"
-                step="0.10"
-                min="0.10"
-                class="w-16 px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-center font-mono font-semibold text-xs"
-              />
-              <span>USD</span>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-3 gap-3 pt-2 border-t border-slate-200 dark:border-slate-700/60 text-xs">
-            <div>
-              <span class="text-slate-400 block text-[11px]">Wholesale Cost</span>
-              <span class="font-mono font-semibold text-slate-800 dark:text-slate-200">{{ formatNumber(calculatedBaseMmk) }} MMK</span>
-            </div>
-            <div>
-              <span class="text-slate-400 block text-[11px]">Store Profit (+{{ settings.defaultMarginPct }}%)</span>
-              <span class="font-mono font-semibold text-emerald-600 dark:text-emerald-400">+{{ formatNumber(calculatedProfitMmk) }} MMK</span>
-            </div>
-            <div>
-              <span class="text-slate-400 block text-[11px]">Customer Retail Price</span>
-              <span class="font-mono font-bold text-indigo-600 dark:text-indigo-400 text-sm">{{ formatNumber(calculatedRetailMmk) }} MMK</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Catalog Reprice Action -->
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-slate-100 dark:border-slate-800/80">
-          <div>
-            <span class="text-xs font-bold text-slate-800 dark:text-slate-200 block">Apply Rate to All Products</span>
-            <span class="text-[11px] text-slate-400">Recalculates retail MMK prices for all 42+ active products using this rate & margin</span>
-          </div>
-          <button
-            type="button"
-            @click="handleRecalculatePrices"
-            :disabled="isRecalculating"
-            class="px-4 py-2 rounded-xl text-xs font-semibold bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
-          >
-            <i class="pi pi-refresh text-xs" :class="{ 'animate-spin': isRecalculating }"></i>
-            <span>{{ isRecalculating ? 'Recalculating Catalog...' : 'Recalculate All Product Prices' }}</span>
-          </button>
-        </div>
-      </fieldset>
-
-      <!-- Section 2: Myanmar Payment Accounts -->
-      <fieldset :disabled="!canEditPayments" class="rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-6 min-w-0 disabled:opacity-75">
-        <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
-          <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center font-bold text-sm">
-              <i class="pi pi-credit-card"></i>
-            </div>
-            <div>
-              <h2 class="text-base font-bold text-slate-900 dark:text-white">Payment Accounts (ငွေလက်ခံမည့် အကောင့်များ)</h2>
-              <p class="text-xs text-slate-500">Displayed dynamically to customers in Telegram Bot during wallet top-ups and checkouts</p>
-            </div>
-          </div>
-        </div>
-
+      <fieldset class="space-y-6 min-w-0">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <!-- KBZPay Card -->
           <div class="p-4 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/50 space-y-3">
@@ -506,22 +448,48 @@ async function handleChangePassword() {
             </div>
           </div>
         </div>
-      </fieldset>
 
-      <!-- Section 3: Telegram Support & Operating Rules -->
-      <fieldset :disabled="!canEditOperations" class="rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-6 min-w-0 disabled:opacity-75">
-        <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
-          <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-bold text-sm">
-              <i class="pi pi-send"></i>
-            </div>
-            <div>
-              <h2 class="text-base font-bold text-slate-900 dark:text-white">Customer Support & Bot Operations</h2>
-              <p class="text-xs text-slate-500">Contact endpoints and reservation timeout rules</p>
-            </div>
+        <!-- Inline Save Action for Payments Card -->
+        <div class="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800/80">
+          <span class="text-[11px] text-slate-400">Save changes to Myanmar bank & wallet numbers</span>
+          <button
+            type="button"
+            @click="handleSavePayments"
+            :disabled="savingSection !== null || isSaving"
+            class="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-all shadow-sm flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+          >
+            <i v-if="savingSection === 'payments'" class="pi pi-spin pi-spinner text-xs"></i>
+            <i v-else class="pi pi-check text-xs"></i>
+            <span>{{ savingSection === 'payments' ? 'Saving Payments...' : 'Save Payment Accounts' }}</span>
+          </button>
+        </div>
+      </fieldset>
+    </div>
+
+    <!-- CARD 2: Customer Support & Store Operating Rules (hidden entirely without settings.operations) -->
+    <div v-if="canEditOperations" class="rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-6">
+      <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-bold text-sm">
+            <i class="pi pi-headphones"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-slate-900 dark:text-white">Customer Support & Store Rules (ဖောက်သည် ဝန်ဆောင်မှုနှင့် စည်းမျဉ်းများ)</h2>
+            <p class="text-xs text-slate-500">Contact endpoints, reservation timeout rules, and maintenance status</p>
           </div>
         </div>
 
+        <div class="flex items-center gap-2">
+          <span
+            class="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1"
+          >
+            <i class="pi pi-check-circle text-[10px]"></i>
+            Editable
+          </span>
+        </div>
+      </div>
+
+      <fieldset class="space-y-6 min-w-0">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <!-- Support Handle -->
           <div class="space-y-1.5">
@@ -533,7 +501,7 @@ async function handleChangePassword() {
               type="text"
               required
               placeholder="@ArenaStoreSupport"
-              class="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              class="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
             />
             <p class="text-[11px] text-slate-400">Attached to order confirmations and /help messages in Telegram Bot</p>
           </div>
@@ -550,7 +518,7 @@ async function handleChangePassword() {
                 min="5"
                 max="60"
                 required
-                class="w-full pl-4 pr-16 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                class="w-full pl-4 pr-16 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
               />
               <span class="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">
                 mins
@@ -560,92 +528,129 @@ async function handleChangePassword() {
           </div>
         </div>
 
-        <!-- Deposit Slip Relay → Admin Telegram Group -->
-        <div class="rounded-xl bg-sky-50/50 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/50 p-4 space-y-4">
-          <div class="flex items-center gap-2">
-            <i class="pi pi-send text-sky-600 dark:text-sky-400 text-xs"></i>
-            <h3 class="text-sm font-bold text-sky-950 dark:text-sky-200">Deposit Slip Relay (Group ထဲ Slip ပို့ပေးတာ)</h3>
-          </div>
-          <p class="text-[11px] text-slate-500 -mt-2">
-            ဝယ်ယူသူတိုင်း၏ payment slip ကို bot က ဤ group/topic ထဲသို့ အလိုအလျောက် ပို့ပေးပါမည်။
-            Bot ကို group admin အဖြစ် ထည့်ထားရပါမည်။ Group ID သည် <code>-100…</code> ပုံစံဖြစ်ပြီး
-            Topic ID မှာ topic link (<code>t.me/c/xxx/&lt;TopicID&gt;</code>) ထဲက နံပါတ်ဖြစ်သည် — စွန့်ခွာထားလျှင် General သို့ ပို့မည်။
-          </p>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="space-y-1.5">
-              <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">Group Chat ID</label>
-              <input
-                v-model="settings.telegramGroupChatId"
-                type="text"
-                placeholder="-1001234567890"
-                class="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-sky-200 dark:border-sky-900 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
-              />
-            </div>
-            <div class="space-y-1.5">
-              <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">Deposit Topic ID (message_thread_id)</label>
-              <input
-                v-model="settings.telegramDepositTopicId"
-                type="text"
-                placeholder="e.g. 42 (empty = General)"
-                class="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-sky-200 dark:border-sky-900 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
-              />
-            </div>
-          </div>
-          <div class="space-y-1.5">
-            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">Admin Mentions (Slip အောက်ဆုံးမှာ @ခေါ်ရမည်သူများ)</label>
-            <input
-              v-model="settings.telegramAdminMentions"
-              type="text"
-              placeholder="e.g. ryanwez, H_M_A_2026"
-              class="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-sky-200 dark:border-sky-900 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
-            />
-            <p class="text-[11px] text-slate-400">
-              Telegram username များကို comma/spacing ဖြင့် ခွာထားပါ — slip တိုင်း၏ အောက်ဆုံးတွင်
-              <code>@ryanwez | @H_M_A_2026</code> ပုံစံ ပေါ်မည့်အပြင် ၎င်းတို့ ထားထိနိူင်ပါ။ (@ မတိုင်းလဲရပါ)
-            </p>
-          </div>
-          <div class="space-y-1.5">
-            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">Deposit Approvers Allowlist (Telegram User IDs / Usernames)</label>
-            <input
-              v-model="settings.telegramApproverIds"
-              type="text"
-              placeholder="e.g. 123456789, ryanwez (အလွတ် = group အတွင်း မည်သူမဆို အတည်ပြုနိုင်သည်)"
-              class="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-sky-200 dark:border-sky-900 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
-            />
-            <p class="text-[11px] text-slate-400">
-              အတည်ပြုခွင့်ရှိသူများ၏ Telegram ID သို့မဟုတ် Username များကို comma/space ဖြင့် ခွာ၍ ထည့်ပါ။ (အလွတ်ထားပါက group အတွင်း မည်သူမဆို အတည်ပြုနိုင်သည်)
-            </p>
-          </div>
-          <div class="flex justify-end">
-            <button
-              type="button"
-              :disabled="isTestingGroupNotify"
-              class="px-4 py-2 rounded-lg text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
-              @click="handleTestGroupNotify"
-            >
-              <i v-if="isTestingGroupNotify" class="pi pi-spin pi-spinner text-xs"></i>
-              <i v-else class="pi pi-paperplane text-xs"></i>
-              <span>{{ isTestingGroupNotify ? 'Testing...' : 'Send Test Post' }}</span>
-            </button>
-          </div>
+        <!-- Inline Save Action for Support & Rules -->
+        <div class="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800/80">
+          <span class="text-[11px] text-slate-400">Save changes to support handle and payment timeout</span>
+          <button
+            type="button"
+            @click="handleSaveRules"
+            :disabled="savingSection !== null || isSaving"
+            class="px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-sm flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+          >
+            <i v-if="savingSection === 'rules'" class="pi pi-spin pi-spinner text-xs"></i>
+            <i v-else class="pi pi-check text-xs"></i>
+            <span>{{ savingSection === 'rules' ? 'Saving Rules...' : 'Save Store Rules' }}</span>
+          </button>
         </div>
       </fieldset>
+    </div>
 
-      <!-- Save Button Row -->
-      <div v-if="canEditAnySettings" class="flex justify-end pt-2">
-        <button
-          type="submit"
-          :disabled="isSaving || isAutoRepricing"
-          class="px-6 py-3 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-all shadow-lg shadow-indigo-600/25 flex items-center gap-2 disabled:opacity-50 cursor-pointer"
-        >
-          <i v-if="isSaving || isAutoRepricing" class="pi pi-spin pi-spinner text-xs"></i>
-          <i v-else class="pi pi-check text-xs"></i>
-          <span>{{ isAutoRepricing ? 'Updating prices...' : (isSaving ? 'Saving Changes...' : 'Save All Settings') }}</span>
-        </button>
+    <!-- CARD 3: Deposit Slip Relay to Telegram Group (hidden entirely without settings.operations) -->
+    <div v-if="canEditOperations" class="rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-6">
+      <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-sky-500/10 text-sky-500 flex items-center justify-center font-bold text-sm">
+            <i class="pi pi-send"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-slate-900 dark:text-white">Deposit Slip Relay (Group ထဲ Slip ပို့ပေးတာ)</h2>
+            <p class="text-xs text-slate-500">Automatically sends newly uploaded payment slips into your admin Telegram group or forum topic</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <span
+            class="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1"
+          >
+            <i class="pi pi-check-circle text-[10px]"></i>
+            Editable
+          </span>
+        </div>
       </div>
-    </form>
 
-    <!-- Section 4: Admin Security & Password Change (NEW) -->
+      <fieldset class="space-y-4 min-w-0">
+        <p class="text-[11px] text-slate-500">
+          ဝယ်ယူသူတိုင်း၏ payment slip ကို bot က ဤ group/topic ထဲသို့ အလိုအလျောက် ပို့ပေးပါမည်။
+          Bot ကို group admin အဖြစ် ထည့်ထားရပါမည်။ Group ID သည် <code>-100…</code> ပုံစံဖြစ်ပြီး
+          Topic ID မှာ topic link (<code>t.me/c/xxx/&lt;TopicID&gt;</code>) ထဲက နံပါတ်ဖြစ်သည် — စွန့်ခွာထားလျှင် General သို့ ပို့မည်။
+        </p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">Group Chat ID</label>
+            <input
+              v-model="settings.telegramGroupChatId"
+              type="text"
+              placeholder="-1001234567890"
+              class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            />
+          </div>
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">Deposit Topic ID (message_thread_id)</label>
+            <input
+              v-model="settings.telegramDepositTopicId"
+              type="text"
+              placeholder="e.g. 42 (empty = General)"
+              class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            />
+          </div>
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">Admin Mentions (Slip အောက်ဆုံးမှာ @ခေါ်ရမည်သူများ)</label>
+          <input
+            v-model="settings.telegramAdminMentions"
+            type="text"
+            placeholder="e.g. ryanwez, H_M_A_2026"
+            class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+          />
+          <p class="text-[11px] text-slate-400">
+            Telegram username များကို comma/spacing ဖြင့် ခွာထားပါ — slip တိုင်း၏ အောက်ဆုံးတွင်
+            <code>@ryanwez | @H_M_A_2026</code> ပုံစံ ပေါ်မည့်အပြင် ၎င်းတို့ notification ရရှိပါမည်။
+          </p>
+        </div>
+
+        <div class="space-y-1.5">
+          <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">Deposit Approvers Allowlist (Telegram User IDs / Usernames)</label>
+          <input
+            v-model="settings.telegramApproverIds"
+            type="text"
+            placeholder="e.g. 123456789, ryanwez (အလွတ် = group အတွင်း မည်သူမဆို အတည်ပြုနိုင်သည်)"
+            class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+          />
+          <p class="text-[11px] text-slate-400">
+            အတည်ပြုခွင့်ရှိသူများ၏ Telegram ID သို့မဟုတ် Username များကို comma/space ဖြင့် ခွာ၍ ထည့်ပါ။ (အလွတ်ထားပါက group အတွင်း မည်သူမဆို အတည်ပြုနိုင်သည်)
+          </p>
+        </div>
+
+        <!-- Inline Actions for Relay Card -->
+        <div class="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800/80">
+          <button
+            type="button"
+            :disabled="isTestingGroupNotify"
+            class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/30 transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+            @click="handleTestGroupNotify"
+          >
+            <i v-if="isTestingGroupNotify" class="pi pi-spin pi-spinner text-xs"></i>
+            <i v-else class="pi pi-paperplane text-xs"></i>
+            <span>{{ isTestingGroupNotify ? 'Testing...' : 'Send Test Post' }}</span>
+          </button>
+
+          <button
+            type="button"
+            @click="handleSaveRelay"
+            :disabled="savingSection !== null || isSaving"
+            class="px-4 py-2 rounded-xl text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white transition-all shadow-sm flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+          >
+            <i v-if="savingSection === 'relay'" class="pi pi-spin pi-spinner text-xs"></i>
+            <i v-else class="pi pi-check text-xs"></i>
+            <span>{{ savingSection === 'relay' ? 'Saving Relay...' : 'Save Relay Settings' }}</span>
+          </button>
+        </div>
+      </fieldset>
+    </div>
+
+    <!-- CARD 4: Admin Security & Password Change -->
     <div class="rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-6">
       <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
         <div class="flex items-center gap-3">
@@ -699,7 +704,7 @@ async function handleChangePassword() {
               <button
                 type="button"
                 @click="showCurrentPw = !showCurrentPw"
-                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 cursor-pointer"
               >
                 <i :class="showCurrentPw ? 'pi pi-eye-slash' : 'pi pi-eye'" class="text-xs"></i>
               </button>
@@ -723,7 +728,7 @@ async function handleChangePassword() {
               <button
                 type="button"
                 @click="showNewPw = !showNewPw"
-                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
+                class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 cursor-pointer"
               >
                 <i :class="showNewPw ? 'pi pi-eye-slash' : 'pi pi-eye'" class="text-xs"></i>
               </button>

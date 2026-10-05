@@ -12,6 +12,7 @@ const PAGE_PERMISSIONS: Record<string, string> = {
   '/orders': 'orders.view',
   '/payments': 'payments.view',
   '/customers': 'customers.view',
+  '/rates': 'settings.pricing',
   '/settings': 'settings.view',
   '/users': 'users.manage',
   '/roles': 'roles.manage',

@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Page, type Route } from "@playwright/test";
 import {
   E2E_ADMIN_EMAIL,
   E2E_ADMIN_PASSWORD,
@@ -184,7 +184,7 @@ export async function waitForCapturedCall(
   timeout = 5_000
 ): Promise<CapturedAdminApiCall> {
   await expect
-    .poll(() => mock.calls.some(predicate), { timeout, interval: 100 })
+    .poll(() => mock.calls.some(predicate), { timeout, intervals: [100] })
     .toBe(true);
   return mock.calls.find(predicate)!;
 }

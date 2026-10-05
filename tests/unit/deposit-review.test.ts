@@ -203,12 +203,14 @@ describe("reviewDeposit service", () => {
       action: "APPROVE",
       actor: { kind: "ADMIN", adminUserId: 1 },
     });
-    expect(res.ok).toBe(false);
-    if (!res.ok) {
-      expect(res.code).toBe("ALREADY_REVIEWED");
-      expect(res.status).toBe("COMPLETED");
-      expect(res.reference).toBe("TOP-TEST42");
-    }
+    // toMatchObject keeps this type-safe: the NOT_FOUND union member lacks
+    // status/reference, so property access after `if (!res.ok)` won't compile.
+    expect(res).toMatchObject({
+      ok: false,
+      code: "ALREADY_REVIEWED",
+      status: "COMPLETED",
+      reference: "TOP-TEST42",
+    });
   });
 
   it("approves deposit, credits wallet, records ledger, notifies customer and writes audit", async () => {
@@ -332,11 +334,7 @@ describe("reviewDeposit service", () => {
       actor: { kind: "ADMIN", adminUserId: 1 },
     });
 
-    expect(res.ok).toBe(false);
-    if (!res.ok) {
-      expect(res.code).toBe("ALREADY_REVIEWED");
-      expect(res.status).toBe("COMPLETED");
-    }
+    expect(res).toMatchObject({ ok: false, code: "ALREADY_REVIEWED", status: "COMPLETED" });
     // Customer not notified on double-review loser
     expect(h.notifyTopUpApproved).not.toHaveBeenCalled();
   });

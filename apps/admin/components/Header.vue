@@ -31,8 +31,10 @@ const pageTitle = computed(() => {
       return 'All Orders'
     case '/payments':
       return 'Payment Slips'
-    case '/settings':
+    case '/rates':
       return 'Rates & Margins'
+    case '/settings':
+      return 'Store Settings'
     default:
       return 'Overview'
   }

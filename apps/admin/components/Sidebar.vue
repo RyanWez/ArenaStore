@@ -126,9 +126,16 @@ const navGroups: NavGroup[] = [
     label: 'Configuration',
     items: [
       {
-        to: '/settings',
+        to: '/rates',
         label: 'Rates & Margins',
-        icon: 'pi pi-sliders-h',
+        icon: 'pi pi-percentage',
+        badge: null,
+        permission: 'settings.pricing',
+      },
+      {
+        to: '/settings',
+        label: 'Store Settings',
+        icon: 'pi pi-cog',
         badge: null,
         permission: 'settings.view',
       },

@@ -52,10 +52,12 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: "customers.delete", page: "Customer Wallets", label: "Permanently delete customers", type: "action" },
 
   // Rates & Margins
-  { key: "settings.view", page: "Rates & Margins", label: "View store settings & rates", type: "view" },
   { key: "settings.pricing", page: "Rates & Margins", label: "Edit exchange rate & margins", type: "action" },
-  { key: "settings.payments", page: "Rates & Margins", label: "Edit payment accounts", type: "action" },
-  { key: "settings.operations", page: "Rates & Margins", label: "Edit support & bot operations", type: "action" },
+
+  // Store Settings
+  { key: "settings.view", page: "Store Settings", label: "View store settings", type: "view" },
+  { key: "settings.payments", page: "Store Settings", label: "Edit payment accounts", type: "action" },
+  { key: "settings.operations", page: "Store Settings", label: "Edit support & bot operations", type: "action" },
 
   // User Management
   { key: "users.manage", page: "User Management", label: "Create & manage admin users", type: "action" },

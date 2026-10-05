@@ -309,12 +309,21 @@ async function confirmDelete() {
           <div class="mt-2.5 flex items-center gap-1.5 flex-wrap">
             <span
               class="px-2 py-0.5 rounded text-[10px] font-medium border transition-colors flex items-center gap-1"
+              :class="role.permissions.includes('settings.pricing')
+                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                : 'bg-slate-500/10 text-slate-400 border-slate-500/20 opacity-50 line-through'"
+            >
+              <i class="pi" :class="role.permissions.includes('settings.pricing') ? 'pi-check text-[8px]' : 'pi-times text-[8px]'"></i>
+              Rates
+            </span>
+            <span
+              class="px-2 py-0.5 rounded text-[10px] font-medium border transition-colors flex items-center gap-1"
               :class="role.permissions.includes('settings.view')
                 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
                 : 'bg-slate-500/10 text-slate-400 border-slate-500/20 opacity-50 line-through'"
             >
               <i class="pi" :class="role.permissions.includes('settings.view') ? 'pi-check text-[8px]' : 'pi-times text-[8px]'"></i>
-              Rates &amp; Margins
+              Store Settings
             </span>
             <span
               class="px-2 py-0.5 rounded text-[10px] font-medium border transition-colors flex items-center gap-1"

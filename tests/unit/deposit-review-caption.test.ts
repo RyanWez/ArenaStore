@@ -116,13 +116,13 @@ describe("deposit review callback data contract", () => {
   it("builds the two-button keyboard and the reject confirmation keyboard", () => {
     const main = buildDepositReviewKeyboard(7);
     expect(main.inline_keyboard).toHaveLength(1);
-    expect(main.inline_keyboard[0].map((b) => b.callback_data)).toEqual([
+    expect(main.inline_keyboard[0].map((b) => ("callback_data" in b ? b.callback_data : ""))).toEqual([
       "dep:7:APPROVE",
       "dep:7:REJECT",
     ]);
 
     const confirm = buildDepositRejectConfirmKeyboard(7);
-    expect(confirm.inline_keyboard[0].map((b) => b.callback_data)).toEqual([
+    expect(confirm.inline_keyboard[0].map((b) => ("callback_data" in b ? b.callback_data : ""))).toEqual([
       "dep:7:REJECT_CONFIRM",
       "dep:7:CANCEL",
     ]);
