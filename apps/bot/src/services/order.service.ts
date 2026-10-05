@@ -219,12 +219,20 @@ export class BotOrderService {
     return this.getOrCreateUser(params);
   }
 
+  private userStatusCache = new Map<string, { status: string | null; expiresAt: number }>();
+
   /**
    * Returns the current status of a user ("ACTIVE", "DEACTIVATED", ...).
+   * Cached in memory for 30s to eliminate redundant DB roundtrips on every bot action.
    * Returns null when the user is unknown or the DB is briefly unreachable —
    * callers treat null as "allow" and getOrCreateUser registers new users as ACTIVE.
    */
   async getUserStatus(telegramId: string): Promise<string | null> {
+    const cached = this.userStatusCache.get(telegramId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.status;
+    }
+
     try {
       const db = getDb();
       const [row] = await db
@@ -232,10 +240,12 @@ export class BotOrderService {
         .from(users)
         .where(eq(users.telegramId, telegramId))
         .limit(1);
-      return row?.status ?? null;
+      const status = row?.status ?? null;
+      this.userStatusCache.set(telegramId, { status, expiresAt: Date.now() + 30_000 });
+      return status;
     } catch (err: any) {
       console.warn("[BotOrderService] getUserStatus DB error:", err.message);
-      return null;
+      return cached?.status ?? null;
     }
   }
 

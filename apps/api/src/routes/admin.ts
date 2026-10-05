@@ -1843,42 +1843,63 @@ export async function adminRoutes(server: FastifyInstance) {
       .where(eq(orders.customerId, customerId))
       .orderBy(desc(orders.createdAt));
 
-    const enrichedOrders = await Promise.all(
-      customerOrders.map(async (o) => {
-        const items = await db
-          .select({
-            id: orderItems.id,
-            productId: orderItems.productId,
-            productName: orderItems.productNameSnapshot,
-            quantity: orderItems.quantity,
-            unitPriceMmk: orderItems.unitPriceMmk,
-            subtotalMmk: orderItems.subtotalMmk,
-          })
-          .from(orderItems)
-          .where(eq(orderItems.orderId, o.id));
+    const orderIds = customerOrders.map((o) => o.id);
+    const [rawItems, rawDeliveries] = orderIds.length > 0
+      ? await Promise.all([
+          db
+            .select({
+              id: orderItems.id,
+              orderId: orderItems.orderId,
+              productId: orderItems.productId,
+              productName: orderItems.productNameSnapshot,
+              quantity: orderItems.quantity,
+              unitPriceMmk: orderItems.unitPriceMmk,
+              subtotalMmk: orderItems.subtotalMmk,
+            })
+            .from(orderItems)
+            .where(inArray(orderItems.orderId, orderIds)),
+          db
+            .select()
+            .from(orderDeliveries)
+            .where(inArray(orderDeliveries.orderId, orderIds)),
+        ])
+      : [[], []];
 
-        const deliveries = await db
-          .select()
-          .from(orderDeliveries)
-          .where(eq(orderDeliveries.orderId, o.id));
+    const itemsByOrder = new Map<string, typeof rawItems>();
+    for (const item of rawItems) {
+      const arr = itemsByOrder.get(item.orderId) || [];
+      arr.push(item);
+      itemsByOrder.set(item.orderId, arr);
+    }
 
-        const decryptedDeliveries = deliveries.map((d) => {
-          let plainCredentials = "";
-          if (d.encryptedPayload) {
-            try {
-              plainCredentials = formatCredentialsText(decryptPayload(d.encryptedPayload));
-            } catch {
-              plainCredentials = "[Encrypted Data]";
-            }
+    const deliveriesByOrder = new Map<string, typeof rawDeliveries>();
+    for (const del of rawDeliveries) {
+      const arr = deliveriesByOrder.get(del.orderId) || [];
+      arr.push(del);
+      deliveriesByOrder.set(del.orderId, arr);
+    }
+
+    const enrichedOrders = customerOrders.map((o) => {
+      const items = itemsByOrder.get(o.id) || [];
+      const deliveries = deliveriesByOrder.get(o.id) || [];
+
+      const decryptedDeliveries = deliveries.map((d) => {
+        let plainCredentials = "";
+        if (d.encryptedPayload) {
+          try {
+            plainCredentials = formatCredentialsText(decryptPayload(d.encryptedPayload));
+          } catch {
+            plainCredentials = "[Encrypted Data]";
           }
-          return {
-            id: d.id,
-            deliveryType: d.deliveryType,
-            deliveredAt: d.deliveredAt,
-            customerViewedAt: d.customerViewedAt,
-            credentials: plainCredentials,
-          };
-        });
+        }
+        return {
+          id: d.id,
+          deliveryType: d.deliveryType,
+          deliveredAt: d.deliveredAt,
+          customerViewedAt: d.customerViewedAt,
+          credentials: plainCredentials,
+        };
+      });
 
         return {
           id: o.id,
@@ -1891,8 +1912,7 @@ export async function adminRoutes(server: FastifyInstance) {
           items,
           deliveries: decryptedDeliveries,
         };
-      })
-    );
+      });
 
     // Deposit Slips / Top-ups
     const topUps = await db
