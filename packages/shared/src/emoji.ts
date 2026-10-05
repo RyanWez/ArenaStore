@@ -126,3 +126,47 @@ export function parseCustomEmoji(rawText: string): ParsedEmojiText {
 
   return { emojiId, cleanText };
 }
+
+/**
+ * Known brand-to-emoji mappings extracted from catalog upstream emojis.
+ * Allows products without explicit {pe:<id>} in their titles (e.g. DigitalCore)
+ * to automatically render corresponding Telegram custom animated icons.
+ */
+export const BRAND_EMOJI_MAP: Record<string, string> = {
+  gemini: "5069075201950483359",
+  duolingo: "4963072209334567688",
+  notion: "5364199932620194408",
+  youtube: "5934029049260150525",
+  adobe: "6066600185583116873",
+  lovable: "6104729848675050039",
+  elevenlabs: "5285437624050263173",
+  eleven: "5285437624050263173",
+  coursera: "6307450973606389056",
+  nordvpn: "5796345694969140339",
+  vpn: "5794362687093740845",
+  canva: "5229235451541338986",
+  spotify: "5233578612665375810",
+  chatgpt: "5069347335373325316",
+  claude: "6174520215376763867",
+  steam: "4956506857901392912",
+  jetbrains: "5301168530182383496",
+  netflix: "5936178658916964051",
+  capcut: "5474521476197536994",
+  outlook: "5944862266745688389",
+  office: "6102808052673548025",
+  prime: "6084483883942811660",
+  autodesk: "6305045014531548800",
+  researchgate: "6131674493510231476",
+};
+
+export function findBrandEmojiId(text?: string | null): string | null {
+  if (!text) return null;
+  const lower = text.toLowerCase();
+  for (const [brand, emojiId] of Object.entries(BRAND_EMOJI_MAP)) {
+    if (lower.includes(brand)) {
+      return emojiId;
+    }
+  }
+  return null;
+}
+

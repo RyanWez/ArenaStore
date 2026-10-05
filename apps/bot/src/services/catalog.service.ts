@@ -8,6 +8,7 @@ import {
   parseCustomEmoji,
   stripCustomEmojiPlaceholders,
   escapeHtml,
+  findBrandEmojiId,
 } from "@arena/shared";
 
 export interface BotCategory {
@@ -140,7 +141,10 @@ class BotCatalogService {
         categoryId: p.categoryId,
         name: p.name,
         cleanName: parsed.cleanText,
-        emojiId: parsed.emojiId,
+        emojiId:
+          parsed.emojiId && /^\d+$/.test(parsed.emojiId)
+            ? parsed.emojiId
+            : findBrandEmojiId(p.name),
         description: p.description || "",
         formattedDescription: formattedDesc,
         supplierPriceUsd: usdPrice.toFixed(2),
@@ -319,7 +323,10 @@ class BotCatalogService {
           categoryId: p.categoryId ?? 0,
           name: displayName,
           cleanName: parsed.cleanText,
-          emojiId: parsed.emojiId,
+          emojiId:
+            parsed.emojiId && /^\d+$/.test(parsed.emojiId)
+              ? parsed.emojiId
+              : findBrandEmojiId(displayName),
           description: descText,
           formattedDescription: formattedDesc,
           supplierPriceUsd: p.supplierPriceUsd || "0.00",

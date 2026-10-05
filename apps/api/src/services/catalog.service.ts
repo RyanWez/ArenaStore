@@ -415,6 +415,26 @@ export class CatalogService {
       }
     }
 
+    // Pre-fetch all active categories to auto-link by brand name (e.g. Gemini -> GEMINI AI)
+    const allCategories = await db
+      .select({ id: categories.id, name: categories.name, slug: categories.slug })
+      .from(categories)
+      .where(eq(categories.isActive, true));
+
+    const findMatchingCategoryId = (name: string): number | null => {
+      const lower = name.toLowerCase();
+      for (const cat of allCategories) {
+        if (cat.slug === "uncategorized") continue;
+        const cleanCat = (cat.name || "").replace(/\{pe:\d+\}/g, "").trim().toLowerCase();
+        if (!cleanCat) continue;
+        const firstWord = cleanCat.split(" ")[0];
+        if (lower.includes(cleanCat) || (firstWord.length >= 3 && lower.includes(firstWord))) {
+          return cat.id;
+        }
+      }
+      return defaultCat?.id || null;
+    };
+
     const productValues: any[] = [];
     const validItems: any[] = [];
 
@@ -432,7 +452,7 @@ export class CatalogService {
       productValues.push({
         supplier: "DIGITALCORE",
         upstreamProductId: upstreamId,
-        categoryId: defaultCat?.id || null,
+        categoryId: findMatchingCategoryId(item.name),
         nameMmk: item.name,
         descriptionMmk: item.description || null,
         retailPriceMmk: initialPricing.retailPriceMmk,
@@ -452,6 +472,7 @@ export class CatalogService {
       .onConflictDoUpdate({
         target: [products.supplier, products.upstreamProductId],
         set: {
+          categoryId: sql`CASE WHEN ${products.categoryId} IS NULL OR ${products.categoryId} = ${defaultCat?.id || 0} THEN EXCLUDED.category_id ELSE ${products.categoryId} END`,
           nameMmk: sql`EXCLUDED.name_mmk`,
           descriptionMmk: sql`EXCLUDED.description_mmk`,
           updatedAt: new Date(),

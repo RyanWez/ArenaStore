@@ -925,6 +925,7 @@ export function createBot(): Bot<BotContext> {
         topUpId: topUp.reference,
         amountMmk: amount,
         reference: topUp.reference,
+        dbId: topUp.id,
       };
 
       const settings = await botSettingsService.getSettings();
