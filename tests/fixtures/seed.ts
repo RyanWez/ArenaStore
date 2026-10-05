@@ -160,7 +160,9 @@ export async function seedCustomer(
     });
   }
 
-  return { user, wallet };
+  // Pick only the declared fields; telegramId is non-null by construction —
+  // seedCustomer() always inserts a non-empty telegramId above.
+  return { user: { id: user.id, telegramId: user.telegramId! }, wallet };
 }
 
 /** Inserts a top-up request directly (bypasses bot service state). */

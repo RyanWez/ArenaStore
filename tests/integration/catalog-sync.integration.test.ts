@@ -21,7 +21,7 @@ const xproState = vi.hoisted(() => ({
   balance: "50.00",
   categories: [] as unknown[],
   products: [] as unknown[],
-  createOrderImpl: async () => {
+  createOrderImpl: async (_params: unknown) => {
     throw new Error("createOrderImpl not configured");
   },
   createOrderCalls: [] as unknown[],

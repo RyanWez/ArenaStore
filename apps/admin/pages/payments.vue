@@ -325,8 +325,12 @@ async function approveDeposit(slip: DepositItem, event?: Event) {
   approvingSlipId.value = slip.id
 
   try {
+    // ($fetch as any) bypasses Nuxt's typed-route matcher, whose deep type
+    // recursion exhausts the checker (TS2321) on this call — the response is
+    // consumed as `any` regardless.
+    const reviewUrl = `/api/admin/deposits/${slip.id}/review` as string
     const [res] = await Promise.all([
-      $fetch(`/api/admin/deposits/${slip.id}/review`, {
+      ($fetch as any)(reviewUrl, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: {
@@ -375,7 +379,7 @@ async function confirmReject() {
 
   try {
     const [res] = await Promise.all([
-      $fetch(`/api/admin/deposits/${selectedSlip.value.id}/review`, {
+      ($fetch as any)(`/api/admin/deposits/${selectedSlip.value.id}/review`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: {
