@@ -63,24 +63,37 @@ export function buildProfileKeyboard(): InlineKeyboard {
 export function buildCategoriesKeyboard(categories: BotCategory[]): InlineKeyboard {
   const keyboard = new InlineKeyboard();
 
+  const isNumeric = (val?: string | null): boolean =>
+    Boolean(val && /^\d+$/.test(val.trim()));
+
   // 2 categories per row
   for (let i = 0; i < categories.length; i += 2) {
     const cat1 = categories[i];
     const cat2 = categories[i + 1];
 
     if (cat1) {
+      const hasCustomEmoji = isNumeric(cat1.emojiId);
+      const buttonText = !hasCustomEmoji && cat1.iconEmoji
+        ? `${cat1.iconEmoji} ${cat1.cleanName}`
+        : cat1.cleanName;
+
       keyboard.add({
-        text: cat1.cleanName,
+        text: buttonText,
         callback_data: `cat_${cat1.id}`,
-        ...(cat1.emojiId ? { icon_custom_emoji_id: cat1.emojiId } : {}),
+        ...(hasCustomEmoji ? { icon_custom_emoji_id: cat1.emojiId! } : {}),
       });
     }
 
     if (cat2) {
+      const hasCustomEmoji = isNumeric(cat2.emojiId);
+      const buttonText = !hasCustomEmoji && cat2.iconEmoji
+        ? `${cat2.iconEmoji} ${cat2.cleanName}`
+        : cat2.cleanName;
+
       keyboard.add({
-        text: cat2.cleanName,
+        text: buttonText,
         callback_data: `cat_${cat2.id}`,
-        ...(cat2.emojiId ? { icon_custom_emoji_id: cat2.emojiId } : {}),
+        ...(hasCustomEmoji ? { icon_custom_emoji_id: cat2.emojiId! } : {}),
       });
     }
 
@@ -103,6 +116,9 @@ export function buildCategoriesKeyboard(categories: BotCategory[]): InlineKeyboa
 export function buildProductsKeyboard(categoryId: number, products: BotProduct[]): InlineKeyboard {
   const keyboard = new InlineKeyboard();
 
+  const isNumeric = (val?: string | null): boolean =>
+    Boolean(val && /^\d+$/.test(val.trim()));
+
   if (products.length === 0) {
     keyboard.add({
       text: "လက်ရှိတွင် ပစ္စည်းများ ပြတ်လပ်နေပါသည်",
@@ -115,11 +131,13 @@ export function buildProductsKeyboard(categoryId: number, products: BotProduct[]
         ? `${prod.cleanName} — ${prod.formattedPriceMmk}`
         : `${prod.cleanName} — ပြတ်လပ်နေပါသည် ❌`;
 
+      const hasCustomEmoji = isNumeric(prod.emojiId);
+
       keyboard
         .add({
           text: label,
           callback_data: prod.inStock ? `prod_${prod.id}` : "out_of_stock",
-          ...(prod.emojiId ? { icon_custom_emoji_id: prod.emojiId } : {}),
+          ...(hasCustomEmoji ? { icon_custom_emoji_id: prod.emojiId! } : {}),
         })
         .row();
     }

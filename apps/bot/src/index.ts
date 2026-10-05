@@ -62,10 +62,11 @@ async function main() {
           console.log(`🤖 Arena Store Telegram Bot running as @${botInfo.username} (ID: ${botInfo.id})`);
           console.log(`✨ Custom Emojis (icon_custom_emoji_id) and MMK Pricing active.`);
           await bot.api.setMyCommands([
-            { command: "start", description: "Start Arena Store" },
-            { command: "menu", description: "Open Main Menu" },
+            { command: "start", description: "Bot ကိုစတင်ရန်" },
+            { command: "orders", description: "မှာယူထားသည်များကို ကြည့်ရန်" },
+            { command: "wallet", description: "ငွေလွှဲမှတ်တမ်းများ ကြည့်ရန်" },
           ]).catch(() => {});
-          console.log("📋 Bot menu commands registered: /start and /menu");
+          console.log("📋 Bot menu commands registered: /start, /orders and /wallet");
         } catch (connErr: any) {
           console.warn(`[Telegram Bot] Connection to Telegram API failed (${connErr.message}). Retrying in 5s...`);
           await new Promise((resolve) => setTimeout(resolve, 5000));

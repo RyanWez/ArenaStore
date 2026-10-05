@@ -15,6 +15,7 @@ export interface BotCategory {
   name: string;
   cleanName: string;
   emojiId: string | null;
+  iconEmoji?: string | null;
   productsCount?: number;
 }
 
@@ -269,14 +270,24 @@ class BotCatalogService {
         this.getSupplierWalletBalance("DIGITALCORE"),
       ]);
 
+      const isNumericEmojiId = (val?: string | null): boolean =>
+        Boolean(val && /^\d+$/.test(val.trim()));
+
       const catList: BotCategory[] = catRows.map((c) => {
         const parsed = parseCustomEmoji(c.name || `Category ${c.id}`);
-        const emojiId = parsed.emojiId || (c.iconEmoji && c.iconEmoji !== "📁" ? c.iconEmoji : null);
+        const emojiId = isNumericEmojiId(parsed.emojiId)
+          ? parsed.emojiId
+          : isNumericEmojiId(c.iconEmoji)
+          ? c.iconEmoji
+          : null;
+        const iconEmoji =
+          !emojiId && c.iconEmoji && c.iconEmoji !== "📁" ? c.iconEmoji : null;
         return {
           id: c.id,
           name: c.name,
           cleanName: parsed.cleanText,
           emojiId,
+          iconEmoji,
         };
       });
 

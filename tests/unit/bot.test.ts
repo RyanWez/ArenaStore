@@ -132,6 +132,34 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect((lastRow[0] as any).callback_data).toBe("menu_start");
     });
 
+    it("safely ignores non-numeric emojiId and renders unicode iconEmoji without crashing Telegram", () => {
+      const mixedCategories: BotCategory[] = [
+        {
+          id: 99,
+          name: "Uncategorized",
+          cleanName: "Uncategorized",
+          emojiId: null,
+          iconEmoji: "📦",
+        },
+        {
+          id: 100,
+          name: "Invalid Emoji ID Category",
+          cleanName: "Invalid Emoji ID Category",
+          emojiId: "📦",
+          iconEmoji: null,
+        },
+      ];
+
+      const keyboard = buildCategoriesKeyboard(mixedCategories);
+      const rows = keyboard.inline_keyboard;
+
+      expect(rows[0][0].text).toBe("📦 Uncategorized");
+      expect((rows[0][0] as any).icon_custom_emoji_id).toBeUndefined();
+
+      expect(rows[0][1].text).toBe("Invalid Emoji ID Category");
+      expect((rows[0][1] as any).icon_custom_emoji_id).toBeUndefined();
+    });
+
     it("builds product list keyboard with custom emoji icon and Option A price (matching Screenshot 2)", () => {
       const keyboard = buildProductsKeyboard(10, [sampleProduct]);
       const rows = keyboard.inline_keyboard;
