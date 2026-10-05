@@ -112,10 +112,14 @@ export const SETTINGS_PERMISSION_KEYS: Record<string, string[]> = {
     "supportTelegramHandle",
     "isMaintenanceMode",
     "orderTimeoutMinutes",
+    "restockNotificationsEnabled",
     "telegramGroupChatId",
     "telegramDepositTopicId",
+    "telegramBotAlertTopicId",
     "telegramAdminMentions",
     "telegramApproverIds",
+    "balanceAlertThresholdUsd",
+    "supplier.balanceAlertThresholdUsd",
   ],
 };
 

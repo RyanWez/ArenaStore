@@ -1,10 +1,22 @@
 import { config } from "../config";
-import { BOT_EMOJIS, tgEmoji, escapeHtml } from "@arena/shared";
+import {
+  BOT_EMOJIS,
+  tgEmoji,
+  escapeHtml,
+  parseCustomEmoji,
+  findBrandEmojiId,
+} from "@arena/shared";
 import { formatCredentialsText } from "./encryption";
 import { getDb, appSettings } from "@arena/db";
 import { eq } from "drizzle-orm";
 
-export async function sendTelegramMessage(chatId: string, text: string): Promise<boolean> {
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export async function sendTelegramMessage(
+  chatId: string,
+  text: string,
+  messageThreadId?: number
+): Promise<boolean> {
   if (!config.TELEGRAM_BOT_TOKEN) {
     console.warn("[Telegram Notifier] No TELEGRAM_BOT_TOKEN configured, skipped sending message to", chatId);
     return false;
@@ -19,6 +31,7 @@ export async function sendTelegramMessage(chatId: string, text: string): Promise
         chat_id: chatId,
         text,
         parse_mode: "HTML",
+        ...(messageThreadId && messageThreadId > 0 ? { message_thread_id: messageThreadId } : {}),
       }),
     });
 
@@ -33,6 +46,90 @@ export async function sendTelegramMessage(chatId: string, text: string): Promise
     console.error("[Telegram Notifier] Network error sending message:", err.message);
     return false;
   }
+}
+
+/**
+ * sendMessage with Telegram flood handling for high-volume broadcast paths:
+ * a 429 waits `retry_after` seconds and retries, transient network drops get
+ * a short backoff retry. Single-recipient notifies keep sendTelegramMessage.
+ */
+export async function sendTelegramMessageFloodAware(chatId: string, text: string): Promise<boolean> {
+  if (!config.TELEGRAM_BOT_TOKEN) {
+    console.warn("[Telegram Notifier] No TELEGRAM_BOT_TOKEN configured, skipped sending message to", chatId);
+    return false;
+  }
+
+  const url = `https://api.telegram.org/bot${config.TELEGRAM_BOT_TOKEN}/sendMessage`;
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          parse_mode: "HTML",
+        }),
+      });
+      if (res.ok) return true;
+
+      const errJson: any = await res.json().catch(() => ({}));
+      if (res.status === 429 && attempt < MAX_ATTEMPTS) {
+        const retryAfter = Number(errJson?.parameters?.retry_after) || 3;
+        console.warn(`[Telegram Notifier] Flood limit hit for ${chatId} — waiting ${retryAfter}s before retry.`);
+        await sleep(retryAfter * 1000 + 250);
+        continue;
+      }
+      console.error("[Telegram Notifier] Failed to send message:", errJson);
+      return false;
+    } catch (err: any) {
+      if (attempt < MAX_ATTEMPTS) {
+        await sleep(1000 * attempt);
+        continue;
+      }
+      console.error("[Telegram Notifier] Network error sending message:", err.message);
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
+ * Builds the customer-facing "Restocked!" broadcast message. Product display
+ * mirrors the bot's product cards: custom emoji id from the name's {pe:<id>}
+ * placeholder or the brand map, with the clean name escaped for HTML mode.
+ */
+export function buildRestockedMessage(params: {
+  productName: string;
+  priceMmk: number;
+  botUsername?: string | null;
+  productId?: number;
+}): string {
+  const parsed = parseCustomEmoji(params.productName || "");
+  const displayName = parsed.cleanText || params.productName;
+  const emojiId = parsed.emojiId || findBrandEmojiId(displayName);
+  const productEmoji = emojiId ? tgEmoji(emojiId, "🎁") : "🎁";
+  const gift = tgEmoji(BOT_EMOJIS.GIFT, "🎁");
+  const price = tgEmoji(BOT_EMOJIS.PRICE, "💵");
+  const bags = tgEmoji(BOT_EMOJIS.BAGS, "🛍");
+  const check = tgEmoji(BOT_EMOJIS.CHECK, "✔");
+
+  let cta = `👉 Open the bot and tap ${bags} <b>Products</b> to buy!`;
+  const botUsername = (params.botUsername || "").replace(/^@/, "");
+  if (botUsername && params.productId) {
+    cta =
+      `👉 Open the bot and tap ${bags} ` +
+      `<b><a href="https://t.me/${botUsername}?start=restock_${params.productId}">Products</a></b> to buy!`;
+  }
+
+  return (
+    `${gift} <b>Restocked!</b>\n\n` +
+    `${productEmoji} <b>${escapeHtml(displayName)}</b>\n` +
+    `${price} Price: <b>${params.priceMmk.toLocaleString("en-US")} Ks</b>\n` +
+    `${gift} Status: ${check} <b>In Stock</b>\n\n` +
+    cta
+  );
 }
 
 /**
@@ -199,6 +296,22 @@ export async function notifyLowSupplierBalance(params: {
     return false;
   }
 
+  // Route into the configured "Bot Alert" forum topic (DB value wins, env
+  // fallback); empty/unset falls back to the group's General topic.
+  let topicRaw = "";
+  try {
+    const db = getDb();
+    const [setting] = await db
+      .select()
+      .from(appSettings)
+      .where(eq(appSettings.key, "telegramBotAlertTopicId"));
+    if (setting && setting.value) topicRaw = setting.value;
+  } catch {
+    // ignore
+  }
+  if (!topicRaw) topicRaw = config.TELEGRAM_BOT_ALERT_TOPIC_ID || "";
+  const topicId = parseInt(topicRaw, 10);
+
   const warning = tgEmoji(BOT_EMOJIS.WARNING, "⚠️");
   const money = tgEmoji(BOT_EMOJIS.MONEY, "💰");
 
@@ -209,6 +322,6 @@ export async function notifyLowSupplierBalance(params: {
     `• <b>Threshold:</b> $${thresholdUsd.toFixed(2)} USD</blockquote>\n\n` +
     `${money} ကျေးဇူးပြု၍ ${escapeHtml(supplier)} အကောင့်သို့ ငွေကြိုတင်ဖြည့်သွင်းပေးပါရန် အသိပေးအပ်ပါသည်။`;
 
-  return sendTelegramMessage(chatId, text);
+  return sendTelegramMessage(chatId, text, Number.isFinite(topicId) && topicId > 0 ? topicId : undefined);
 }
 

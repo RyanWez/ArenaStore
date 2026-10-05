@@ -12,8 +12,8 @@
 |---|---|---|---|---|---|
 | **Milestone 1** (Phase 0 + 1) | **Foundation & Abstraction:** Schema composite unique, string IDs, fixes (C1–C5), `@arena/suppliers` shared package | ✅ Completed | Antigravity | 2026-10-06 | Multi-supplier core foundation, 0 tsc errors |
 | **Milestone 2** (Phase 2 + 4) | **DigitalCore Sync & Admin UI:** DigitalCore client, catalog sync, Admin Products tabs/badges, Multi-balance top bar | ✅ Completed | Antigravity | 2026-10-06 | Full visual visibility, dual balance, filter tabs |
-| **Milestone 3** (Phase 3) | **Purchase Engine & Reconciliation:** DigitalCore buy flow, delivery v2, timeout reconciliation | ☐ Queued | — | — | Safe non-idempotent buying |
-| **Milestone 4** (Phase 5) | **Ops, $5 Alert & Production Rollout:** $5 threshold alert, settings UI, live rollout | ☐ Queued | — | — | Rollout & monitoring |
+| **Milestone 3** (Phase 3) | **Purchase Engine & Reconciliation:** DigitalCore buy flow, delivery v2, timeout reconciliation | ✅ Completed | Antigravity | 2026-10-06 | Safe non-idempotent buying, live buy smoke test passed |
+| **Milestone 4** (Phase 5) | **Ops, $5 Alert & Production Rollout:** $5 threshold alert, settings UI, live rollout | ✅ Completed | Antigravity | 2026-10-06 | $5 balance monitor, settings UI, rollout active |
 
 ---
 

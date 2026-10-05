@@ -17,6 +17,7 @@ export interface BotAppSettings {
   isMaintenanceMode: boolean;
   telegramGroupChatId: string;
   telegramDepositTopicId: string;
+  telegramBotAlertTopicId: string;
   telegramAdminMentions: string;
   telegramApproverIds: string;
 }
@@ -56,6 +57,7 @@ class BotSettingsService {
         isMaintenanceMode: map.isMaintenanceMode === "true",
         telegramGroupChatId: (map.telegramGroupChatId || botConfig.TELEGRAM_GROUP_CHAT_ID).trim(),
         telegramDepositTopicId: (map.telegramDepositTopicId || botConfig.TELEGRAM_DEPOSIT_TOPIC_ID).trim(),
+        telegramBotAlertTopicId: (map.telegramBotAlertTopicId || botConfig.TELEGRAM_BOT_ALERT_TOPIC_ID).trim(),
         telegramAdminMentions: (map.telegramAdminMentions || botConfig.TELEGRAM_ADMIN_MENTIONS).trim(),
         telegramApproverIds: (map.telegramApproverIds || botConfig.TELEGRAM_APPROVER_IDS || "").trim(),
       };
@@ -79,6 +81,7 @@ class BotSettingsService {
         isMaintenanceMode: false,
         telegramGroupChatId: botConfig.TELEGRAM_GROUP_CHAT_ID.trim(),
         telegramDepositTopicId: botConfig.TELEGRAM_DEPOSIT_TOPIC_ID.trim(),
+        telegramBotAlertTopicId: botConfig.TELEGRAM_BOT_ALERT_TOPIC_ID.trim(),
         telegramAdminMentions: botConfig.TELEGRAM_ADMIN_MENTIONS.trim(),
         telegramApproverIds: (botConfig.TELEGRAM_APPROVER_IDS || "").trim(),
       };

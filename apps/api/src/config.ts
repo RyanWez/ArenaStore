@@ -20,6 +20,19 @@ const envSchema = z.object({
   ADMIN_INITIAL_PASSWORD: z.string().min(6).default("ArenaAdmin2026!"),
   TELEGRAM_BOT_TOKEN: z.string().default(""),
   TELEGRAM_GROUP_CHAT_ID: z.string().default(""),
+  /**
+   * Forum topic id (message_thread_id) of the "Bot Alert" topic in the admin
+   * group, where operational alerts (low supplier balance etc.) are posted.
+   * Optional env fallback — the admin panel setting (app_settings
+   * telegramBotAlertTopicId) wins when set. Empty = General topic.
+   */
+  TELEGRAM_BOT_ALERT_TOPIC_ID: z.string().default(""),
+  /**
+   * Bot username (with or without @) used to build t.me deep links in
+   * customer-facing broadcasts (e.g. the restock notification's "Open the
+   * bot" CTA). Optional — unset renders those messages as plain text.
+   */
+  TELEGRAM_BOT_USERNAME: z.string().default(""),
   UPSTREAM_BASE_URL: z
     .string()
     .url()

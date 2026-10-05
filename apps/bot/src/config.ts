@@ -26,6 +26,7 @@ const envSchema = z.object({
   PAYMENT_ACCOUNT_NAME: z.string().default("Ryan Wez"),
   TELEGRAM_GROUP_CHAT_ID: z.string().default(""),
   TELEGRAM_DEPOSIT_TOPIC_ID: z.string().default(""),
+  TELEGRAM_BOT_ALERT_TOPIC_ID: z.string().default(""),
   TELEGRAM_ADMIN_MENTIONS: z.string().default(""),
   TELEGRAM_APPROVER_IDS: z.string().default(""),
   /** Shared secret for internal API calls (deposit review buttons). Empty disables them. */

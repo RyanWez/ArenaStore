@@ -87,6 +87,8 @@ async function handleSaveRules() {
       supportTelegramHandle: settings.value.supportTelegramHandle,
       orderTimeoutMinutes: settings.value.orderTimeoutMinutes,
       isMaintenanceMode: settings.value.isMaintenanceMode,
+      restockNotificationsEnabled: settings.value.restockNotificationsEnabled,
+      balanceAlertThresholdUsd: settings.value.balanceAlertThresholdUsd,
     })
 
     if (res.success) {
@@ -153,6 +155,7 @@ async function handleSaveAll() {
       payload.supportTelegramHandle = settings.value.supportTelegramHandle
       payload.orderTimeoutMinutes = settings.value.orderTimeoutMinutes
       payload.isMaintenanceMode = settings.value.isMaintenanceMode
+      payload.restockNotificationsEnabled = settings.value.restockNotificationsEnabled
       payload.telegramGroupChatId = settings.value.telegramGroupChatId
       payload.telegramDepositTopicId = settings.value.telegramDepositTopicId
       payload.telegramAdminMentions = settings.value.telegramAdminMentions
@@ -526,7 +529,48 @@ async function handleChangePassword() {
             </div>
             <p class="text-[11px] text-slate-400">Time window allowed for customers to upload payment slip receipts</p>
           </div>
+
+          <!-- Supplier Low-Balance Alert Threshold -->
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+              <span>Supplier Low-Balance Alert Threshold (USD)</span>
+              <span class="text-[10px] font-bold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">Auto-Alert</span>
+            </label>
+            <div class="relative">
+              <input
+                v-model.number="settings.balanceAlertThresholdUsd"
+                type="number"
+                min="1"
+                max="100"
+                step="0.5"
+                required
+                class="w-full pl-4 pr-16 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+              />
+              <span class="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">
+                USD
+              </span>
+            </div>
+            <p class="text-[11px] text-slate-400">Telegram Admin Alert triggers when XPro or DigitalCore balance drops below this amount (default: $5.00)</p>
+          </div>
         </div>
+
+        <!-- Restock Notifications Toggle -->
+        <label class="flex items-start gap-3 cursor-pointer select-none">
+          <input
+            v-model="settings.restockNotificationsEnabled"
+            type="checkbox"
+            class="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30"
+          />
+          <span>
+            <span class="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Restock Notifications (ပြန်ရနိုင်တဲ့ အချက်ပေးစာများ)
+            </span>
+            <span class="block text-[11px] text-slate-400">
+              Product တစ်ခု ပြန်ရနိုင်သည့်အခါ (supplier restock သို့မဟုတ် wallet/limit ဖြည့်ခြင်း) bot user အားလုံးကို
+              "Restocked!" notification ပို့သည်။ Catalog sync တစ်ခေါက် (default 10 မိနစ်) တစ်ခါ စစ်ဆေးသည်။
+            </span>
+          </span>
+        </label>
 
         <!-- Inline Save Action for Support & Rules -->
         <div class="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800/80">

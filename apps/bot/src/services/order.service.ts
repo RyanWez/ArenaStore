@@ -29,6 +29,9 @@ async function sendAdminTelegramAlert(text: string): Promise<boolean> {
     const chatId = settings.telegramGroupChatId || botConfig.TELEGRAM_GROUP_CHAT_ID;
     if (!chatId || !botConfig.TELEGRAM_BOT_TOKEN) return false;
 
+    // Route bot alerts into the configured "Bot Alert" forum topic; empty
+    // topic falls back to the group's General topic.
+    const topicId = parseInt(settings.telegramBotAlertTopicId, 10);
     const url = `https://api.telegram.org/bot${botConfig.TELEGRAM_BOT_TOKEN}/sendMessage`;
     const res = await fetch(url, {
       method: "POST",
@@ -37,6 +40,7 @@ async function sendAdminTelegramAlert(text: string): Promise<boolean> {
         chat_id: chatId,
         text,
         parse_mode: "HTML",
+        ...(Number.isFinite(topicId) && topicId > 0 ? { message_thread_id: topicId } : {}),
       }),
     });
     return res.ok;

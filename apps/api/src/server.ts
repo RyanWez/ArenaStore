@@ -11,6 +11,7 @@ import { authRoutes } from "./routes/auth";
 import { authService } from "./services/auth.service";
 import { rbacService } from "./services/rbac.service";
 import { catalogService } from "./services/catalog.service";
+import { restockNotifier } from "./services/restock-notifier";
 import { startCatalogSyncScheduler } from "./services/catalog-scheduler";
 import { config } from "./config";
 
@@ -130,7 +131,11 @@ export async function buildServer(): Promise<FastifyInstance> {
       intervalMinutes: config.CATALOG_SYNC_INTERVAL_MINUTES,
       sync: async () => {
         await catalogService.purgeExpiredReservations();
-        return catalogService.syncFullCatalog();
+        const result = await catalogService.syncFullCatalog();
+        // Announce anything that just became buyable again (supplier restock,
+        // wallet top-up, local-limit raise, re-activation) to all bot users.
+        await restockNotifier.detectAndNotify();
+        return result;
       },
     });
     server.addHook("onClose", async () => {

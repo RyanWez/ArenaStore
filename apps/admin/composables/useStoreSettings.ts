@@ -7,6 +7,7 @@ export interface StoreSettings {
   orderTimeoutMinutes: number
   supportTelegramHandle: string
   isMaintenanceMode: boolean
+  restockNotificationsEnabled: boolean
   kpayAccountName: string
   kpayPhone: string
   wavepayAccountName: string
@@ -17,8 +18,10 @@ export interface StoreSettings {
   uabpayPhone: string
   telegramGroupChatId: string
   telegramDepositTopicId: string
+  telegramBotAlertTopicId: string
   telegramAdminMentions: string
   telegramApproverIds: string
+  balanceAlertThresholdUsd: number
 }
 
 export const defaultSettings: StoreSettings = {
@@ -27,6 +30,7 @@ export const defaultSettings: StoreSettings = {
   orderTimeoutMinutes: 15,
   supportTelegramHandle: '@ArenaStoreSupport',
   isMaintenanceMode: false,
+  restockNotificationsEnabled: true,
   kpayAccountName: 'Arena Digital Services',
   kpayPhone: '09 987 654 321',
   wavepayAccountName: 'Arena Store',
@@ -37,8 +41,10 @@ export const defaultSettings: StoreSettings = {
   uabpayPhone: '09 789 123 456',
   telegramGroupChatId: '',
   telegramDepositTopicId: '',
+  telegramBotAlertTopicId: '',
   telegramAdminMentions: '',
   telegramApproverIds: '',
+  balanceAlertThresholdUsd: 5,
 }
 
 export function useStoreSettings() {
@@ -66,6 +72,7 @@ export function useStoreSettings() {
           orderTimeoutMinutes: Number(res.settings.orderTimeoutMinutes) || defaultSettings.orderTimeoutMinutes,
           supportTelegramHandle: res.settings.supportTelegramHandle || defaultSettings.supportTelegramHandle,
           isMaintenanceMode: res.settings.isMaintenanceMode === 'true',
+          restockNotificationsEnabled: res.settings.restockNotificationsEnabled !== 'false',
           kpayAccountName: res.settings.kpayAccountName || defaultSettings.kpayAccountName,
           kpayPhone: res.settings.kpayPhone || defaultSettings.kpayPhone,
           wavepayAccountName: res.settings.wavepayAccountName || defaultSettings.wavepayAccountName,
@@ -76,8 +83,10 @@ export function useStoreSettings() {
           uabpayPhone: res.settings.uabpayPhone || defaultSettings.uabpayPhone,
           telegramGroupChatId: res.settings.telegramGroupChatId || '',
           telegramDepositTopicId: res.settings.telegramDepositTopicId || '',
+          telegramBotAlertTopicId: res.settings.telegramBotAlertTopicId || '',
           telegramAdminMentions: res.settings.telegramAdminMentions || '',
           telegramApproverIds: res.settings.telegramApproverIds || '',
+          balanceAlertThresholdUsd: Number(res.settings.balanceAlertThresholdUsd || res.settings['supplier.balanceAlertThresholdUsd'] || 5),
         }
         visibleKeys.value = new Set(Object.keys(res.settings))
         hasLoaded.value = true

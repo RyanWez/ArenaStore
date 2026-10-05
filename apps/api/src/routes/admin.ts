@@ -29,6 +29,7 @@ import { z } from "zod";
 import { config } from "../config";
 import { xproClient, digitalcoreClient } from "../services/xpro-client";
 import { catalogService } from "../services/catalog.service";
+import { restockNotifier } from "../services/restock-notifier";
 import {
   notifyOrderRefunded,
   notifyOrderCredentialsResent,
@@ -737,6 +738,19 @@ export async function adminRoutes(server: FastifyInstance) {
         details: updateValues,
       });
 
+      // Stock-relevant admin changes (pause/activate, local limit) can flip a
+      // product back to buyable — announce immediately instead of waiting for
+      // the next scheduled sync tick. Fire-and-forget: the response must not
+      // wait on the broadcast, and the notifier's overlap guard makes a
+      // concurrent tick harmless.
+      if ("isActive" in updateValues || "localStockLimit" in updateValues) {
+        void restockNotifier
+          .detectAndNotify()
+          .catch((err: any) =>
+            console.warn("[RestockNotifier] Post-admin-edit detection failed:", err?.message)
+          );
+      }
+
       return {
         ok: true,
         product: updated,
@@ -1342,10 +1356,13 @@ export async function adminRoutes(server: FastifyInstance) {
         uabpayPhone: "09 789 123 456",
         isMaintenanceMode: "false",
         orderTimeoutMinutes: "15",
+        restockNotificationsEnabled: "true",
         telegramGroupChatId: "",
         telegramDepositTopicId: "",
+        telegramBotAlertTopicId: "",
         telegramAdminMentions: "",
         telegramApproverIds: "",
+        balanceAlertThresholdUsd: settingsMap["supplier.balanceAlertThresholdUsd"] || settingsMap["balanceAlertThresholdUsd"] || "5",
       };
 
       const merged = { ...defaults, ...settingsMap };
@@ -1385,6 +1402,10 @@ export async function adminRoutes(server: FastifyInstance) {
           ok: false,
           error: "Permission denied. No settings edit permission granted.",
         });
+      }
+
+      if (allowed.balanceAlertThresholdUsd !== undefined) {
+        allowed["supplier.balanceAlertThresholdUsd"] = allowed.balanceAlertThresholdUsd;
       }
 
       // Single multi-row upsert — one DB round-trip instead of one per key
