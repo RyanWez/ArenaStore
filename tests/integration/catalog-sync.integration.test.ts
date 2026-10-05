@@ -267,4 +267,36 @@ describe("Catalog sync (batch upserts with admin customization preservation)", (
     expect(dcSnapshot.supplier).toBe("DIGITALCORE");
     expect(dcSnapshot.pricingTiers).toEqual([{ minQty: 1, maxQty: null, price: "0.55" }]);
   });
+
+  it("re-syncing XPro catalog preserves DigitalCore products and snapshots (reverse non-clobber)", async () => {
+    // Modify DigitalCore product retail price as an admin override
+    const db = getDb();
+    await db
+      .update(products)
+      .set({ retailPriceMmk: 5500, isActive: true })
+      .where(eq(products.upstreamProductId, "dc_gemini_18m"));
+
+    // Run full XPro sync
+    const xproCounts = await catalogService.syncSupplier("XPRO", 4500);
+    expect(xproCounts.count).toBeGreaterThanOrEqual(1);
+
+    // Verify DigitalCore row is untouched
+    const [dcProduct] = await db
+      .select()
+      .from(products)
+      .where(eq(products.upstreamProductId, "dc_gemini_18m"));
+    expect(dcProduct).toBeTruthy();
+    expect(dcProduct.supplier).toBe("DIGITALCORE");
+    expect(dcProduct.retailPriceMmk).toBe(5500);
+    expect(dcProduct.isActive).toBe(true);
+
+    // Verify DigitalCore snapshot is untouched
+    const [dcSnapshot] = await db
+      .select()
+      .from(productSupplierSnapshots)
+      .where(eq(productSupplierSnapshots.productId, dcProduct.id));
+    expect(dcSnapshot).toBeTruthy();
+    expect(dcSnapshot.supplier).toBe("DIGITALCORE");
+    expect(dcSnapshot.pricingTiers).toEqual([{ minQty: 1, maxQty: null, price: "0.55" }]);
+  });
 });

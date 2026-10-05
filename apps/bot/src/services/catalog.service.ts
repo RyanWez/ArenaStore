@@ -29,6 +29,7 @@ export interface BotProduct {
   description: string;
   formattedDescription: string;
   supplierPriceUsd: string;
+  pricingTiers?: any;
   retailPriceMmk: number;
   formattedPriceMmk: string; // e.g. "3,900 Ks"
   stock: number;
@@ -155,7 +156,7 @@ class BotCatalogService {
   }
 
   private lastBalanceFetchedAt: Record<string, number> = { XPRO: 0, DIGITALCORE: 0 };
-  private cachedWalletBalances: Record<string, number> = { XPRO: 1.0, DIGITALCORE: 1.0 };
+  private cachedWalletBalances: Record<string, number> = { XPRO: 0.0, DIGITALCORE: 0.0 };
 
   /**
    * Fetches the latest Upstream Partner wallet balance to constrain sellable stock per supplier.
@@ -164,12 +165,12 @@ class BotCatalogService {
     const s = supplier.toUpperCase();
     const now = Date.now();
     if (now - (this.lastBalanceFetchedAt[s] || 0) < this.CACHE_TTL_MS) {
-      return this.cachedWalletBalances[s] ?? 1.0;
+      return this.cachedWalletBalances[s] ?? 0.0;
     }
 
     if (s === "DIGITALCORE") {
       if (!botConfig.DIGITALCORE_API_KEY) {
-        return this.cachedWalletBalances.DIGITALCORE ?? 1.0;
+        return this.cachedWalletBalances.DIGITALCORE ?? 0.0;
       }
       try {
         const res = await fetch(`${botConfig.DIGITALCORE_BASE_URL.replace(/\/+$/, "")}/api/user/me`, {
@@ -188,7 +189,7 @@ class BotCatalogService {
       } catch {
         // Keep cached
       }
-      return this.cachedWalletBalances.DIGITALCORE ?? 1.0;
+      return this.cachedWalletBalances.DIGITALCORE ?? 0.0;
     }
 
     // Default: XPro
@@ -216,7 +217,7 @@ class BotCatalogService {
     } catch {
       // Keep cached or default fallback
     }
-    return this.cachedWalletBalances.XPRO ?? 1.0;
+    return this.cachedWalletBalances.XPRO ?? 0.0;
   }
 
   /**
@@ -248,6 +249,7 @@ class BotCatalogService {
           deliveryType: productSupplierSnapshots.deliveryType,
           inStock: productSupplierSnapshots.inStock,
           rawDescription: productSupplierSnapshots.rawDescription,
+          pricingTiers: productSupplierSnapshots.pricingTiers,
         })
         .from(products)
         .leftJoin(
@@ -310,6 +312,7 @@ class BotCatalogService {
           description: descText,
           formattedDescription: formattedDesc,
           supplierPriceUsd: p.supplierPriceUsd || "0.00",
+          pricingTiers: p.pricingTiers,
           retailPriceMmk: p.retailPriceMmk,
           formattedPriceMmk: this.formatPrice(p.retailPriceMmk),
           stock,

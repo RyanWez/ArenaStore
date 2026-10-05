@@ -28,6 +28,7 @@ export interface SupplierOrderRequest {
   upstreamProductId: string;
   quantity: number;
   externalOrderId?: string; // Passed to XPro for idempotency
+  pricingTiers?: PricingTier[];
 }
 
 export interface SupplierOrderResult {

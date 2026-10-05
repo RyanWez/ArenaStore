@@ -1,8 +1,9 @@
 import crypto from "node:crypto";
 import { botConfig } from "../config";
 import { botCatalog } from "./catalog.service";
-import { placeUpstreamOrder, XProOrderError } from "./xpro-order";
+import { botSettingsService } from "./settings.service";
 import { createSupplierClient, SupplierError, type SupplierId } from "@arena/suppliers";
+import { escapeHtml } from "@arena/shared";
 import { encryptPayload, decryptPayload, formatCredentialsText } from "./encryption";
 import {
   getDb,
@@ -15,6 +16,29 @@ import {
   orderDeliveries,
 } from "@arena/db";
 import { eq, desc, or, and, sql, gte } from "drizzle-orm";
+
+async function sendAdminTelegramAlert(text: string): Promise<boolean> {
+  try {
+    const settings = await botSettingsService.getSettings();
+    const chatId = settings.telegramGroupChatId || botConfig.TELEGRAM_GROUP_CHAT_ID;
+    if (!chatId || !botConfig.TELEGRAM_BOT_TOKEN) return false;
+
+    const url = `https://api.telegram.org/bot${botConfig.TELEGRAM_BOT_TOKEN}/sendMessage`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: "HTML",
+      }),
+    });
+    return res.ok;
+  } catch (err: any) {
+    console.error("[BotOrderService] Failed to send admin telegram alert:", err.message);
+    return false;
+  }
+}
 
 export interface CreateOrderResult {
   orderId: string;
@@ -653,6 +677,15 @@ export class BotOrderService {
             }
           }
 
+          void sendAdminTelegramAlert(
+            `🚨 <b>CRITICAL CONFIG ERROR: Missing Supplier API Key</b>\n\n` +
+            `• <b>Supplier:</b> <code>${supplierId}</code>\n` +
+            `• <b>Product:</b> ${escapeHtml(product.cleanName)} (ID: ${product.id})\n` +
+            `• <b>Customer:</b> @${params.telegramUsername || params.customerName} (TG: <code>${params.telegramId}</code>)\n` +
+            `• <b>Action:</b> Wallet debited was automatically refunded to customer.\n` +
+            `⚠️ Please configure <code>${supplierId === "DIGITALCORE" ? "DIGITALCORE_API_KEY" : "UPSTREAM_API_KEY"}</code> in environment!`
+          );
+
           return {
             success: false,
             error: "SUPPLIER_CONFIG_ERROR",
@@ -671,6 +704,7 @@ export class BotOrderService {
             upstreamProductId: String(targetUpstreamId),
             quantity: params.quantity,
             externalOrderId,
+            pricingTiers: product.pricingTiers,
           });
 
           upstreamOrderId = upstreamRes.upstreamOrderId ? String(upstreamRes.upstreamOrderId) : null;
@@ -725,34 +759,55 @@ export class BotOrderService {
               };
             }
             if (err.code === "AMBIGUOUS_TIMEOUT") {
+              // Persist trace order for reconciliation (safeguard against upstream order fulfillment)
+              if (user) {
+                try {
+                  const db = getDb();
+                  await db.transaction(async (tx) => {
+                    const [insertedOrder] = await tx
+                      .insert(orders)
+                      .values({
+                        publicOrderNo,
+                        externalOrderId: upstreamOrderId ? `${supplierId}-${upstreamOrderId}` : externalOrderId,
+                        supplier: supplierId,
+                        customerId: user.id,
+                        status: "TIMEOUT_REFUNDED",
+                        totalAmountMmk: totalMmk,
+                        notes: `AMBIGUOUS_TIMEOUT: Upstream timeout. Customer refunded. External ref: ${externalOrderId}`,
+                      })
+                      .returning();
+
+                    if (insertedOrder) {
+                      await tx.insert(orderItems).values({
+                        orderId: insertedOrder.id,
+                        productId: product.id,
+                        productNameSnapshot: product.cleanName,
+                        quantity: params.quantity,
+                        unitPriceMmk: product.retailPriceMmk,
+                        unitCostUsd: upstreamUnitPrice || "0.00",
+                        subtotalMmk: totalMmk,
+                      });
+                    }
+                  });
+                } catch (traceErr: any) {
+                  console.error("[BotOrderService] Failed to persist timeout trace order:", traceErr.message);
+                }
+              }
+
+              void sendAdminTelegramAlert(
+                `⚠️ <b>UPSTREAM TIMEOUT ALERT (Manual Reconcile Needed)</b>\n\n` +
+                `• <b>Order No:</b> <code>${publicOrderNo}</code>\n` +
+                `• <b>External Ref:</b> <code>${externalOrderId}</code>\n` +
+                `• <b>Supplier:</b> <code>${supplierId}</code>\n` +
+                `• <b>Product:</b> ${escapeHtml(product.cleanName)} x ${params.quantity}\n` +
+                `• <b>Customer:</b> @${params.telegramUsername || params.customerName} (TG: <code>${params.telegramId}</code>)\n` +
+                `• <b>Status:</b> Customer was refunded in wallet. Check supplier dashboard to see if order executed upstream!`
+              );
+
               return {
                 success: false,
                 error: "SUPPLIER_TIMEOUT",
                 errorMessage: "⚠️ ဆာဗာမှ တုံ့ပြန်မှု နှောင့်နှေးနေပါသည်။ သင့် ငွေစာရင်းကို စစ်ဆေးပြီး လိုအပ်ပါက Admin မှ ဆက်သွယ်ပေးပါမည်။",
-              };
-            }
-          }
-
-          if (err instanceof XProOrderError) {
-            if (err.code === "INSUFFICIENT_BALANCE") {
-              return {
-                success: false,
-                error: "SUPPLIER_OUTAGE",
-                errorMessage: "⚠️ ဆာဗာတွင် လက်ကျန်ငွေ ယာယီမလုံလောက်သေးပါခင်ဗျာ။ သင့် Wallet မှ ငွေကို နုတ်ယူခြင်း မရှိပါ။ Admin သို့ ဆက်သွယ်ပေးပါ။",
-              };
-            }
-            if (err.code === "OUT_OF_STOCK") {
-              return {
-                success: false,
-                error: "OUT_OF_STOCK",
-                errorMessage: "⚠️ ပစ္စည်းလက်ကျန် ပြတ်လပ်သွားပါပြီခင်ဗျာ။ သင့် Wallet မှ ငွေကို နုတ်ယူခြင်း မရှိပါ။",
-              };
-            }
-            if (err.code === "PRODUCT_NOT_FOUND") {
-              return {
-                success: false,
-                error: "PRODUCT_NOT_FOUND",
-                errorMessage: "⚠️ ဤပစ္စည်း ရောင်းချခြင်း ယာယီရပ်ဆိုင်းထားပါသည်ခင်ဗျာ။",
               };
             }
           }

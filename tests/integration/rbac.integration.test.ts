@@ -172,12 +172,14 @@ describe("RBAC end-to-end", () => {
     const staffProduct = staffView.json().products[0];
     expect(staffProduct).toBeTruthy();
     expect(staffProduct).not.toHaveProperty("supplierPriceUsd");
+    expect(staffProduct).not.toHaveProperty("pricingTiers");
     expect(staffProduct).not.toHaveProperty("marginPct");
     expect(staffView.json().walletBalanceUsd).toBeNull();
 
     const adminView = await api("GET", "/api/admin/products", adminToken);
     const adminProduct = adminView.json().products[0];
     expect(adminProduct.supplierPriceUsd).toBe("0.99");
+    expect(adminProduct).toHaveProperty("pricingTiers");
     expect(typeof adminProduct.marginPct).toBe("number");
     expect(adminView.json().walletBalanceUsd).toBe("50.00");
   });

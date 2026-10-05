@@ -258,6 +258,26 @@ export class DigitalCoreClient implements ISupplierClient {
 
     const totalCents = res.total_amount !== undefined ? usdToCents(res.total_amount) : 0;
 
+    // Response total verification: ensure upstream charge matches client-side tier calculation
+    if (req.pricingTiers && req.pricingTiers.length > 0 && res.total_amount !== undefined) {
+      try {
+        const expectedUnitCents = effectiveUnitCostUsdCents(req.pricingTiers, count);
+        const expectedTotalCents = expectedUnitCents * count;
+        if (totalCents !== expectedTotalCents) {
+          throw new SupplierError(
+            "INVALID_REQUEST",
+            `Total amount mismatch: expected ${expectedTotalCents}¢ ($${centsToUsdString(expectedTotalCents)}), received ${totalCents}¢ ($${centsToUsdString(totalCents)})`,
+            400,
+            undefined,
+            { expectedTotalCents, receivedTotalCents: totalCents, response: res }
+          );
+        }
+      } catch (tierErr: any) {
+        if (tierErr instanceof SupplierError) throw tierErr;
+        console.warn("[DigitalCoreClient] Warning validating tier pricing total:", tierErr.message);
+      }
+    }
+
     return {
       upstreamOrderId: res.order_id,
       items: res.items || [],

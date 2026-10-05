@@ -463,8 +463,13 @@ export async function adminRoutes(server: FastifyInstance) {
           result = await catalogService.syncSupplier("DIGITALCORE");
         } else if (target === "XPRO") {
           result = await catalogService.syncSupplier("XPRO");
-        } else {
+        } else if (target === "ALL") {
           result = await catalogService.syncFullCatalog();
+        } else {
+          return reply.status(400).send({
+            ok: false,
+            error: `Invalid supplier '${request.params.supplier}'. Valid values: 'xpro', 'digitalcore', 'all'`,
+          });
         }
 
         await writeAudit({
@@ -655,6 +660,7 @@ export async function adminRoutes(server: FastifyInstance) {
         // is never sent over the wire without the field permission.
         if (!canSeeCost) {
           delete row.supplierPriceUsd;
+          delete row.pricingTiers;
         }
         if (!canSeeMargin) {
           delete row.marginPct;

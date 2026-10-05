@@ -233,4 +233,61 @@ describe("DigitalCore Partner API Client", () => {
     expect(res.balanceUsd).toBe("50.00");
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
+
+  it("verifies response total_amount matches pricing tiers and throws on mismatch", async () => {
+    // Upstream returns 2.00 but expected is 0.55 * 2 = 1.10
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        order_id: "dc_mismatch_1",
+        quantity: 2,
+        total_amount: 2.0, // Mismatch!
+        items: ["key1", "key2"],
+      }),
+    } as Response);
+
+    const client = new DigitalCoreClient({
+      baseUrl: "https://mock-dc.local",
+      apiKey: "dc_test_key_123",
+    });
+
+    await expect(
+      client.createOrder({
+        upstreamProductId: "gemini_pro",
+        quantity: 2,
+        pricingTiers: [{ minQty: 1, maxQty: null, price: "0.55" }],
+      })
+    ).rejects.toThrowError(/Total amount mismatch/);
+  });
+
+  it("accepts valid response total_amount when matching pricing tiers", async () => {
+    // Upstream returns 1.10 which matches 0.55 * 2
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        order_id: "dc_match_1",
+        quantity: 2,
+        total_amount: 1.1,
+        items: ["key1", "key2"],
+      }),
+    } as Response);
+
+    const client = new DigitalCoreClient({
+      baseUrl: "https://mock-dc.local",
+      apiKey: "dc_test_key_123",
+    });
+
+    const res = await client.createOrder({
+      upstreamProductId: "gemini_pro",
+      quantity: 2,
+      pricingTiers: [{ minQty: 1, maxQty: null, price: "0.55" }],
+    });
+
+    expect(res.upstreamOrderId).toBe("dc_match_1");
+    expect(res.totalUsdCents).toBe(110);
+  });
 });
