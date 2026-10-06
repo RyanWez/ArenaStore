@@ -5,7 +5,7 @@ This repository is the source of truth for the Arena Store Telegram commerce pro
 ## 1. Working principles
 
 - Make the smallest safe change that completes the requested task.
-- Read the relevant files in `Memory/` before changing architecture, database, API, UI/UX, deployment, or tests.
+- Before changing architecture, database, API, UI/UX, deployment, or tests, read ONLY the specific `Memory/` files that the index in section 6 marks relevant — never the whole folder.
 - Keep the project production-minded: clear names, typed contracts, validation, error handling, and no duplicated business logic.
 - Do not change unrelated files or rewrite existing decisions without documenting why.
 - Ask before making irreversible choices, using live payment services, creating upstream purchase orders, or changing product/order data.
@@ -15,7 +15,7 @@ This repository is the source of truth for the Arena Store Telegram commerce pro
 Do not make architecture, product, UI, deployment, security, payment, Telegram, framework, library, or API decisions solely from remembered knowledge.
 
 Before beginning a meaningful task or choosing an approach:
-1. **Inspect the local reality first** — read the relevant source files, package versions, existing configuration, Memory documents, tests, and current implementation status.
+1. **Inspect the local reality first** — read the relevant source files, package versions, existing configuration, tests, and current implementation status, plus only the Memory files the section-6 index marks relevant.
 2. **Verify changing facts externally** — when a fact may have changed (framework/library APIs, Telegram capabilities, shadcn patterns, hosting/free tiers, payment providers, security guidance, upstream API behavior, etc.), search the web and prefer the official documentation or primary provider source.
 3. **Compare options deliberately** — consider practical alternatives, compatibility with the existing project, security, maintainability, cost, and the user's stated goal. Do not adopt a trend just because it is new.
 4. **State uncertainty honestly** — separate verified facts, assumptions, and open questions. If evidence conflicts or a decision materially affects the user, pause and ask instead of guessing.
@@ -71,14 +71,38 @@ Research does not mean blindly following search results. Treat official docs as 
 
 ## 6. Memory discipline (mandatory)
 
-Before implementation, read the applicable numbered documents under `Memory/`.
+`Memory/` is read selectively. Reading every Memory file or every daily log in one session wastes context — pick only what the task needs from the index below.
 
-After completing a meaningful change:
-1. Append one concise entry to `Memory/YYYY-MM-DD.md` using the local project date.
-2. Create that date file if it does not exist.
-3. Record: changed files/areas, decision made, test status, and any follow-up.
-4. Do not overwrite earlier entries in the same date file.
-5. Update a numbered Memory specification too if the decision changes its subject.
+### Memory index — read only what the task matches
+
+| File | Read when the task touches |
+|---|---|
+| `Memory/00_ARCHITECTURE_OVERVIEW.md` | System architecture, app boundaries, wallet-first order flow |
+| `Memory/01_DATABASE_SCHEMA.md` | Schema, migrations, entities in `packages/db` |
+| `Memory/02_API_SPECIFICATION.md` | API routes, upstream supplier calls, API contracts |
+| `Memory/03_UI_UX_SPECIFICATION.md` | Admin UI or bot UX conventions |
+| `Memory/04_FREE_DEPLOYMENT_PLAN.md` | Deployment, hosting, environment variables |
+| `Memory/05_RESEARCH_AND_VERIFICATION.md` | External research workflow and verification standards |
+| `Memory/06_IMPLEMENTATION_ROADMAP.md` | Phase planning or overall progress checks |
+| `Memory/08_TESTING_ARCHITECTURE.md` | Tests, money logic, upstream integration tests |
+| `Memory/09_PENDING_WORK.md` | What remains to be done (read first when asked "anything left?") |
+| `Memory/YYYY-MM-DD.md` | Daily logs — read only the latest 2-3, never the whole history |
+
+Not in `Memory/` — read only when the task is specifically about them:
+- `docs/07_BUSINESS_MODEL_AND_PARTNERSHIP.md` — business/economics decisions, not code work
+- `docs/supplier-integration/` — DigitalCore dual-supplier work orders (`add_supplier*.md`)
+- `docs/upstream/` — upstream partner API reference (XPro, DigitalCore)
+- `Memory/archive/` — daily logs older than the current ones
+
+Rules:
+1. Before implementation, read ONLY the 1-2 index entries that match the task.
+2. After completing a meaningful change:
+   - Append one concise entry to `Memory/YYYY-MM-DD.md` using the local project date.
+   - Create that date file if it does not exist.
+   - Record: changed files/areas, decision made, test status, and any follow-up.
+   - Do not overwrite earlier entries in the same date file.
+3. Update a numbered Memory specification too if the decision changes its subject.
+4. When a daily log is more than 7 days old, `git mv` it into `Memory/archive/` during that session's memory work.
 
 Do not put credentials, personal data, private delivery content, or secret URLs in Memory files.
 

@@ -30,7 +30,7 @@ Code ဖတ်ပြီး အတည်ပြုထားတဲ့ စီးပ�
 
 | အချက် | လက်ရှိ အခြေအနေ | ရင်းမြစ် |
 |---|---|---|
-| ရောင်းကုန် အရေအတွက် | Product **42** ခု၊ Category **24** ခု (Live sync ပြီး) | `Memory/2026-10-01.md` |
+| ရောင်းကုန် အရေအတွက် | Product **42** ခု၊ Category **24** ခု (Live sync ပြီး) | `Memory/archive/2026-10-01.md` |
 | ဈေးနှုန်း တွက်နည်း | `retail = ceil((usd × rate × (1+margin)) / 50) × 50` | `packages/shared/src/money.ts` |
 | Default FX Rate | **1 USD = 4,500 MMK** | `apps/api/src/config.ts` |
 | Default Markup | **25%** | `apps/api/src/config.ts` |
@@ -567,6 +567,6 @@ Wave Money ရဲ့ တရားဝင် စည်းမျဉ်းအရ [4]
 - Exchange-Rates.org — USD/MMK ~2,099.50 (2026-09): https://www.exchange-rates.org/converter/usd-mmk
 - DVB Burmese — ပြင်ပဈေးကွက် ဒေါ်လာဈေး အတက်အကျ သတင်း: https://burmese.dvb.no/post/720734
 - Wave Money — Transaction Limits & Fees (တရားဝင်): https://www.wavemoney.com.mm/limit-and-fees/
-- XPro Seller Partner API v1 — `xpro_partner_api_docs.txt` (Repo အတွင်း)
+- XPro Seller Partner API v1 — `docs/upstream/xpro_partner_api_docs.txt` (Repo အတွင်း)
 
 > **သတိပေးချက်:** ငွေလဲနှုန်းနဲ့ ဝန်ဆောင်ခ နှုန်းထားတွေက အမြဲပြောင်းနေတယ်။ **အသုံးမပြုခင် အဲ့ဒီနေ့ရဲ့ နှုန်းကို ပြန်စစ်ပါ။** အထက်ပါ တွက်ချက်မှုအားလုံးက ပုံစံပြသာ ဖြစ်ပြီး မင်းရဲ့ တကယ့် ကိန်းဂဏန်းတွေနဲ့ အစားထိုးရမယ်။
