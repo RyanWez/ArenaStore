@@ -67,7 +67,7 @@ tests) to assert the audit row exists after each money action, with the acting a
 | 6 | ✅ DONE 2026-10-04 — Order rate-limit key trusted `body.telegramId` alone | `apps/api/src/routes/orders.ts` | Bucket is now `order_${req.ip}_${tgId}` — a spoofed id can no longer mint fresh buckets (`rate-limit.test.ts` mirrors it) |
 | 7 | ✅ DONE 2026-10-04 — `ADMIN_INITIAL_PASSWORD` default had no production guard | `apps/api/src/config.ts` | Throws at boot in production when equal to `ArenaAdmin2026!`, matching the sibling guards. NOTE: Render env must carry a custom ADMIN_INITIAL_PASSWORD or the deploy boot-loops |
 | 8 | ✅ DONE 2026-10-04 — Dashboard `pendingOrders` always counted 0 | `apps/api/src/routes/admin.ts` | Counts the real in-flight statuses `PENDING_PAYMENT`/`PAYMENT_SUBMITTED`; pendingDeposits now counts both reviewable statuses (`SUBMITTED`+`PENDING`) |
-| 9 | OPEN (owner action) — Verify `REDIS_URL` in production uses `rediss://` (TLS) — code sets no TLS option; it relies entirely on the URL scheme | Render env; `apps/api/src/services/redis.ts` | Check the Render dashboard value; if plain `redis://`, switch to `rediss://` |
+| 9 | ✅ DONE 2026-10-06 — Verify `REDIS_URL` connection scheme | Render env; `apps/api/src/services/redis.ts` | Verified against Redis Cloud instance (`*.db.redis.io` non-TLS port): `redis://` connects with `PONG`. (If TLS is disabled on DB port, `rediss://` throws SSL wrong version). `redis://` is verified working. |
 | 10 | OPEN (blocked on supplier) — Supplier API key + order traffic travel over plaintext HTTP (`http://paid2.daki.cc:4153/...`) | `apps/api/src/config.ts` (`UPSTREAM_BASE_URL` default), `.env` | Request HTTPS from the supplier (or IP-allowlist), then rotate the key. Blocked on the supplier, not on us |
 
 ---
