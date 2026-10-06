@@ -6,7 +6,7 @@ import { useAuth } from '~/composables/useAuth'
 import { useStoreSettings } from '~/composables/useStoreSettings'
 import { usePermission } from '~/composables/usePermission'
 
-const { xproBalanceUsd, digitalcoreBalanceUsd, isSyncing, syncCatalog: runSync } = useSupplierStatus()
+const { supplierBalanceUsd, xproBalanceUsd, digitalcoreBalanceUsd, isSyncing, syncCatalog: runSync } = useSupplierStatus()
 const { getAuthHeaders } = useAuth()
 const { settings: storeSettings, fetchSettings: fetchStoreSettings } = useStoreSettings()
 const toast = useToast()
@@ -1107,7 +1107,7 @@ async function executeConfirmAction() {
                   <span class="font-mono font-bold text-slate-700 dark:text-slate-300">{{ selectedProduct.supplierStock }} in stock</span>
                 </div>
                 <div class="flex items-center justify-between text-xs">
-                  <span class="text-slate-500 dark:text-slate-400">Wallet Capacity (${{ supplierBalanceUsd }} balance):</span>
+                  <span class="text-slate-500 dark:text-slate-400">Wallet Capacity (${{ selectedProduct.supplier === 'DIGITALCORE' ? digitalcoreBalanceUsd : xproBalanceUsd }} balance):</span>
                   <span class="font-mono font-bold" :class="getProductWalletCapacity(selectedProduct) > 0 ? 'text-emerald-500' : 'text-rose-500'">
                     {{ getProductWalletCapacity(selectedProduct) }} units affordable
                   </span>
