@@ -76,6 +76,7 @@ export const MOCK_ADMIN_PERMISSIONS: string[] = [
 
 export interface MockAdminProduct {
   id: string;
+  supplier?: "XPRO" | "DIGITALCORE";
   supplierProductId: string;
   nameMmk: string;
   name: string;
@@ -92,6 +93,7 @@ export interface MockAdminProduct {
 export function makeProduct(overrides: Partial<MockAdminProduct> = {}): MockAdminProduct {
   return {
     id: "PRD-1001",
+    supplier: "XPRO",
     supplierProductId: "UP-NET-1001",
     nameMmk: "Netflix Premium (1 Month)",
     name: "Netflix Premium (1 Month)",

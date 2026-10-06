@@ -27,6 +27,8 @@ export interface AdminApiMockOptions {
   slips?: MockAdminSlip[];
   /** Error message returned with a 401 from POST /api/admin/auth/login. */
   loginError?: string;
+  /** Whether the session starts authenticated (default: false). */
+  authenticated?: boolean;
 }
 
 export interface AdminApiMock {
@@ -35,6 +37,8 @@ export interface AdminApiMock {
   /** Mutable list state — review actions mutate it so polls see the change. */
   products: MockAdminProduct[];
   slips: MockAdminSlip[];
+  /** Authentication status */
+  isAuthenticated: boolean;
 }
 
 const PNG_1PX = Buffer.from(
@@ -59,6 +63,7 @@ export async function installAdminApiMocks(
     calls: [],
     products: options.products ?? makeProductCatalog(),
     slips: options.slips ?? makeDepositSlips(),
+    isAuthenticated: options.authenticated ?? false,
   };
 
   await page.route("**/api/admin/**", async (route) => {
@@ -84,8 +89,10 @@ export async function installAdminApiMocks(
       // --- Auth ---
       if (pathname === "/api/admin/auth/login" && method === "POST") {
         if (options.loginError) {
+          state.isAuthenticated = false;
           return respond({ ok: false, error: options.loginError }, 401);
         }
+        state.isAuthenticated = true;
         // Mirrors the real login response (apps/api/src/routes/auth.ts):
         // token + user + mustChangePassword; permissions arrive via /me.
         return respond({
@@ -96,11 +103,26 @@ export async function installAdminApiMocks(
         });
       }
       if (pathname === "/api/admin/auth/me") {
+        const authHeader = request.headers()["authorization"];
+        const cookieHeader = request.headers()["cookie"];
+        const hasAuth =
+          state.isAuthenticated ||
+          Boolean(authHeader && authHeader.startsWith("Bearer ") && authHeader.includes(E2E_ADMIN_TOKEN)) ||
+          Boolean(cookieHeader && cookieHeader.includes("arena_admin_token"));
+
+        if (!hasAuth) {
+          return respond(
+            { ok: false, error: "Unauthorized. Missing or invalid Bearer token or session cookie." },
+            401
+          );
+        }
+
         // The real /me resolves permissions fresh from the role (fail-closed
         // gates in auth.global.ts redirect to /denied when this is empty), so
         // the mock must carry the top-level permissions/role envelope too.
         return respond({
           ok: true,
+          token: E2E_ADMIN_TOKEN,
           user: makeAdminUser(),
           role: makeAdminRole(),
           permissions: MOCK_ADMIN_PERMISSIONS,
@@ -108,6 +130,7 @@ export async function installAdminApiMocks(
         });
       }
       if (pathname === "/api/admin/auth/logout") {
+        state.isAuthenticated = false;
         return respond({ ok: true });
       }
 
@@ -128,7 +151,11 @@ export async function installAdminApiMocks(
       if (pathname === "/api/admin/supplier/status") {
         return respond(makeSupplierStatus());
       }
-      if (pathname === "/api/admin/supplier/sync" && method === "POST") {
+      if (
+        (pathname === "/api/admin/supplier/sync" ||
+          (segments[2] === "suppliers" && segments[4] === "sync")) &&
+        method === "POST"
+      ) {
         return respond({ ok: true, synced: { categories: 2, products: state.products.length } });
       }
 

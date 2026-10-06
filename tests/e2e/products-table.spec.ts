@@ -71,13 +71,16 @@ test.describe("products table", () => {
   });
 
   test("syncs the upstream catalog and shows the completion toast", async ({ page }) => {
-    await page.getByRole("button", { name: "Sync Upstream Catalog" }).click();
+    await page.getByRole("button", { name: /Sync (All Suppliers|Upstream Catalog)/ }).click();
 
     await waitForCapturedCall(
       mock,
-      (c) => c.method === "POST" && c.pathname === "/api/admin/supplier/sync"
+      (c) =>
+        c.method === "POST" &&
+        (c.pathname === "/api/admin/supplier/sync" ||
+          c.pathname === "/api/admin/suppliers/all/sync")
     );
-    await expect(page.getByText("Catalog synced successfully from upstream!")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Sync Upstream Catalog" })).toBeEnabled();
+    await expect(page.getByText(/Catalog synced successfully/)).toBeVisible();
+    await expect(page.getByRole("button", { name: /Sync (All Suppliers|Upstream Catalog)/ })).toBeEnabled();
   });
 });
