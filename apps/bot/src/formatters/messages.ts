@@ -60,6 +60,24 @@ export interface DynamicPaymentInfo {
   kpayAccountName?: string;
   wavepayPhone?: string;
   wavepayAccountName?: string;
+  ayapayPhone?: string;
+  ayapayAccountName?: string;
+  uabpayPhone?: string;
+  uabpayAccountName?: string;
+}
+
+/**
+ * Optional payment-provider block — rendered only when the admin configured
+ * both a phone number and an account name, so a half-filled provider never
+ * shows a broken entry.
+ */
+function optionalProviderBlock(emoji: string, label: string, phone?: string, account?: string): string {
+  if (!phone || !account) return "";
+  return (
+    `\n\n${emoji} <b>${label}:</b>\n` +
+    `├ ဖုန်းနံပါတ်: <code>${escapeHtml(phone)}</code> <i>(နှိပ်၍ ကူးယူပါ)</i>\n` +
+    `└ အကောင့်အမည်: <b>${escapeHtml(account)}</b>`
+  );
 }
 
 /**
@@ -90,7 +108,17 @@ ${tgEmoji(BOT_EMOJIS.KBZPAY, "🏧")} <b>KBZ Pay:</b>
 
 ${tgEmoji(BOT_EMOJIS.WAVEPAY, "🆗")} <b>WavePay:</b>
 ├ ဖုန်းနံပါတ်: <code>${wavepayPhone}</code> <i>(နှိပ်၍ ကူးယူပါ)</i>
-└ အကောင့်အမည်: <b>${wavepayAccount}</b>
+└ အကောင့်အမည်: <b>${wavepayAccount}</b>${optionalProviderBlock(
+    tgEmoji(BOT_EMOJIS.AYAPAY, "🙂"),
+    "AYA Pay",
+    params.paymentInfo?.ayapayPhone,
+    params.paymentInfo?.ayapayAccountName
+  )}${optionalProviderBlock(
+    tgEmoji(BOT_EMOJIS.UABPAY, "💚"),
+    "UAB Pay",
+    params.paymentInfo?.uabpayPhone,
+    params.paymentInfo?.uabpayAccountName
+  )}
 
 📲 <b>ငွေလွှဲပြီးပါက:</b>
 ငွေလွှဲပြီးကြောင်း ပြေစာ Screenshot ပုံကို <b>ဤ Chat ထဲသို့ ဓာတ်ပုံ (Photo) အဖြစ် တိုက်ရိုက် ပေးပို့ပေးပါရန်</b> ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}
@@ -212,7 +240,17 @@ ${tgEmoji(BOT_EMOJIS.KBZPAY, "🏧")} <b>KBZ Pay:</b>
 
 ${tgEmoji(BOT_EMOJIS.WAVEPAY, "🆗")} <b>WavePay:</b>
 ├ ဖုန်းနံပါတ်: <code>${wavepayPhone}</code> <i>(နှိပ်၍ ကူးယူပါ)</i>
-└ အကောင့်အမည်: <b>${wavepayAccount}</b>
+└ အကောင့်အမည်: <b>${wavepayAccount}</b>${optionalProviderBlock(
+    tgEmoji(BOT_EMOJIS.AYAPAY, "🙂"),
+    "AYA Pay",
+    params.paymentInfo?.ayapayPhone,
+    params.paymentInfo?.ayapayAccountName
+  )}${optionalProviderBlock(
+    tgEmoji(BOT_EMOJIS.UABPAY, "💚"),
+    "UAB Pay",
+    params.paymentInfo?.uabpayPhone,
+    params.paymentInfo?.uabpayAccountName
+  )}
 
 ${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>ငွေလွှဲပြီးပါက:</b>
 ငွေလွှဲပြေစာ Screenshot ပုံကို <b>ဤ Chat ထဲသို့ ဓာတ်ပုံ (Photo) အဖြစ် တိုက်ရိုက် ပေးပို့ပေးပါရန်</b> ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}

@@ -48,3 +48,6 @@ tests/.pgdata/
 
 # TOTP enrollment artifacts (the QR encodes the 2FA secret)
 scripts/totp-qr.png
+
+# IDE assistant artifacts
+.zcode/

@@ -1,9 +1,9 @@
-import { Bot, session } from "grammy";
+import { Bot, session, InlineKeyboard } from "grammy";
 import { botConfig } from "./config";
 import { BotContext, createInitialSessionData } from "./types";
 import { botCatalog } from "./services/catalog.service";
 import { botOrderService } from "./services/order.service";
-import { botSettingsService } from "./services/settings.service";
+import { botSettingsService, resolveTelegramSupportUrl } from "./services/settings.service";
 import {
   buildMainMenuKeyboard,
   buildCategoriesKeyboard,
@@ -19,6 +19,7 @@ import {
   buildOrderDetailKeyboard,
   buildUnmatchedPhotoKeyboard,
   buildForceJoinKeyboard,
+  buildHelpKeyboard,
 } from "./keyboards/store.keyboards";
 import {
   formatStartMessage,
@@ -180,7 +181,11 @@ export function createBot(): Bot<BotContext> {
   });
 
   // 5. Command Handlers (quoting user's message)
-  bot.command(["start", "menu", "help"], async (ctx) => {
+  bot.command(["start", "menu"], async (ctx) => {
+    const telegramId = String(ctx.from?.id || "");
+    if (ctx.session.awaitingTopUpSlip?.reference) {
+      void botOrderService.cancelTopUpRequest(ctx.session.awaitingTopUpSlip.reference, telegramId);
+    }
     ctx.session.awaitingCustomQuantity = false;
     ctx.session.awaitingCustomTopUp = false;
     ctx.session.awaitingTopUpSlip = undefined;
@@ -189,11 +194,33 @@ export function createBot(): Bot<BotContext> {
 
     if (!(await ensureChannelMember(ctx))) return;
 
+    const supportUrl = await botSettingsService.getSupportUrl();
     await ctx.reply(formatStartMessage(firstName), {
       parse_mode: "HTML",
-      reply_markup: buildMainMenuKeyboard(),
+      reply_markup: buildMainMenuKeyboard(supportUrl),
       ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
     });
+  });
+
+  bot.command(["help", "support"], async (ctx) => {
+    if (!(await ensureChannelMember(ctx))) return;
+    const settings = await botSettingsService.getSettings();
+    const supportUrl = resolveTelegramSupportUrl(settings.supportTelegramHandle);
+    const handle = settings.supportTelegramHandle.startsWith("@")
+      ? settings.supportTelegramHandle
+      : `@${settings.supportTelegramHandle}`;
+
+    await ctx.reply(
+      `<blockquote>${tgEmoji(BOT_EMOJIS.CHAT, "💬")} <b>Customer Support & Help Desk</b> ❞
+ဝန်ဆောင်မှုနှင့် ပတ်သက်၍ အကူအညီ ရယူရန်</blockquote>
+
+အော်ဒါများ၊ ငွေဖြည့်သွင်းမှုများနှင့် ပတ်သက်၍ သိရှိလိုသည်များ သို့မဟုတ် အခက်အခဲ တစ်စုံတစ်ရာ ရှိပါက ကျွန်ုပ်တို့၏ Customer Support (<b>${escapeHtml(handle)}</b>) သို့ တိုက်ရိုက် ဆက်သွယ် မေးမြန်းနိုင်ပါသည်ခင်ဗျာ ${tgEmoji(BOT_EMOJIS.SPARKLES, "✨")}`,
+      {
+        parse_mode: "HTML",
+        reply_markup: buildHelpKeyboard(supportUrl, handle),
+        ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
+      }
+    );
   });
 
   bot.command("orders", async (ctx) => {
@@ -307,22 +334,28 @@ export function createBot(): Bot<BotContext> {
     });
 
     const firstName = ctx.from?.first_name || "Customer";
+    const supportUrl = await botSettingsService.getSupportUrl();
     await ctx.editMessageText(formatStartMessage(firstName), {
       parse_mode: "HTML",
-      reply_markup: buildMainMenuKeyboard(),
+      reply_markup: buildMainMenuKeyboard(supportUrl),
     });
   });
 
   // 4. Main Menu Navigation
   bot.callbackQuery("menu_start", async (ctx) => {
+    const telegramId = String(ctx.from?.id || "");
+    if (ctx.session.awaitingTopUpSlip?.reference) {
+      void botOrderService.cancelTopUpRequest(ctx.session.awaitingTopUpSlip.reference, telegramId);
+    }
     ctx.session.awaitingCustomQuantity = false;
     ctx.session.awaitingCustomTopUp = false;
     ctx.session.awaitingTopUpSlip = undefined;
     const firstName = ctx.from?.first_name || "Customer";
 
+    const supportUrl = await botSettingsService.getSupportUrl();
     await ctx.editMessageText(formatStartMessage(firstName), {
       parse_mode: "HTML",
-      reply_markup: buildMainMenuKeyboard(),
+      reply_markup: buildMainMenuKeyboard(supportUrl),
     });
   });
 
@@ -673,14 +706,27 @@ export function createBot(): Bot<BotContext> {
 
   // 16. Cancel Top-Up
   bot.callbackQuery("cancel_topup", async (ctx) => {
+    const telegramId = String(ctx.from?.id || "");
+    const topUpRef = ctx.session.awaitingTopUpSlip?.reference || ctx.session.awaitingTopUpSlip?.topUpId;
+
+    if (topUpRef) {
+      await botOrderService.cancelTopUpRequest(topUpRef, telegramId);
+    } else {
+      const latestPending = await botOrderService.getLatestPendingTopUp(telegramId);
+      if (latestPending) {
+        await botOrderService.cancelTopUpRequest(latestPending.reference, telegramId);
+      }
+    }
+
     ctx.session.awaitingTopUpSlip = undefined;
     ctx.session.awaitingCustomTopUp = false;
     ctx.session.intendedOrderAfterTopUp = undefined;
     ctx.session.unmatchedPhotoFileId = undefined;
 
-    const telegramId = String(ctx.from?.id || "");
     const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || "Customer";
     const stats = await botOrderService.getUserProfile(telegramId);
+
+    await ctx.answerCallbackQuery({ text: "ငွေဖြည့်ခြင်းကို ပယ်ဖျက်လိုက်ပါပြီ။" });
 
     await ctx.editMessageText(
       formatWalletMessage({

@@ -12,13 +12,16 @@ import {
   buildCheckoutKeyboard,
   buildOrderListKeyboard,
   buildProfileKeyboard,
+  buildHelpKeyboard,
 } from "../../apps/bot/src/keyboards/store.keyboards";
+import { resolveTelegramSupportUrl } from "../../apps/bot/src/services/settings.service";
 import {
   formatStartMessage,
   formatCategoriesMessage,
   formatProductsListMessage,
   formatProductDetailMessage,
   formatCheckoutMessage,
+  formatTopUpInvoiceMessage,
   formatSlipReceivedMessage,
   formatDeliveryMessage,
   formatProfileMessage,
@@ -111,6 +114,39 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(rows[0][0].text).toBe("Back");
       expect((rows[0][0] as any).icon_custom_emoji_id).toBe("5456187398977247949");
       expect((rows[0][0] as any).callback_data).toBe("menu_start");
+    });
+
+    it("uses dynamic support URL in main menu and checkout keyboards matching admin settings", () => {
+      const customSupportUrl = "https://t.me/ArenaStoreSupport_Bot";
+      const keyboard = buildMainMenuKeyboard(customSupportUrl);
+      const supportBtn = keyboard.inline_keyboard.flat().find((b) => b.text.includes("Help & Support"));
+      expect(supportBtn).toBeDefined();
+      expect((supportBtn as any).url).toBe(customSupportUrl);
+
+      const checkoutKeyboard = buildCheckoutKeyboard("ORD-123", customSupportUrl);
+      const contactBtn = checkoutKeyboard.inline_keyboard.flat().find((b) => b.text.includes("Need Help? Contact Admin"));
+      expect(contactBtn).toBeDefined();
+      expect((contactBtn as any).url).toBe(customSupportUrl);
+    });
+
+    it("normalizes support telegram handles into proper deep links with resolveTelegramSupportUrl", () => {
+      expect(resolveTelegramSupportUrl("@ArenaStoreSupport_Bot")).toBe("https://t.me/ArenaStoreSupport_Bot");
+      expect(resolveTelegramSupportUrl("ArenaStoreSupport_Bot")).toBe("https://t.me/ArenaStoreSupport_Bot");
+      expect(resolveTelegramSupportUrl("https://t.me/ArenaStoreSupport_Bot")).toBe("https://t.me/ArenaStoreSupport_Bot");
+      expect(resolveTelegramSupportUrl("t.me/ArenaStoreSupport_Bot")).toBe("https://t.me/ArenaStoreSupport_Bot");
+      expect(resolveTelegramSupportUrl("")).toBe("https://t.me/ryanwez");
+    });
+
+    it("builds help keyboard with support handle and main menu navigation", () => {
+      const keyboard = buildHelpKeyboard("https://t.me/ArenaStoreSupport_Bot", "@ArenaStoreSupport_Bot");
+      const buttons = keyboard.inline_keyboard.flat();
+      const supportBtn = buttons.find((b) => b.text.includes("@ArenaStoreSupport_Bot"));
+      expect(supportBtn).toBeDefined();
+      expect((supportBtn as any).url).toBe("https://t.me/ArenaStoreSupport_Bot");
+
+      const backBtn = buttons.find((b) => b.text.includes("Main Menu"));
+      expect(backBtn).toBeDefined();
+      expect((backBtn as any).callback_data).toBe("menu_start");
     });
 
     it("builds 2-column categories grid with icon_custom_emoji_id (matching Screenshot 1)", () => {
@@ -259,6 +295,51 @@ describe("Phase 4 Customer Telegram Bot", () => {
       const ackMsg = formatSlipReceivedMessage("ARN-2026-84920");
       expect(ackMsg).toContain("ARN-2026-84920");
       expect(ackMsg).toContain("စစ်ဆေးနေပါသည်");
+    });
+
+    it("formats top-up invoice with every configured provider (KBZ/Wave/AYA/UAB)", () => {
+      const msg = formatTopUpInvoiceMessage({
+        amountMmk: 5000,
+        reference: "TOP-TEST123",
+        paymentInfo: {
+          kpayPhone: "09 111 111 111",
+          kpayAccountName: "K Account",
+          wavepayPhone: "09 222 222 222",
+          wavepayAccountName: "W Account",
+          ayapayPhone: "09 333 333 333",
+          ayapayAccountName: "A Account",
+          uabpayPhone: "09 444 444 444",
+          uabpayAccountName: "U Account",
+        },
+      });
+
+      expect(msg).toContain("TOP-TEST123");
+      expect(msg).toContain("KBZ Pay:");
+      expect(msg).toContain("WavePay:");
+      expect(msg).toContain("AYA Pay:");
+      expect(msg).toContain("UAB Pay:");
+      expect(msg).toContain("09 333 333 333");
+      expect(msg).toContain("A Account");
+      expect(msg).toContain("09 444 444 444");
+      expect(msg).toContain("U Account");
+    });
+
+    it("hides optional providers (AYA/UAB) when they are not configured", () => {
+      const msg = formatTopUpInvoiceMessage({
+        amountMmk: 5000,
+        reference: "TOP-TEST123",
+        paymentInfo: {
+          kpayPhone: "09 111 111 111",
+          kpayAccountName: "K Account",
+          wavepayPhone: "09 222 222 222",
+          wavepayAccountName: "W Account",
+        },
+      });
+
+      expect(msg).toContain("KBZ Pay:");
+      expect(msg).toContain("WavePay:");
+      expect(msg).not.toContain("AYA Pay:");
+      expect(msg).not.toContain("UAB Pay:");
     });
 
     it("formats delivery message with clean credentials and without security advisory", () => {

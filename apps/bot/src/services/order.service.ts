@@ -81,7 +81,7 @@ export interface TopUpRecord {
   reference: string;
   paymentMethod?: "KPAY" | "WAVEPAY";
   slipFileId?: string;
-  status: "PENDING" | "SUBMITTED" | "APPROVED" | "REJECTED";
+  status: "PENDING" | "SUBMITTED" | "APPROVED" | "REJECTED" | "CANCELLED";
   createdAt: string;
 }
 
@@ -332,6 +332,29 @@ export class BotOrderService {
 
       if (userRecord?.user) {
         const db = getDb();
+
+        // Auto-cancel any previous unsubmitted PENDING top-up for this user
+        // so abandoned invoices do not accumulate in the admin panel as "Awaiting Slip"
+        try {
+          await db
+            .update(topUpRequests)
+            .set({ status: "CANCELLED" })
+            .where(
+              and(
+                eq(topUpRequests.userId, userRecord.user.id),
+                eq(topUpRequests.status, "PENDING")
+              )
+            );
+        } catch (cleanupErr: any) {
+          console.warn("[BotOrderService] Warning cleaning up previous pending top-ups:", cleanupErr.message);
+        }
+
+        for (const [, mem] of this.memoryTopUps.entries()) {
+          if (mem.telegramId === params.telegramId && mem.status === "PENDING") {
+            mem.status = "CANCELLED";
+          }
+        }
+
         const [inserted] = await db
           .insert(topUpRequests)
           .values({
@@ -360,6 +383,12 @@ export class BotOrderService {
       console.warn("[BotOrderService] DB createTopUpRequest error:", err.message);
     }
 
+    for (const [, mem] of this.memoryTopUps.entries()) {
+      if (mem.telegramId === params.telegramId && mem.status === "PENDING") {
+        mem.status = "CANCELLED";
+      }
+    }
+
     const fallbackRecord: TopUpRecord = {
       id: `topup-${Date.now()}`,
       telegramId: params.telegramId,
@@ -371,6 +400,55 @@ export class BotOrderService {
     this.memoryTopUps.set(reference, fallbackRecord);
     this.memoryTopUps.set(fallbackRecord.id, fallbackRecord);
     return fallbackRecord;
+  }
+
+  /**
+   * Cancels a pending top-up request in DB and memory.
+   * Matches by reference ('TOP-XXXXXX') OR numeric database ID.
+   * Only cancels requests that are currently in 'PENDING' status.
+   */
+  async cancelTopUpRequest(topUpId: string | number, telegramId?: string): Promise<boolean> {
+    const idStr = String(topUpId);
+    let cancelled = false;
+
+    try {
+      const db = getDb();
+      const isNumeric = /^\d+$/.test(idStr);
+      const condition = isNumeric
+        ? and(
+            or(
+              eq(topUpRequests.reference, idStr),
+              eq(topUpRequests.id, parseInt(idStr, 10))
+            ),
+            eq(topUpRequests.status, "PENDING")
+          )
+        : and(
+            eq(topUpRequests.reference, idStr),
+            eq(topUpRequests.status, "PENDING")
+          );
+
+      const [updated] = await db
+        .update(topUpRequests)
+        .set({ status: "CANCELLED" })
+        .where(condition)
+        .returning();
+
+      if (updated) {
+        cancelled = true;
+      }
+    } catch (err: any) {
+      console.warn("[BotOrderService] DB cancelTopUpRequest error:", err.message);
+    }
+
+    // Update in-memory cache
+    for (const [, mem] of this.memoryTopUps.entries()) {
+      if ((mem.reference === idStr || mem.id === idStr) && mem.status === "PENDING") {
+        mem.status = "CANCELLED";
+        cancelled = true;
+      }
+    }
+
+    return cancelled;
   }
 
   /**

@@ -1,12 +1,14 @@
 import { InlineKeyboard } from "grammy";
 import { BotCategory, BotProduct } from "../services/catalog.service";
 import { botConfig } from "../config";
+import { botSettingsService } from "../services/settings.service";
 import { BOT_EMOJIS } from "@arena/shared";
 
 /**
  * Builds the Main Start Menu Keyboard with animated custom emojis.
  */
-export function buildMainMenuKeyboard(): InlineKeyboard {
+export function buildMainMenuKeyboard(supportUrl?: string): InlineKeyboard {
+  const finalSupportUrl = supportUrl || botSettingsService.getSupportUrlSync();
   return new InlineKeyboard()
     // Row 1: 2 Columns (Storefront & Orders)
     .add({
@@ -35,7 +37,7 @@ export function buildMainMenuKeyboard(): InlineKeyboard {
     .row()
     .add({
       text: "Help & Support",
-      url: `https://t.me/${botConfig.SUPPORT_USERNAME}`,
+      url: finalSupportUrl,
       icon_custom_emoji_id: BOT_EMOJIS.CHAT,
     })
     .add({
@@ -54,6 +56,26 @@ export function buildProfileKeyboard(): InlineKeyboard {
     callback_data: "menu_start",
     icon_custom_emoji_id: BOT_EMOJIS.BACK,
   });
+}
+
+/**
+ * Builds the Help & Support message keyboard with direct contact link.
+ */
+export function buildHelpKeyboard(supportUrl?: string, handle?: string): InlineKeyboard {
+  const url = supportUrl || botSettingsService.getSupportUrlSync();
+  const label = handle ? `Contact Support (${handle})` : "Contact Support";
+  return new InlineKeyboard()
+    .add({
+      text: label,
+      url,
+      icon_custom_emoji_id: BOT_EMOJIS.CHAT,
+    })
+    .row()
+    .add({
+      text: "🏠 Main Menu",
+      callback_data: "menu_start",
+      icon_custom_emoji_id: BOT_EMOJIS.BACK,
+    });
 }
 
 /**
@@ -241,7 +263,8 @@ export function buildProductDetailKeyboard(
 /**
  * Builds Payment Slip Action Keyboard during Checkout.
  */
-export function buildCheckoutKeyboard(orderId: string): InlineKeyboard {
+export function buildCheckoutKeyboard(orderId: string, supportUrl?: string): InlineKeyboard {
+  const finalSupportUrl = supportUrl || botSettingsService.getSupportUrlSync();
   return new InlineKeyboard()
     .add({
       text: "Cancel Order",
@@ -252,7 +275,7 @@ export function buildCheckoutKeyboard(orderId: string): InlineKeyboard {
     .row()
     .add({
       text: "Need Help? Contact Admin",
-      url: `https://t.me/${botConfig.SUPPORT_USERNAME}`,
+      url: finalSupportUrl,
       icon_custom_emoji_id: BOT_EMOJIS.CHAT,
     });
 }

@@ -12,7 +12,11 @@ import { authService } from "./services/auth.service";
 import { rbacService } from "./services/rbac.service";
 import { catalogService } from "./services/catalog.service";
 import { restockNotifier } from "./services/restock-notifier";
-import { startCatalogSyncScheduler } from "./services/catalog-scheduler";
+import {
+  startCatalogSyncScheduler,
+  startBalanceCheckScheduler,
+} from "./services/catalog-scheduler";
+import { supplierBalanceMonitor } from "./services/supplier-balance-monitor";
 import { config } from "./config";
 
 export async function buildServer(): Promise<FastifyInstance> {
@@ -140,6 +144,19 @@ export async function buildServer(): Promise<FastifyInstance> {
     });
     server.addHook("onClose", async () => {
       scheduler.stop();
+    });
+  }
+
+  // Supplier balance monitoring on its own (shorter) cadence so low-balance
+  // alerts are not delayed by the catalog sync interval. The monitor is
+  // coalesced: it alerts once per drop and re-arms on recovery.
+  if (config.NODE_ENV !== "test" && config.BALANCE_CHECK_INTERVAL_MINUTES > 0) {
+    const balanceScheduler = startBalanceCheckScheduler({
+      intervalMinutes: config.BALANCE_CHECK_INTERVAL_MINUTES,
+      check: () => supplierBalanceMonitor.checkBalances(),
+    });
+    server.addHook("onClose", async () => {
+      balanceScheduler.stop();
     });
   }
 

@@ -65,8 +65,9 @@ async function main() {
             { command: "start", description: "Bot ကိုစတင်ရန်" },
             { command: "orders", description: "မှာယူထားသည်များကို ကြည့်ရန်" },
             { command: "wallet", description: "ငွေလွှဲမှတ်တမ်းများ ကြည့်ရန်" },
+            { command: "help", description: "Customer Support & အကူအညီ" },
           ]).catch(() => {});
-          console.log("📋 Bot menu commands registered: /start, /orders and /wallet");
+          console.log("📋 Bot menu commands registered: /start, /orders, /wallet, /help");
         } catch (connErr: any) {
           console.warn(`[Telegram Bot] Connection to Telegram API failed (${connErr.message}). Retrying in 5s...`);
           await new Promise((resolve) => setTimeout(resolve, 5000));

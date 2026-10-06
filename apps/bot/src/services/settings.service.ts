@@ -92,6 +92,36 @@ class BotSettingsService {
     this.cache = null;
     this.lastFetchedAt = 0;
   }
+
+  getSupportUrlSync(): string {
+    const handle = this.cache?.supportTelegramHandle || botConfig.SUPPORT_USERNAME;
+    return resolveTelegramSupportUrl(handle);
+  }
+
+  async getSupportUrl(): Promise<string> {
+    const settings = await this.getSettings();
+    return resolveTelegramSupportUrl(settings.supportTelegramHandle);
+  }
+}
+
+/**
+ * Normalizes any handle or URL into a proper Telegram deep link.
+ * Handles '@handle', 'handle', 'https://t.me/handle', 't.me/handle'.
+ */
+export function resolveTelegramSupportUrl(handleOrUrl?: string, fallback = botConfig.SUPPORT_USERNAME): string {
+  const trimmed = (handleOrUrl || "").trim();
+  if (!trimmed) {
+    const cleanFallback = (fallback || "ryanwez").trim().replace(/^@+/, "");
+    return `https://t.me/${cleanFallback}`;
+  }
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+  if (trimmed.startsWith("t.me/")) {
+    return `https://${trimmed}`;
+  }
+  const clean = trimmed.replace(/^@+/, "");
+  return `https://t.me/${clean}`;
 }
 
 export const botSettingsService = new BotSettingsService();

@@ -322,4 +322,56 @@ describe("Wallet top-up → admin review → wallet credit (full money path)", (
     });
     expect(res.statusCode).toBe(401);
   });
+
+  it("cancels a pending top-up request when customer cancels in bot", async () => {
+    const telegramId = syntheticTelegramId();
+    const topUp = await botOrderService.createTopUpRequest({
+      telegramId,
+      amountMmk: 5000,
+    });
+    expect(topUp.status).toBe("PENDING");
+
+    const cancelled = await botOrderService.cancelTopUpRequest(topUp.reference, telegramId);
+    expect(cancelled).toBe(true);
+
+    const db = getDb();
+    const [row] = await db
+      .select()
+      .from(topUpRequests)
+      .where(eq(topUpRequests.reference, topUp.reference));
+    expect(row.status).toBe("CANCELLED");
+
+    // Second cancel on already-cancelled request returns false
+    const cancelAgain = await botOrderService.cancelTopUpRequest(topUp.reference, telegramId);
+    expect(cancelAgain).toBe(false);
+  });
+
+  it("auto-cancels prior unsubmitted PENDING top-ups when customer requests a new top-up", async () => {
+    const telegramId = syntheticTelegramId();
+    const firstTopUp = await botOrderService.createTopUpRequest({
+      telegramId,
+      amountMmk: 5000,
+    });
+    expect(firstTopUp.status).toBe("PENDING");
+
+    const secondTopUp = await botOrderService.createTopUpRequest({
+      telegramId,
+      amountMmk: 10000,
+    });
+    expect(secondTopUp.status).toBe("PENDING");
+    expect(secondTopUp.reference).not.toBe(firstTopUp.reference);
+
+    const db = getDb();
+    const [firstRow] = await db
+      .select()
+      .from(topUpRequests)
+      .where(eq(topUpRequests.reference, firstTopUp.reference));
+    expect(firstRow.status).toBe("CANCELLED");
+
+    const [secondRow] = await db
+      .select()
+      .from(topUpRequests)
+      .where(eq(topUpRequests.reference, secondTopUp.reference));
+    expect(secondRow.status).toBe("PENDING");
+  });
 });

@@ -36,7 +36,7 @@ export interface DepositItem {
   slipImageUrl: string
   submittedAt: string
   rawDate: string
-  status: 'PENDING' | 'SUBMITTED' | 'APPROVED' | 'REJECTED'
+  status: 'PENDING' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
   intendedProduct?: string
 }
 
@@ -50,7 +50,7 @@ const approvingSlipId = ref<number | null>(null)
 const copiedId = ref<string | null>(null)
 
 // Filters
-const activeTab = ref<'ALL' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'PENDING'>('ALL')
+const activeTab = ref<'ALL' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'PENDING' | 'CANCELLED'>('ALL')
 const searchQuery = ref('')
 const debouncedSearch = ref('')
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -265,6 +265,7 @@ function goToPage(p: number) {
 // Global metrics
 const pendingCount = computed(() => slips.value.filter((s) => s.status === 'SUBMITTED').length)
 const pendingUploadCount = computed(() => slips.value.filter((s) => s.status === 'PENDING').length)
+const cancelledCount = computed(() => slips.value.filter((s) => s.status === 'CANCELLED').length)
 const pendingTotalMmk = computed(() =>
   slips.value
     .filter((s) => s.status === 'SUBMITTED')
@@ -362,7 +363,9 @@ async function approveDeposit(slip: DepositItem, event?: Event) {
 function openRejectDialog(slip: DepositItem, event?: Event) {
   if (event) event.stopPropagation()
   selectedSlip.value = slip
-  if (!rejectReason.value || rejectReason.value === 'Slip amount does not match requested top-up.') {
+  if (slip.status === 'PENDING') {
+    rejectReason.value = 'ငွေလွှဲပြေစာ ပေးပို့ခြင်း မရှိသောကြောင့် ပယ်ဖျက်လိုက်ပါသည် ခင်ဗျာ။'
+  } else if (!rejectReason.value || rejectReason.value === 'Slip amount does not match requested top-up.' || rejectReason.value === 'ငွေလွှဲပြေစာ ပေးပို့ခြင်း မရှိသောကြောင့် ပယ်ဖျက်လိုက်ပါသည် ခင်ဗျာ။') {
     rejectReason.value = 'ပြေစာ လွဲမှားနေပါသည် ခင်ဗျာ။'
   }
   isRejectModalOpen.value = true
@@ -561,6 +564,14 @@ async function confirmReject() {
               class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 shrink-0 font-semibold cursor-pointer"
             >
               Rejected
+            </button>
+            <button
+              type="button"
+              @click="activeTab = 'CANCELLED'"
+              :class="activeTab === 'CANCELLED' ? 'bg-zinc-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'"
+              class="px-3.5 py-1.5 rounded-xl transition-colors duration-150 shrink-0 font-semibold cursor-pointer"
+            >
+              Cancelled ({{ cancelledCount }})
             </button>
           </div>
 
@@ -867,6 +878,14 @@ async function confirmReject() {
                     <span>Awaiting Slip</span>
                   </span>
                   <span
+                    v-else-if="slip.status === 'CANCELLED'"
+                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-500/10 text-slate-400 dark:text-slate-500 border border-slate-500/20"
+                    title="Customer cancelled top-up in Bot before uploading receipt"
+                  >
+                    <i class="pi pi-ban text-[9px]"></i>
+                    <span>Cancelled</span>
+                  </span>
+                  <span
                     v-else-if="slip.status === 'REJECTED'"
                     class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
                   >
@@ -1035,6 +1054,15 @@ async function confirmReject() {
               </div>
             </div>
 
+            <!-- Notice for CANCELLED slips -->
+            <div v-if="selectedSlip.status === 'CANCELLED'" class="p-3 bg-slate-500/10 border border-slate-500/20 rounded-2xl text-xs text-slate-400 dark:text-slate-500 flex items-start gap-2.5">
+              <i class="pi pi-ban text-sm shrink-0 mt-0.5"></i>
+              <div>
+                <strong class="font-semibold block">Top-up Cancelled</strong>
+                This top-up request was cancelled in the Telegram bot before any receipt slip was uploaded.
+              </div>
+            </div>
+
             <!-- Transaction Details Row -->
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
               <div>
@@ -1058,12 +1086,12 @@ async function confirmReject() {
             <!-- Modal Bottom Actions -->
             <div class="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-800">
               <button
-                v-if="selectedSlip.status === 'SUBMITTED' && canReview"
+                v-if="(selectedSlip.status === 'SUBMITTED' || selectedSlip.status === 'PENDING') && canReview"
                 type="button"
                 @click="openRejectDialog(selectedSlip)"
                 class="px-4 py-2 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors"
               >
-                Reject Top-Up
+                {{ selectedSlip.status === 'PENDING' ? 'Cancel / Reject Slip' : 'Reject Top-Up' }}
               </button>
               <div v-else></div>
 

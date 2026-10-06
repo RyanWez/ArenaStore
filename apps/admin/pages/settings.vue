@@ -105,7 +105,7 @@ async function handleSaveRules() {
 // 3. Save Telegram Deposit Relay card
 async function handleSaveRelay() {
   if (!canEditOperations.value) {
-    toast.error('Permission denied: You cannot edit Telegram relay settings.')
+    toast.error('Permission denied: You cannot edit Arena Store Group settings.')
     return
   }
 
@@ -114,15 +114,16 @@ async function handleSaveRelay() {
     const res = await saveSettings({
       telegramGroupChatId: settings.value.telegramGroupChatId,
       telegramDepositTopicId: settings.value.telegramDepositTopicId,
+      telegramBotAlertTopicId: settings.value.telegramBotAlertTopicId,
       telegramAdminMentions: settings.value.telegramAdminMentions,
       telegramApproverIds: settings.value.telegramApproverIds,
     })
 
     if (res.success) {
-      toast.success('Deposit slip relay configuration saved!', 'Relay Updated')
-      triggerSuccessBanner('Telegram deposit slip relay and mentions successfully saved!')
+      toast.success('Arena Store Group settings saved!', 'Group Settings Updated')
+      triggerSuccessBanner('Arena Store Group settings (slip relay, Bot Alert topic, mentions) successfully saved!')
     } else {
-      toast.error('Failed to save relay settings: ' + (res.error || 'Unknown error'))
+      toast.error('Failed to save group settings: ' + (res.error || 'Unknown error'))
     }
   } finally {
     savingSection.value = null
@@ -158,6 +159,7 @@ async function handleSaveAll() {
       payload.restockNotificationsEnabled = settings.value.restockNotificationsEnabled
       payload.telegramGroupChatId = settings.value.telegramGroupChatId
       payload.telegramDepositTopicId = settings.value.telegramDepositTopicId
+      payload.telegramBotAlertTopicId = settings.value.telegramBotAlertTopicId
       payload.telegramAdminMentions = settings.value.telegramAdminMentions
       payload.telegramApproverIds = settings.value.telegramApproverIds
     }
@@ -589,7 +591,7 @@ async function handleChangePassword() {
       </fieldset>
     </div>
 
-    <!-- CARD 3: Deposit Slip Relay to Telegram Group (hidden entirely without settings.operations) -->
+    <!-- CARD 3: Arena Store Group settings — group id, slip relay + bot alert topics, mentions, approvers (hidden entirely without settings.operations) -->
     <div v-if="canEditOperations" class="rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-6">
       <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
         <div class="flex items-center gap-3">
@@ -597,8 +599,8 @@ async function handleChangePassword() {
             <i class="pi pi-send"></i>
           </div>
           <div>
-            <h2 class="text-base font-bold text-slate-900 dark:text-white">Deposit Slip Relay (Group ထဲ Slip ပို့ပေးတာ)</h2>
-            <p class="text-xs text-slate-500">Automatically sends newly uploaded payment slips into your admin Telegram group or forum topic</p>
+            <h2 class="text-base font-bold text-slate-900 dark:text-white">Arena Store Group (Group ဆက်တင်များ)</h2>
+            <p class="text-xs text-slate-500">Group ID တစ်ခုတည်း + ရည်ရွယ်ချက်အလိုက် Topic ID များ — payment slip relay, Bot Alert topic နှင့် admin mentions</p>
           </div>
         </div>
 
@@ -614,7 +616,8 @@ async function handleChangePassword() {
 
       <fieldset class="space-y-4 min-w-0">
         <p class="text-[11px] text-slate-500">
-          ဝယ်ယူသူတိုင်း၏ payment slip ကို bot က ဤ group/topic ထဲသို့ အလိုအလျောက် ပို့ပေးပါမည်။
+          Group ID တစ်ခုတည်း သတ်မှတ်ပြီး ရည်ရွယ်ချက်အလိုက် Topic ID များ ဖြည့်ပါ — ဝယ်ယူသူတိုင်း၏
+          payment slip ကို Deposit Topic ထဲသို့၊ Bot Alert များကို Bot Alert Topic ထဲသို့ bot က အလိုအလျောက် ပို့ပေးပါမည်။
           Bot ကို group admin အဖြစ် ထည့်ထားရပါမည်။ Group ID သည် <code>-100…</code> ပုံစံဖြစ်ပြီး
           Topic ID မှာ topic link (<code>t.me/c/xxx/&lt;TopicID&gt;</code>) ထဲက နံပါတ်ဖြစ်သည် — စွန့်ခွာထားလျှင် General သို့ ပို့မည်။
         </p>
@@ -637,6 +640,18 @@ async function handleChangePassword() {
               placeholder="e.g. 42 (empty = General)"
               class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
             />
+          </div>
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">Bot Alert Topic ID (message_thread_id)</label>
+            <input
+              v-model="settings.telegramBotAlertTopicId"
+              type="text"
+              placeholder="e.g. 59 (empty = General)"
+              class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500"
+            />
+            <p class="text-[11px] text-slate-400">
+              Low Supplier Balance Alert စသည့် Bot Alert များ ပို့မည့် topic — စွန့်ခွာထားလျှင် General သို့ ပို့မည်။
+            </p>
           </div>
         </div>
 
@@ -688,7 +703,7 @@ async function handleChangePassword() {
           >
             <i v-if="savingSection === 'relay'" class="pi pi-spin pi-spinner text-xs"></i>
             <i v-else class="pi pi-check text-xs"></i>
-            <span>{{ savingSection === 'relay' ? 'Saving Relay...' : 'Save Relay Settings' }}</span>
+            <span>{{ savingSection === 'relay' ? 'Saving Group Settings...' : 'Save Group Settings' }}</span>
           </button>
         </div>
       </fieldset>

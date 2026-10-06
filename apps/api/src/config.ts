@@ -53,6 +53,12 @@ const envSchema = z.object({
   /** Automatic catalog sync cadence in minutes; 0 disables the scheduler. */
   CATALOG_SYNC_INTERVAL_MINUTES: z.coerce.number().int().min(0).default(10),
   /**
+   * Supplier balance check cadence in minutes (low-balance alert latency);
+   * 0 disables the balance scheduler. Independent of the sync interval so
+   * alerts are not delayed by catalog syncs.
+   */
+  BALANCE_CHECK_INTERVAL_MINUTES: z.coerce.number().int().min(0).default(2),
+  /**
    * Whether Fastify should trust reverse proxy headers like X-Forwarded-For.
    * - "loopback, uniquelocal" (or 1): trusts local & private reverse proxies (e.g. Render,
    *   Docker, Cloudflare, Nginx, AWS VPC) while rejecting spoofed IP headers from public clients. (Default)
