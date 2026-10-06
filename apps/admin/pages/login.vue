@@ -13,6 +13,7 @@ const password = ref('')
 const totpCode = ref('')
 const showPassword = ref(false)
 const errorMessage = ref('')
+const totpInputRef = ref<HTMLInputElement | null>(null)
 
 async function handleLogin() {
   if (!email.value || !password.value) {
@@ -24,6 +25,9 @@ async function handleLogin() {
   const result = await login(email.value, password.value, totpCode.value.trim())
   if (!result.success) {
     errorMessage.value = result.error || 'Invalid credentials. Please try again.'
+    if (result.error?.toLowerCase().includes('2fa') || result.error?.toLowerCase().includes('code')) {
+      totpInputRef.value?.focus()
+    }
   }
 }
 </script>
@@ -52,6 +56,8 @@ async function handleLogin() {
       <!-- Error Alert -->
       <div
         v-if="errorMessage"
+        role="alert"
+        aria-live="assertive"
         class="mb-6 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2.5 animate-shake"
       >
         <i class="pi pi-exclamation-triangle text-base text-rose-400 flex-shrink-0"></i>
@@ -61,12 +67,13 @@ async function handleLogin() {
       <!-- Login Form -->
       <form @submit.prevent="handleLogin" class="space-y-5">
         <div>
-          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Email or Username</label>
+          <label for="login-email" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Email or Username</label>
           <div class="relative">
             <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
               <i class="pi pi-user text-sm"></i>
             </span>
             <input
+              id="login-email"
               v-model="email"
               type="text"
               required
@@ -79,7 +86,7 @@ async function handleLogin() {
 
         <div>
           <div class="flex items-center justify-between mb-2">
-            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">Password</label>
+            <label for="login-password" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">Password</label>
             <span class="text-[11px] text-cyan-400/80 font-mono">Protected</span>
           </div>
           <div class="relative">
@@ -87,6 +94,7 @@ async function handleLogin() {
               <i class="pi pi-lock text-sm"></i>
             </span>
             <input
+              id="login-password"
               v-model="password"
               :type="showPassword ? 'text' : 'password'"
               required
@@ -97,7 +105,8 @@ async function handleLogin() {
             <button
               type="button"
               @click="showPassword = !showPassword"
-              class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-200 transition-colors"
+              :aria-label="showPassword ? 'Hide password' : 'Show password'"
+              class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
             >
               <i :class="showPassword ? 'pi pi-eye-slash' : 'pi pi-eye'" class="text-sm"></i>
             </button>
@@ -106,7 +115,7 @@ async function handleLogin() {
 
         <div>
           <div class="flex items-center justify-between mb-2">
-            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">2FA Code</label>
+            <label for="login-totp" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider">2FA Code</label>
             <span class="text-[11px] text-slate-500 font-mono">6 digits — if enabled</span>
           </div>
           <div class="relative">
@@ -114,6 +123,8 @@ async function handleLogin() {
               <i class="pi pi-shield text-sm"></i>
             </span>
             <input
+              id="login-totp"
+              ref="totpInputRef"
               v-model="totpCode"
               type="text"
               inputmode="numeric"

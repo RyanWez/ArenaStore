@@ -129,12 +129,13 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect((contactBtn as any).url).toBe(customSupportUrl);
     });
 
-    it("normalizes support telegram handles into proper deep links with resolveTelegramSupportUrl", () => {
-      expect(resolveTelegramSupportUrl("@ArenaStoreSupport_Bot")).toBe("https://t.me/ArenaStoreSupport_Bot");
-      expect(resolveTelegramSupportUrl("ArenaStoreSupport_Bot")).toBe("https://t.me/ArenaStoreSupport_Bot");
-      expect(resolveTelegramSupportUrl("https://t.me/ArenaStoreSupport_Bot")).toBe("https://t.me/ArenaStoreSupport_Bot");
-      expect(resolveTelegramSupportUrl("t.me/ArenaStoreSupport_Bot")).toBe("https://t.me/ArenaStoreSupport_Bot");
-      expect(resolveTelegramSupportUrl("")).toBe("https://t.me/ryanwez");
+    it("normalizes support telegram handles into /start deep links with resolveTelegramSupportUrl", () => {
+      expect(resolveTelegramSupportUrl("@ArenaStoreSupport_Bot")).toBe("https://t.me/ArenaStoreSupport_Bot?start=help");
+      expect(resolveTelegramSupportUrl("ArenaStoreSupport_Bot")).toBe("https://t.me/ArenaStoreSupport_Bot?start=help");
+      expect(resolveTelegramSupportUrl("https://t.me/ArenaStoreSupport_Bot")).toBe("https://t.me/ArenaStoreSupport_Bot?start=help");
+      expect(resolveTelegramSupportUrl("t.me/ArenaStoreSupport_Bot")).toBe("https://t.me/ArenaStoreSupport_Bot?start=help");
+      expect(resolveTelegramSupportUrl("https://t.me/ArenaStoreSupport_Bot?start=custom")).toBe("https://t.me/ArenaStoreSupport_Bot?start=custom");
+      expect(resolveTelegramSupportUrl("")).toBe("https://t.me/ryanwez?start=help");
     });
 
     it("builds help keyboard with support handle and main menu navigation", () => {

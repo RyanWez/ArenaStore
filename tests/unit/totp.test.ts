@@ -88,4 +88,26 @@ describe("totp service", () => {
     const dataUrl = await QRCode.toDataURL(uri);
     expect(dataUrl).toMatch(/^data:image\/png;base64,/);
   });
+
+  it("returns setup data with high-res QR data URL when 2FA is configured", async () => {
+    const totpService = await importService(TEST_SECRET);
+    const data = await totpService.getSetupData("admin@arenastore.mm");
+
+    expect(data.isEnabled).toBe(true);
+    expect(data.secret).toBe(TEST_SECRET);
+    expect(data.uri).toContain("otpauth://totp/");
+    expect(data.qrDataUrl).toMatch(/^data:image\/png;base64,/);
+    expect(data.issuer).toBe("Arena Store");
+  });
+
+  it("returns disabled setup data when 2FA is not configured", async () => {
+    const totpService = await importService("");
+    const data = await totpService.getSetupData("admin@arenastore.mm");
+
+    expect(data.isEnabled).toBe(false);
+    expect(data.secret).toBe("");
+    expect(data.uri).toBe("");
+    expect(data.qrDataUrl).toBeNull();
+  });
 });
+

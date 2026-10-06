@@ -6,7 +6,7 @@ import { useStoreSettings } from '~/composables/useStoreSettings'
 import { usePermission } from '~/composables/usePermission'
 
 const toast = useToast()
-const { getAuthHeaders } = useAuth()
+const { getAuthHeaders, getTotpSetup, verifyTotpCode } = useAuth()
 const { settings, fetchSettings, saveSettings, isSaving, isLoading } = useStoreSettings()
 const { can } = usePermission()
 
@@ -31,9 +31,95 @@ const isChangingPassword = ref(false)
 const passwordError = ref('')
 const passwordSuccess = ref('')
 
+// 2FA / TOTP State
+const isTotpModalOpen = ref(false)
+const isLoadingTotp = ref(false)
+const totpData = ref<{ isEnabled: boolean; secret: string; uri: string; qrDataUrl: string | null; issuer: string } | null>(null)
+const testTotpCode = ref('')
+const isTestingTotp = ref(false)
+const testTotpResult = ref<{ valid?: boolean; message?: string } | null>(null)
+const isKeyCopied = ref(false)
+
+async function fetchTotpSetup() {
+  isLoadingTotp.value = true
+  try {
+    const res = await getTotpSetup()
+    if (res.success && res.data) {
+      totpData.value = res.data
+    } else {
+      console.warn('Could not load 2FA configuration:', res.error)
+    }
+  } finally {
+    isLoadingTotp.value = false
+  }
+}
+
+async function openTotpModal() {
+  testTotpCode.value = ''
+  testTotpResult.value = null
+  isTotpModalOpen.value = true
+  await fetchTotpSetup()
+}
+
+function closeTotpModal() {
+  isTotpModalOpen.value = false
+}
+
+async function copyTotpKey() {
+  if (!totpData.value?.secret) return
+  try {
+    await navigator.clipboard.writeText(totpData.value.secret)
+    isKeyCopied.value = true
+    toast.success('2FA Setup Key copied to clipboard!', 'Copied')
+    setTimeout(() => {
+      isKeyCopied.value = false
+    }, 3000)
+  } catch {
+    toast.error('Failed to copy to clipboard')
+  }
+}
+
+async function handleTestTotpCode() {
+  if (!testTotpCode.value || testTotpCode.value.trim().length !== 6) {
+    testTotpResult.value = {
+      valid: false,
+      message: 'Please enter a valid 6-digit code.',
+    }
+    return
+  }
+
+  isTestingTotp.value = true
+  testTotpResult.value = null
+  try {
+    const res = await verifyTotpCode(testTotpCode.value.trim())
+    if (res.success) {
+      testTotpResult.value = {
+        valid: res.valid,
+        message: res.message,
+      }
+      if (res.valid) {
+        toast.success('Authenticator code verified successfully!')
+      } else {
+        toast.error('Invalid 2FA code. Please check device time and retry.')
+      }
+    } else {
+      testTotpResult.value = {
+        valid: false,
+        message: res.error || 'Verification failed.',
+      }
+    }
+  } finally {
+    isTestingTotp.value = false
+  }
+}
+
 onMounted(async () => {
-  await fetchSettings(true)
+  await Promise.all([
+    fetchSettings(true),
+    fetchTotpSetup(),
+  ])
 })
+
 
 function triggerSuccessBanner(msg: string) {
   bannerMessage.value = msg
@@ -828,5 +914,208 @@ async function handleChangePassword() {
         </div>
       </form>
     </div>
+
+    <!-- CARD 5: Store-wide Two-Factor Authentication (2FA) -->
+    <div class="rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-6">
+      <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-cyan-500/10 text-cyan-500 flex items-center justify-center font-bold text-sm">
+            <i class="pi pi-shield"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-slate-900 dark:text-white">Two-Factor Authentication (2FA / Google Authenticator)</h2>
+            <p class="text-xs text-slate-500">Store-wide administrative two-factor protection using time-based one-time passwords (TOTP).</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <span
+            v-if="totpData?.isEnabled"
+            class="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5"
+          >
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            2FA Active (Enforced)
+          </span>
+          <span
+            v-else
+            class="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-500/10 text-slate-400 border border-slate-500/20 flex items-center gap-1.5"
+          >
+            2FA Inactive
+          </span>
+        </div>
+      </div>
+
+      <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div class="space-y-1">
+          <div class="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+            <i class="pi pi-info-circle text-cyan-500"></i>
+            <span>Google Authenticator / Authy Setup</span>
+          </div>
+          <p class="text-[12px] text-slate-500 max-w-xl leading-relaxed">
+            Scan the QR code or manually enter the Base32 setup key into your authenticator app to generate rotating 6-digit verification codes for logging in.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          @click="openTotpModal"
+          :disabled="isLoadingTotp"
+          class="px-4 py-2.5 rounded-xl text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-slate-950 transition-all shadow-md shadow-cyan-600/20 flex items-center gap-2 cursor-pointer shrink-0 disabled:opacity-50"
+        >
+          <i v-if="isLoadingTotp" class="pi pi-spin pi-spinner text-xs"></i>
+          <i v-else class="pi pi-qrcode text-xs"></i>
+          <span>View Authenticator QR & Setup Key</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 2FA Setup & QR Code Modal -->
+    <Teleport to="body">
+      <div
+        v-if="isTotpModalOpen"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="totp-modal-title"
+        @keydown.esc="closeTotpModal"
+      >
+        <div
+          class="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl relative overflow-hidden space-y-6 text-white"
+          tabindex="-1"
+        >
+          <!-- Top Accent Line -->
+          <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500"></div>
+
+          <!-- Header -->
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+                <i class="pi pi-qrcode text-lg"></i>
+              </div>
+              <div>
+                <h3 id="totp-modal-title" class="text-base font-bold text-white">Authenticator App Setup</h3>
+                <p class="text-xs text-slate-400">Scan QR or enter key in Google Authenticator</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              @click="closeTotpModal"
+              aria-label="Close setup modal"
+              class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+            >
+              <i class="pi pi-times text-xs"></i>
+            </button>
+          </div>
+
+          <!-- Content: QR & Key -->
+          <div v-if="totpData?.qrDataUrl" class="space-y-5">
+            <!-- QR Code Display Container -->
+            <div class="flex flex-col items-center justify-center p-5 bg-white rounded-2xl shadow-inner mx-auto w-fit">
+              <img
+                :src="totpData.qrDataUrl"
+                alt="Two-factor authentication scannable QR code"
+                class="w-52 h-52 object-contain rounded-lg"
+              />
+              <span class="text-[11px] font-semibold text-slate-700 mt-2 font-mono">Arena Store • TOTP</span>
+            </div>
+
+            <!-- Manual Setup Key Box -->
+            <div class="space-y-2">
+              <div class="flex items-center justify-between">
+                <label for="totp-manual-key" class="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                  Manual Setup Key (လျှို့ဝှက်ကီး)
+                </label>
+                <span class="text-[11px] text-cyan-400 font-mono">Time-based (30s)</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <input
+                  id="totp-manual-key"
+                  type="text"
+                  readonly
+                  :value="totpData.secret"
+                  class="w-full px-3.5 py-2.5 bg-slate-950/70 border border-slate-700 rounded-xl text-xs font-mono text-cyan-300 select-all focus:outline-none"
+                />
+                <button
+                  type="button"
+                  @click="copyTotpKey"
+                  :aria-label="isKeyCopied ? 'Setup key copied' : 'Copy secret setup key to clipboard'"
+                  class="px-4 py-2.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white flex items-center gap-2 cursor-pointer transition-colors shrink-0"
+                >
+                  <i :class="isKeyCopied ? 'pi pi-check text-emerald-400' : 'pi pi-copy text-slate-400'" class="text-xs"></i>
+                  <span>{{ isKeyCopied ? 'Copied!' : 'Copy' }}</span>
+                </button>
+              </div>
+              <!-- Live polite screen reader status -->
+              <span class="sr-only" role="status" aria-live="polite">
+                {{ isKeyCopied ? 'Setup key copied to clipboard' : '' }}
+              </span>
+            </div>
+
+            <!-- Live Test Code Verification Widget -->
+            <div class="p-4 rounded-2xl bg-slate-950/50 border border-slate-800 space-y-3">
+              <div class="flex items-center justify-between">
+                <label for="totp-test-code-input" class="text-xs font-semibold text-slate-300 flex items-center gap-2">
+                  <i class="pi pi-check-circle text-cyan-400"></i>
+                  <span>Test Code Verification (ကုဒ်စမ်းသပ်ရန်)</span>
+                </label>
+                <span class="text-[11px] text-slate-400">Verify before logging out</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <input
+                  id="totp-test-code-input"
+                  v-model="testTotpCode"
+                  type="text"
+                  inputmode="numeric"
+                  maxlength="6"
+                  placeholder="6-digit code (e.g. 123456)"
+                  class="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 tracking-widest"
+                  @keydown.enter.prevent="handleTestTotpCode"
+                />
+                <button
+                  type="button"
+                  @click="handleTestTotpCode"
+                  :disabled="isTestingTotp || testTotpCode.trim().length !== 6"
+                  class="px-4 py-2.5 rounded-xl text-xs font-semibold bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 transition-all flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0 font-bold"
+                >
+                  <i v-if="isTestingTotp" class="pi pi-spin pi-spinner text-xs"></i>
+                  <span>Verify</span>
+                </button>
+              </div>
+
+              <!-- Test Code Result Feedback -->
+              <div
+                v-if="testTotpResult"
+                :class="testTotpResult.valid ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-rose-500/10 border-rose-500/30 text-rose-300'"
+                class="p-3 rounded-xl border text-xs flex items-center gap-2"
+                role="status"
+              >
+                <i :class="testTotpResult.valid ? 'pi pi-check-circle text-emerald-400' : 'pi pi-times-circle text-rose-400'" class="text-sm shrink-0"></i>
+                <span>{{ testTotpResult.message }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div v-else-if="isLoadingTotp" class="py-12 flex flex-col items-center justify-center space-y-3">
+            <i class="pi pi-spin pi-spinner text-2xl text-cyan-400"></i>
+            <p class="text-xs text-slate-400">Generating QR code & setup credentials...</p>
+          </div>
+
+          <div v-else class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs">
+            <p>2FA is currently disabled because ADMIN_TOTP_SECRET is not configured in the environment.</p>
+          </div>
+
+          <!-- Modal Footer -->
+          <div class="pt-2 flex justify-end">
+            <button
+              type="button"
+              @click="closeTotpModal"
+              class="px-5 py-2.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors cursor-pointer"
+            >
+              Done / Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
+

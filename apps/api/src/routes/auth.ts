@@ -255,4 +255,57 @@ export async function authRoutes(server: FastifyInstance) {
       message: "Password changed successfully",
     };
   });
+
+  // GET /api/admin/auth/2fa
+  server.get("/api/admin/auth/2fa", async (request, reply) => {
+    const adminUser = (request as any).adminUser;
+    if (!adminUser) {
+      return reply.status(401).send({
+        ok: false,
+        error: "Unauthorized. Admin session required.",
+      });
+    }
+
+    const setupData = await totpService.getSetupData(adminUser.email || config.ADMIN_EMAIL);
+    return {
+      ok: true,
+      data: setupData,
+    };
+  });
+
+  // POST /api/admin/auth/2fa/verify-test
+  server.post("/api/admin/auth/2fa/verify-test", async (request, reply) => {
+    const adminUser = (request as any).adminUser;
+    if (!adminUser) {
+      return reply.status(401).send({
+        ok: false,
+        error: "Unauthorized. Admin session required.",
+      });
+    }
+
+    const parseRes = z
+      .object({
+        code: z.string().min(1, "Verification code is required"),
+      })
+      .safeParse(request.body);
+
+    if (!parseRes.success) {
+      return reply.status(400).send({
+        ok: false,
+        error: parseRes.error.issues[0]?.message || "Validation failed",
+      });
+    }
+
+    const { code } = parseRes.data;
+    const valid = totpService.verifyCode(code, adminUser.email || config.ADMIN_EMAIL);
+
+    return {
+      ok: true,
+      valid,
+      message: valid
+        ? "Code verified successfully! Your authenticator app is synchronized."
+        : "Invalid code. Please ensure your device clock is accurate and try again.",
+    };
+  });
 }
+

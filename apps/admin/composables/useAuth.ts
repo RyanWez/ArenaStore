@@ -73,10 +73,12 @@ export function useAuth() {
       const serverError = err?.data?.error;
       const errorCode = err?.data?.code;
       let msg: string;
-      if (typeof serverError === 'string' && serverError) {
+      if (errorCode === 'TOTP_REQUIRED') {
+        msg = 'Please enter your 6-digit Google Authenticator code in the 2FA box.';
+      } else if (errorCode === 'TOTP_INVALID') {
+        msg = 'Invalid 2FA code. Please ensure your authenticator app is synced with server time and try again.';
+      } else if (typeof serverError === 'string' && serverError) {
         msg = serverError;
-      } else if (errorCode === 'TOTP_REQUIRED') {
-        msg = 'Please enter your 6-digit 2FA code.';
       } else {
         msg = 'Login failed. Please check your credentials and try again.';
       }
@@ -137,6 +139,36 @@ export function useAuth() {
     }
   }
 
+  async function getTotpSetup(): Promise<{ success: boolean; data?: { isEnabled: boolean; secret: string; uri: string; qrDataUrl: string | null; issuer: string }; error?: string }> {
+    try {
+      const res: any = await $fetch('/api/admin/auth/2fa', {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok && res.data) {
+        return { success: true, data: res.data };
+      }
+      return { success: false, error: res.error || 'Failed to fetch 2FA setup' };
+    } catch (err: any) {
+      return { success: false, error: err?.data?.error || err?.message || 'Failed to fetch 2FA setup' };
+    }
+  }
+
+  async function verifyTotpCode(code: string): Promise<{ success: boolean; valid?: boolean; message?: string; error?: string }> {
+    try {
+      const res: any = await $fetch('/api/admin/auth/2fa/verify-test', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: { code },
+      });
+      if (res.ok) {
+        return { success: true, valid: !!res.valid, message: res.message };
+      }
+      return { success: false, error: res.error || 'Validation failed' };
+    } catch (err: any) {
+      return { success: false, error: err?.data?.error || err?.message || 'Failed to verify code' };
+    }
+  }
+
   return {
     token,
     user,
@@ -149,5 +181,8 @@ export function useAuth() {
     login,
     fetchUser,
     logout,
+    getTotpSetup,
+    verifyTotpCode,
   };
 }
+

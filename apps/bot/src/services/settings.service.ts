@@ -105,10 +105,16 @@ class BotSettingsService {
 }
 
 /**
- * Normalizes any handle or URL into a proper Telegram deep link.
+ * Normalizes any handle or URL into a Telegram deep link.
  * Handles '@handle', 'handle', 'https://t.me/handle', 't.me/handle'.
+ * Appends a ?start= deep-link param (when no query is present) so that
+ * tapping Start in Telegram automatically sends `/start help` to the bot.
  */
 export function resolveTelegramSupportUrl(handleOrUrl?: string, fallback = botConfig.SUPPORT_USERNAME): string {
+  return withStartParam(normalizeSupportUrl(handleOrUrl, fallback));
+}
+
+function normalizeSupportUrl(handleOrUrl?: string, fallback = botConfig.SUPPORT_USERNAME): string {
   const trimmed = (handleOrUrl || "").trim();
   if (!trimmed) {
     const cleanFallback = (fallback || "ryanwez").trim().replace(/^@+/, "");
@@ -122,6 +128,10 @@ export function resolveTelegramSupportUrl(handleOrUrl?: string, fallback = botCo
   }
   const clean = trimmed.replace(/^@+/, "");
   return `https://t.me/${clean}`;
+}
+
+function withStartParam(url: string): string {
+  return url.includes("?") ? url : `${url}?start=help`;
 }
 
 export const botSettingsService = new BotSettingsService();
