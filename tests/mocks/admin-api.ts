@@ -165,7 +165,7 @@ export function makeSlip(overrides: Partial<MockAdminSlip> = {}): MockAdminSlip 
     amount: 10000,
     txnRef: "KP88120033",
     slipUrl: `/api/admin/deposits/DEP-7001/slip-image`,
-    date: "2026-10-02T09:30:00.000Z",
+    date: new Date().toISOString(),
     status: "SUBMITTED",
     intendedProduct: "Netflix Premium (1 Month)",
     ...overrides,
@@ -174,8 +174,9 @@ export function makeSlip(overrides: Partial<MockAdminSlip> = {}): MockAdminSlip 
 
 /** One slip per review state: pending review, already approved, rejected. */
 export function makeDepositSlips(): MockAdminSlip[] {
+  const now = Date.now();
   return [
-    makeSlip(),
+    makeSlip({ date: new Date(now).toISOString() }),
     makeSlip({
       id: "DEP-7002",
       reference: "TOP-7002",
@@ -186,6 +187,7 @@ export function makeDepositSlips(): MockAdminSlip[] {
       amount: 25000,
       txnRef: "WP77210044",
       slipUrl: `/api/admin/deposits/DEP-7002/slip-image`,
+      date: new Date(now - 1000).toISOString(),
       status: "COMPLETED",
       intendedProduct: "Spotify Premium (1 Month)",
     }),
@@ -199,6 +201,7 @@ export function makeDepositSlips(): MockAdminSlip[] {
       amount: 5000,
       txnRef: "UB66110055",
       slipUrl: `/api/admin/deposits/DEP-7003/slip-image`,
+      date: new Date(now - 2000).toISOString(),
       status: "REJECTED",
       intendedProduct: "Canva Pro (1 Year)",
     }),
@@ -230,7 +233,7 @@ export function makeAdminOrders() {
         totalMmk: 15000,
         qty: 1,
         status: "COMPLETED",
-        date: "2026-10-02T08:12:00.000Z",
+        date: new Date().toISOString(),
         delivery: "CREDENTIALS",
       },
     ],
