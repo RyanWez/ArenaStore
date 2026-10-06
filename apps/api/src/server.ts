@@ -89,6 +89,7 @@ export async function buildServer(): Promise<FastifyInstance> {
       }
 
       (request as any).adminUser = session;
+      (request as any).adminUserToken = token;
     }
   });
 

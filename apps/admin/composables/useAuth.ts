@@ -93,6 +93,9 @@ export function useAuth() {
       });
 
       if (res.ok && res.user) {
+        if (res.token) {
+          token.value = res.token;
+        }
         user.value = res.user;
         permissions.value = Array.isArray(res.permissions) ? res.permissions : [];
         roleInfo.value = res.role ?? null;

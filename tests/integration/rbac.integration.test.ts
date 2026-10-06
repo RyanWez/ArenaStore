@@ -83,6 +83,16 @@ beforeAll(async () => {
   expect(me.json().permissions.length).toBeGreaterThan(0);
   expect(me.json().role.isSuperadmin).toBe(true);
 
+  // Verifying /api/admin/auth/me works with HttpOnly cookie arena_admin_token on full page reload
+  const meWithCookie = await app.inject({
+    method: "GET",
+    url: "/api/admin/auth/me",
+    headers: { cookie: `arena_admin_token=${adminToken}` },
+  });
+  expect(meWithCookie.statusCode).toBe(200);
+  expect(meWithCookie.json().token).toBe(adminToken);
+  expect(meWithCookie.json().role.isSuperadmin).toBe(true);
+
   const db = getDb();
   const [supportRole] = await db.select().from(roles).where(eq(roles.key, "SUPPORT"));
   expect(supportRole).toBeTruthy();

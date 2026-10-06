@@ -130,16 +130,26 @@ export async function authRoutes(server: FastifyInstance) {
 
   // GET /api/admin/auth/me
   server.get("/api/admin/auth/me", async (request, reply) => {
-    const authHeader = request.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    let token: string | null = (request as any).adminUserToken || null;
+    if (!token) {
+      const authHeader = request.headers.authorization;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        token = authHeader.replace("Bearer ", "").trim();
+      } else if (request.headers.cookie) {
+        const match = request.headers.cookie.match(/arena_admin_token=([^;]+)/);
+        if (match) token = decodeURIComponent(match[1]);
+      }
+    }
+
+    if (!token) {
       return reply.status(401).send({
         ok: false,
-        error: "Unauthorized. Missing or invalid Bearer token.",
+        error: "Unauthorized. Missing or invalid Bearer token or session cookie.",
       });
     }
 
-    const token = authHeader.replace("Bearer ", "").trim();
-    const session = await authService.getSession(token);
+    const session =
+      (request as any).adminUser || (await authService.getSession(token));
 
     if (!session) {
       return reply.status(401).send({
@@ -154,6 +164,7 @@ export async function authRoutes(server: FastifyInstance) {
 
     return {
       ok: true,
+      token,
       user: session,
       role: ctx
         ? {
