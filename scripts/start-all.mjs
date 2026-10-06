@@ -9,7 +9,24 @@
  * dies unexpectedly, stops the sibling and exits non-zero so the platform
  * restarts the whole pair in a consistent state.
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+
+// Run database migrations before starting services so production DB schema
+// is always up to date automatically on platform deploy.
+console.log("[Supervisor] Applying database migrations...");
+try {
+  const migResult = spawnSync("pnpm", ["--filter", "@arena/db", "db:migrate"], {
+    stdio: "inherit",
+    env: process.env,
+  });
+  if (migResult.status !== 0) {
+    console.warn(`[Supervisor] Migration exited with code ${migResult.status}. Continuing startup...`);
+  } else {
+    console.log("[Supervisor] Database migrations applied successfully.");
+  }
+} catch (migErr) {
+  console.warn(`[Supervisor] Migration run skipped/failed: ${migErr.message}`);
+}
 
 const services = [
   { label: "API", filter: "@arena/api" },
