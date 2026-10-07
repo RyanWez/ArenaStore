@@ -92,6 +92,13 @@ const navGroups: NavGroup[] = [
         badge: null,
         permission: 'products.view',
       },
+      {
+        to: '/broadcast',
+        label: 'Broadcast Announcements',
+        icon: 'pi pi-megaphone',
+        badge: null,
+        permission: 'broadcast.view',
+      },
     ],
   },
   {

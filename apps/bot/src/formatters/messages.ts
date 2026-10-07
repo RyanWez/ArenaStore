@@ -440,3 +440,20 @@ ${tgEmoji(BOT_EMOJIS.SPEAKER, "📢")} <b>Channel သို့ Join ထားခ
 
 ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")} <b>အောက်ပါ "Join Channel" ခလုတ်ကို နှိပ်၍ အရင် Join ပြီးပါက "Joined ပြီးပါပြီ" ကို နှိပ်ပေးပါခင်ဗျာ:</b>`;
 }
+
+/**
+ * Formats the maintenance notice shown when bot maintenance mode is active.
+ * Uses custom animated emojis for a welcoming, calm presentation.
+ */
+export function formatMaintenanceMessage(supportUrl?: string): string {
+  const contactText = supportUrl
+    ? `\n\n${tgEmoji(BOT_EMOJIS.CHAT, "💬")} အရေးပေါ် အကူအညီ လိုအပ်ပါက Customer Support သို့ ဆက်သွယ်နိုင်ပါတယ်ခင်ဗျာ။`
+    : "";
+
+  return `<blockquote>${tgEmoji(BOT_EMOJIS.WRENCH, "🔧")} <b>စနစ် ခေတ္တ ပြုပြင်ထိန်းသိမ်းနေပါသည်</b> ❞
+System Maintenance</blockquote>
+
+လူကြီးမင်းတို့ ပိုမို အဆင်ပြေချောမွေ့စွာ အသုံးပြုနိုင်စေဖို့အတွက် စနစ်ကို ခေတ္တ အဆင့်မြှင့်တင်နေပါတယ်ခင်ဗျာ ${tgEmoji(BOT_EMOJIS.SPARKLES, "✨")}
+
+လုပ်ဆောင်ချက်များ မကြာမီ ပြီးစီးတော့မှာဖြစ်ပြီး ပြန်ဖွင့်ချိန်တွင် ပုံမှန်အတိုင်း ပြန်လည် ဝယ်ယူနိုင်ပါမည်။${contactText}`;
+}

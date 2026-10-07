@@ -95,6 +95,113 @@ export async function sendTelegramMessageFloodAware(chatId: string, text: string
   return false;
 }
 
+export interface TelegramBroadcastItemOptions {
+  chatId: string;
+  text: string;
+  imageUrl?: string | null;
+  buttonText?: string | null;
+  buttonUrl?: string | null;
+}
+
+export interface TelegramBroadcastItemResult {
+  success: boolean;
+  blocked?: boolean;
+  error?: string;
+}
+
+/**
+ * Enhanced broadcast sender that supports photo with caption, optional inline CTA button,
+ * flood wait handling (429), and user block detection (403).
+ */
+export async function sendTelegramBroadcastItem(
+  options: TelegramBroadcastItemOptions
+): Promise<TelegramBroadcastItemResult> {
+  const { chatId, text, imageUrl, buttonText, buttonUrl } = options;
+  if (!config.TELEGRAM_BOT_TOKEN) {
+    console.warn("[Telegram Notifier] No TELEGRAM_BOT_TOKEN configured, skipped sending broadcast to", chatId);
+    return { success: false, error: "NO_BOT_TOKEN" };
+  }
+
+  const hasPhoto = Boolean(imageUrl && imageUrl.trim());
+  const method = hasPhoto ? "sendPhoto" : "sendMessage";
+  const url = `https://api.telegram.org/bot${config.TELEGRAM_BOT_TOKEN}/${method}`;
+
+  const replyMarkup =
+    buttonText && buttonText.trim() && buttonUrl && buttonUrl.trim()
+      ? {
+          inline_keyboard: [
+            [
+              {
+                text: buttonText.trim(),
+                url: buttonUrl.trim(),
+              },
+            ],
+          ],
+        }
+      : undefined;
+
+  const body: Record<string, any> = {
+    chat_id: chatId,
+    parse_mode: "HTML",
+    ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+  };
+
+  if (hasPhoto) {
+    body.photo = imageUrl!.trim();
+    body.caption = text;
+  } else {
+    body.text = text;
+  }
+
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (res.ok) {
+        return { success: true };
+      }
+
+      const errJson: any = await res.json().catch(() => ({}));
+      const description = String(errJson?.description || "").toLowerCase();
+
+      // Detect blocked user or chat not found (403 or 400 with specific text)
+      if (
+        res.status === 403 ||
+        description.includes("bot was blocked by the user") ||
+        description.includes("user is deactivated") ||
+        description.includes("chat not found")
+      ) {
+        return { success: false, blocked: true, error: errJson?.description || "BLOCKED_BY_USER" };
+      }
+
+      // Detect flood limit (429)
+      if (res.status === 429 && attempt < MAX_ATTEMPTS) {
+        const retryAfter = Number(errJson?.parameters?.retry_after) || 3;
+        console.warn(`[Telegram Notifier] Flood limit hit for ${chatId} — waiting ${retryAfter}s before retry.`);
+        await sleep(retryAfter * 1000 + 250);
+        continue;
+      }
+
+      console.error("[Telegram Notifier] Failed to send broadcast message:", errJson);
+      return { success: false, error: errJson?.description || `HTTP_${res.status}` };
+    } catch (err: any) {
+      if (attempt < MAX_ATTEMPTS) {
+        await sleep(1000 * attempt);
+        continue;
+      }
+      console.error("[Telegram Notifier] Network error sending broadcast:", err.message);
+      return { success: false, error: err.message || "NETWORK_ERROR" };
+    }
+  }
+
+  return { success: false, error: "MAX_RETRIES_EXCEEDED" };
+}
+
 /**
  * Builds the customer-facing "Restocked!" broadcast message. Product display
  * mirrors the bot's product cards: custom emoji id from the name's {pe:<id>}

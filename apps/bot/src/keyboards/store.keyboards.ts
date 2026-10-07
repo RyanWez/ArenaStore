@@ -507,3 +507,18 @@ export function buildForceJoinKeyboard(channelUrl: string): InlineKeyboard {
       icon_custom_emoji_id: BOT_EMOJIS.CHECK,
     });
 }
+
+/**
+ * Builds the maintenance notice keyboard with Contact Support button.
+ */
+export function buildMaintenanceKeyboard(supportUrl?: string): InlineKeyboard {
+  const keyboard = new InlineKeyboard();
+  if (supportUrl) {
+    keyboard.add({
+      text: "Customer Support ဆက်သွယ်ရန်",
+      url: supportUrl,
+      icon_custom_emoji_id: BOT_EMOJIS.CHAT,
+    });
+  }
+  return keyboard;
+}

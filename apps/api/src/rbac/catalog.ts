@@ -63,6 +63,10 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: "users.manage", page: "User Management", label: "Create & manage admin users", type: "action" },
   { key: "roles.manage", page: "User Management", label: "Create & manage roles", type: "action" },
 
+  // Broadcast Announcements
+  { key: "broadcast.view", page: "Broadcast", label: "View broadcast announcements & history", type: "view" },
+  { key: "broadcast.send", page: "Broadcast", label: "Compose and send broadcasts to bot users", type: "action" },
+
   // Audit Log
   { key: "audit.view", page: "Audit Log", label: "View audit log", type: "view" },
 ];
@@ -84,6 +88,7 @@ export const PERMISSION_DEPENDENCIES: Record<string, string> = {
   "settings.pricing": "settings.view",
   "settings.payments": "settings.view",
   "settings.operations": "settings.view",
+  "broadcast.send": "broadcast.view",
 };
 
 export const PERMISSION_KEYS: ReadonlySet<string> = new Set(

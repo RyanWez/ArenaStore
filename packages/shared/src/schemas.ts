@@ -62,3 +62,14 @@ export const UpdateExchangeRateSchema = z.object({
   defaultMarginPct: z.number().min(0).max(500).optional(),
 });
 export type UpdateExchangeRateInput = z.infer<typeof UpdateExchangeRateSchema>;
+
+// Admin Broadcast Schema
+export const CreateBroadcastSchema = z.object({
+  title: z.string().max(255).optional(),
+  message: z.string().min(1, "Message is required").max(4096, "Message exceeds Telegram 4096 character limit"),
+  imageUrl: z.string().url("Image URL must be valid").optional().or(z.literal("")),
+  buttonText: z.string().max(128).optional().or(z.literal("")),
+  buttonUrl: z.string().url("Button URL must be a valid link").optional().or(z.literal("")),
+  targetAudience: z.enum(["ALL", "CUSTOMERS", "WITH_BALANCE"]).default("ALL"),
+});
+export type CreateBroadcastInput = z.infer<typeof CreateBroadcastSchema>;

@@ -6,6 +6,7 @@ import { healthRoutes } from "./routes/health";
 import { catalogRoutes } from "./routes/catalog";
 import { adminRoutes } from "./routes/admin";
 import { adminUsersRoutes } from "./routes/admin-users";
+import { adminBroadcastRoutes } from "./routes/admin-broadcast";
 import { botRoutes } from "./routes/bot";
 import { authRoutes } from "./routes/auth";
 import { authService } from "./services/auth.service";
@@ -99,6 +100,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await server.register(authRoutes);
   await server.register(adminRoutes);
   await server.register(adminUsersRoutes);
+  await server.register(adminBroadcastRoutes);
   await server.register(botRoutes);
 
   // Custom global error handler

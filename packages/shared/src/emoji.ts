@@ -32,6 +32,7 @@ export const BOT_EMOJIS = {
   KEY: "5278573677900752088",        // 🔑
   WARNING: "5447644880824181073",    // ⚠️
   CANCEL: "5210952531676504517",     // ❌
+  WRENCH: "5332272404167140865",     // 🔧
 
   // Payment Providers
   KBZPAY: "6206487605421280759",     // 🏧 KBZ Pay

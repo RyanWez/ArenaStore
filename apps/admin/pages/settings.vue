@@ -660,6 +660,48 @@ async function handleChangePassword() {
           </span>
         </label>
 
+        <!-- Maintenance Mode Toggle -->
+        <div
+          class="p-4 rounded-xl border transition-colors"
+          :class="settings.isMaintenanceMode
+            ? 'bg-amber-500/10 border-amber-500/30 dark:bg-amber-950/20 dark:border-amber-500/30'
+            : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800'"
+        >
+          <div class="flex items-start justify-between gap-4">
+            <div class="space-y-1">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <i class="pi pi-wrench text-xs text-amber-500"></i>
+                  Maintenance Mode (စနစ် ပြုပြင်ထိန်းသိမ်းမှု Mode)
+                </span>
+                <span
+                  class="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase border"
+                  :class="settings.isMaintenanceMode
+                    ? 'bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30'
+                    : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'"
+                >
+                  {{ settings.isMaintenanceMode ? 'Active (ဖွင့်ထားသည်)' : 'Offline (ပိတ်ထားသည်)' }}
+                </span>
+              </div>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                ဖွင့်ထားပါက customer များ Telegram Bot တွင် ဈေးဝယ်ခြင်း၊ အော်ဒါကြည့်ခြင်းနှင့် ငွေဖြည့်သွင်းခြင်းတို့ကို ယာယီ ရပ်ဆိုင်းထားမည်ဖြစ်ပြီး
+                ပြုပြင်ထိန်းသိမ်းမှု အသိပေးစာ ပြသပေးပါမည်။ <b>(Admin များသာ Bot အား စမ်းသပ်အသုံးပြုနိုင်ပါမည်)</b>
+              </p>
+            </div>
+
+            <label class="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
+              <input
+                type="checkbox"
+                v-model="settings.isMaintenanceMode"
+                class="sr-only peer"
+              />
+              <div
+                class="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-amber-500"
+              ></div>
+            </label>
+          </div>
+        </div>
+
         <!-- Inline Save Action for Support & Rules -->
         <div class="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800/80">
           <span class="text-[11px] text-slate-400">Save changes to support handle and payment timeout</span>

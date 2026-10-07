@@ -249,6 +249,21 @@ export class BotOrderService {
     }
   }
 
+  async getUserRole(telegramId: string): Promise<string | null> {
+    try {
+      const db = getDb();
+      const [row] = await db
+        .select({ role: users.role })
+        .from(users)
+        .where(eq(users.telegramId, telegramId))
+        .limit(1);
+      return row?.role ?? null;
+    } catch (err: any) {
+      console.warn("[BotOrderService] getUserRole DB error:", err.message);
+      return null;
+    }
+  }
+
   /**
    * Returns customer's live wallet balance in MMK from Neon DB.
    */

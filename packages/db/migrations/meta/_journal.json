@@ -43,6 +43,13 @@
       "when": 1791238600000,
       "tag": "0005_merge_duplicate_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791300000000,
+      "tag": "0006_add_broadcasts",
+      "breakpoints": true
     }
   ]
 }

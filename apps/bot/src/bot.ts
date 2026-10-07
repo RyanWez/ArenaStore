@@ -20,6 +20,7 @@ import {
   buildUnmatchedPhotoKeyboard,
   buildForceJoinKeyboard,
   buildHelpKeyboard,
+  buildMaintenanceKeyboard,
 } from "./keyboards/store.keyboards";
 import {
   formatStartMessage,
@@ -39,6 +40,7 @@ import {
   formatOrderDetailMessage,
   formatAccountSuspendedMessage,
   formatForceJoinMessage,
+  formatMaintenanceMessage,
 } from "./formatters/messages";
 import { channelVerificationService } from "./services/channel-verification.service";
 import { notifyAdminGroupDepositSlip } from "./services/admin-group.service";
@@ -118,6 +120,52 @@ export function createBot(): Bot<BotContext> {
       return;
     }
     return next();
+  });
+
+  // 4.05 Maintenance Mode Guard Middleware — holds customer interactions while allowing admin testing
+  bot.use(async (ctx, next) => {
+    const settings = await botSettingsService.getSettings();
+    if (!settings.isMaintenanceMode) {
+      return next();
+    }
+
+    const telegramId = ctx.from?.id ? String(ctx.from.id) : null;
+    if (!telegramId) return next();
+
+    // Whitelist approvers and admin staff from maintenance restriction
+    const approverIds = (settings.telegramApproverIds || botConfig.TELEGRAM_APPROVER_IDS || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const isApprover = approverIds.includes(telegramId);
+
+    if (isApprover) {
+      return next();
+    }
+
+    const role = await botOrderService.getUserRole(telegramId);
+    if (role === "ADMIN" || role === "SUPERADMIN") {
+      return next();
+    }
+
+    // Normal customer blocked during maintenance mode
+    if (ctx.callbackQuery) {
+      await ctx
+        .answerCallbackQuery({
+          text: "🔧 စနစ်ကို ခေတ္တ ပြုပြင်ထိန်းသိမ်းနေပါသဖြင့် မကြာမီ ပုံမှန်အတိုင်း ပြန်လည် အသုံးပြုနိုင်ပါမည်ခင်ဗျာ။",
+          show_alert: true,
+        })
+        .catch(() => {});
+      return;
+    }
+
+    const supportUrl = resolveTelegramSupportUrl(settings.supportTelegramHandle);
+    await ctx
+      .reply(formatMaintenanceMessage(supportUrl), {
+        parse_mode: "HTML",
+        reply_markup: buildMaintenanceKeyboard(supportUrl),
+      })
+      .catch(() => {});
   });
 
   // 4.1 Channel Membership Verification Helper
