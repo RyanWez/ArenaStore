@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const h = vi.hoisted(() => {
   const notifyTopUpApproved = vi.fn();
   const notifyTopUpRejected = vi.fn();
+  const syncTelegramDepositReviewOutcome = vi.fn().mockResolvedValue(true);
   const writeAudit = vi.fn();
   const rows: Record<string, any[]> = {};
   const updates: Array<{ table: string; patch: any }> = [];
@@ -17,6 +18,7 @@ const h = vi.hoisted(() => {
     claimFails = false;
     notifyTopUpApproved.mockReset();
     notifyTopUpRejected.mockReset();
+    syncTelegramDepositReviewOutcome.mockReset().mockResolvedValue(true);
     writeAudit.mockReset();
   };
 
@@ -99,6 +101,7 @@ const h = vi.hoisted(() => {
   return {
     notifyTopUpApproved,
     notifyTopUpRejected,
+    syncTelegramDepositReviewOutcome,
     writeAudit,
     rows,
     updates,
@@ -122,6 +125,7 @@ vi.mock("@arena/db", async () => {
 vi.mock("../../apps/api/src/services/telegram-notifier", () => ({
   notifyTopUpApproved: (...args: any[]) => h.notifyTopUpApproved(...args),
   notifyTopUpRejected: (...args: any[]) => h.notifyTopUpRejected(...args),
+  syncTelegramDepositReviewOutcome: (...args: any[]) => h.syncTelegramDepositReviewOutcome(...args),
 }));
 
 vi.mock("../../apps/api/src/services/audit.service", () => ({
@@ -258,6 +262,15 @@ describe("reviewDeposit service", () => {
         entityId: 10,
       })
     );
+
+    expect(h.syncTelegramDepositReviewOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcome: "APPROVED",
+        reference: "TOP-10000",
+        amountMmk: 10000,
+        customerLabel: "Ma Mya",
+      })
+    );
   });
 
   it("rejects deposit, does not touch wallet, sends rejection notice and writes audit", async () => {
@@ -293,6 +306,15 @@ describe("reviewDeposit service", () => {
         telegramId: "555555",
         reference: "TOP-REJECT11",
         reason: "Slip unreadable",
+      })
+    );
+
+    expect(h.syncTelegramDepositReviewOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcome: "REJECTED",
+        reference: "TOP-REJECT11",
+        actorLabel: "@admin_tg",
+        rejectReason: "Slip unreadable",
       })
     );
 

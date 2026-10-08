@@ -13,6 +13,8 @@ export const topUpRequests = pgTable(
     paymentMethod: varchar("payment_method", { length: 32 }).notNull(), // KPAY, WAVEPAY
     transactionRef: varchar("transaction_ref", { length: 128 }),
     slipFileId: varchar("slip_file_id", { length: 255 }),
+    telegramChatId: varchar("telegram_chat_id", { length: 64 }),
+    telegramMessageId: integer("telegram_message_id"),
     status: varchar("status", { length: 32 }).notNull().default("SUBMITTED"), // SUBMITTED, APPROVED, REJECTED
     reviewedBy: integer("reviewed_by").references(() => users.id, { onDelete: "set null" }),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),

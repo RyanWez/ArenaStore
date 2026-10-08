@@ -8,6 +8,7 @@ export interface DepositReviewApiOk {
   amountMmk: number;
   customerLabel: string;
   telegramId: string;
+  reviewedByLabel?: string;
 }
 
 export type DepositReviewApiResult =
@@ -21,6 +22,7 @@ export type DepositReviewApiResult =
       amountMmk: number;
       customerLabel: string;
       telegramId: string;
+      reviewedByLabel?: string;
     }
   | { ok: false; error: "NOT_FOUND" }
   | { ok: false; error: "FAILED" };
@@ -36,6 +38,7 @@ interface DepositDetails {
   amountMmk: number;
   customerLabel: string;
   telegramId: string;
+  reviewedByLabel?: string;
 }
 
 function parseDetails(json: any): DepositDetails {
@@ -44,6 +47,7 @@ function parseDetails(json: any): DepositDetails {
     amountMmk: Number(json?.amountMmk ?? 0),
     customerLabel: String(json?.customerLabel ?? ""),
     telegramId: String(json?.telegramId ?? ""),
+    reviewedByLabel: json?.reviewedByLabel ? String(json.reviewedByLabel) : undefined,
   };
 }
 

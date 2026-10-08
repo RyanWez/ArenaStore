@@ -148,7 +148,7 @@ export function registerAdminDepositReviewHandlers(bot: Bot<BotContext>) {
             .editMessageCaption(msg.chat.id, msg.message_id, {
               caption: buildReviewOutcomeCaption({
                 outcome,
-                actorLabel: result.ok ? actorLabel : "Admin",
+                actorLabel: result.ok ? actorLabel : (result.reviewedByLabel || "Admin"),
                 reference: result.reference,
                 amountMmk: result.amountMmk,
                 customerLabel: result.customerLabel || "Unknown",
@@ -173,7 +173,7 @@ export function registerAdminDepositReviewHandlers(bot: Bot<BotContext>) {
             ? outcome === "APPROVED"
               ? "✅ အတည်ပြုပြီး"
               : "❌ ပယ်ဖျက်ပြီး"
-            : "⚠️ တခြား admin က ရှေးနေ စစ်ပြီးသားပါ"
+            : `⚠️ ဒီ slip ကို ${result.reviewedByLabel ? result.reviewedByLabel : "တခြား admin"} က စစ်ဆေးပြီးသားပါ`
         );
         return;
       }

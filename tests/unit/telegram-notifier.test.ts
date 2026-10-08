@@ -4,6 +4,7 @@ import {
   notifyOrderRefunded,
   notifyOrderCredentialsResent,
   notifyLowSupplierBalance,
+  syncTelegramDepositReviewOutcome,
 } from "../../apps/api/src/services/telegram-notifier";
 import { config } from "../../apps/api/src/config";
 
@@ -227,6 +228,66 @@ describe("Telegram Notifier Service", () => {
       expect(text).toContain("DIGITALCORE");
       expect(text).toContain("0.25");
       expect(text).toContain("5.00");
+    });
+  });
+
+  describe("syncTelegramDepositReviewOutcome", () => {
+    it("calls editMessageCaption with updated caption and drops inline keyboard when messageId is provided", async () => {
+      mockTelegramOk();
+      config.TELEGRAM_GROUP_CHAT_ID = "-1001234567890";
+
+      const res = await syncTelegramDepositReviewOutcome({
+        outcome: "APPROVED",
+        actorLabel: "Arena Superadmin (Dashboard)",
+        reference: "TOP-123456",
+        amountMmk: 5000,
+        customerLabel: "@testuser",
+        postedAt: new Date(Date.UTC(2026, 9, 7, 5, 0)),
+        chatId: "-1001234567890",
+        messageId: 999,
+      });
+
+      expect(res).toBe(true);
+      expect(global.fetch).toHaveBeenCalledWith(
+        `https://api.telegram.org/bot${TEST_TOKEN}/editMessageCaption`,
+        expect.objectContaining({ method: "POST" })
+      );
+
+      const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+      expect(body.chat_id).toBe("-1001234567890");
+      expect(body.message_id).toBe(999);
+      expect(body.caption).toContain("TOP-123456");
+      expect(body.caption).toContain("Arena Superadmin (Dashboard) က အတည်ပြုပြီး");
+      expect(body.reply_markup).toEqual({ inline_keyboard: [] });
+    });
+
+    it("falls back to sendMessage to the topic when messageId is missing", async () => {
+      mockTelegramOk();
+      config.TELEGRAM_GROUP_CHAT_ID = "-1001234567890";
+
+      const res = await syncTelegramDepositReviewOutcome({
+        outcome: "APPROVED",
+        actorLabel: "Arena Superadmin (Dashboard)",
+        reference: "TOP-999999",
+        amountMmk: 10000,
+        customerLabel: "@customer",
+        postedAt: new Date(),
+        chatId: "-1001234567890",
+        topicId: "14",
+      });
+
+      expect(res).toBe(true);
+      expect(global.fetch).toHaveBeenCalledWith(
+        `https://api.telegram.org/bot${TEST_TOKEN}/sendMessage`,
+        expect.objectContaining({ method: "POST" })
+      );
+
+      const body = JSON.parse((global.fetch as any).mock.calls[0][1].body);
+      expect(body.chat_id).toBe("-1001234567890");
+      expect(body.message_thread_id).toBe(14);
+      expect(body.text).toContain("TOP-999999");
+      expect(body.text).toContain("Arena Superadmin (Dashboard)");
+      expect(body.text).toContain("က အတည်ပြုပြီး");
     });
   });
 });

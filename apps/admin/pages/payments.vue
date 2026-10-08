@@ -345,7 +345,7 @@ async function approveDeposit(slip: DepositItem, event?: Event) {
       slip.status = 'APPROVED'
       isSlipModalOpen.value = false
       toast.success(
-        `Top-Up ${slip.topUpId} approved! +${slip.depositAmountMmk.toLocaleString()} Ks credited to ${slip.customerName}. Customer received instant Telegram message.`,
+        `Top-Up ${slip.topUpId} approved! +${slip.depositAmountMmk.toLocaleString()} Ks credited to ${slip.customerName}. Customer notified & Telegram group slip updated.`,
         'Wallet Credited'
       )
       await fetchSlips(true)
@@ -396,7 +396,7 @@ async function confirmReject() {
     if (res && res.ok) {
       selectedSlip.value.status = 'REJECTED'
       toast.warn(
-        `Top-Up ${topUpId} rejected for ${user}. Reason: ${reasonText}. Customer notified on Telegram.`,
+        `Top-Up ${topUpId} rejected for ${user}. Reason: ${reasonText}. Customer notified & Telegram group slip updated.`,
         'Deposit Slip Rejected'
       )
       isRejectModalOpen.value = false

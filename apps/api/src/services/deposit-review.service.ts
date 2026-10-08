@@ -1,6 +1,10 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb, topUpRequests, users, wallets, walletLedger } from "@arena/db";
-import { notifyTopUpApproved, notifyTopUpRejected } from "./telegram-notifier";
+import {
+  notifyTopUpApproved,
+  notifyTopUpRejected,
+  syncTelegramDepositReviewOutcome,
+} from "./telegram-notifier";
 import { writeAudit } from "./audit.service";
 
 export type DepositReviewAction = "APPROVE" | "REJECT";
@@ -27,6 +31,7 @@ export type DepositReviewOutcome =
       newBalanceMmk: number;
       customerLabel: string;
       telegramId: string | null;
+      reviewedByLabel?: string;
     }
   | {
       ok: true;
@@ -36,6 +41,7 @@ export type DepositReviewOutcome =
       rejectReason: string;
       customerLabel: string;
       telegramId: string | null;
+      reviewedByLabel?: string;
     }
   | { ok: false; code: "NOT_FOUND" }
   | {
@@ -46,6 +52,7 @@ export type DepositReviewOutcome =
       amountMmk: number;
       customerLabel: string;
       telegramId: string | null;
+      reviewedByLabel?: string;
     };
 
 /** Statuses a deposit can still be reviewed from. */
@@ -79,6 +86,70 @@ export function buildCustomerDisplayName(u: {
   return `Customer #${u.id}`;
 }
 
+/** Resolves the human-readable reviewer label for audit and Telegram notifications. */
+export async function resolveActorLabel(
+  actor: DepositReviewActor,
+  db: ReturnType<typeof getDb>
+): Promise<string> {
+  if (actor.kind === "ADMIN" && actor.adminUserId) {
+    try {
+      const [staff] = await db
+        .select({
+          firstName: users.firstName,
+          lastName: users.lastName,
+          username: users.username,
+          email: users.email,
+        })
+        .from(users)
+        .where(eq(users.id, actor.adminUserId))
+        .limit(1);
+
+      if (staff) {
+        const fullName = [staff.firstName, staff.lastName].filter(Boolean).join(" ").trim();
+        const baseName = fullName || (staff.username ? `@${staff.username}` : staff.email || "Admin");
+        return `${baseName} (Dashboard)`;
+      }
+    } catch {
+      // fallback
+    }
+    return "Admin (Dashboard)";
+  }
+
+  if (actor.kind === "TELEGRAM") {
+    return actor.telegramUsername ? `@${actor.telegramUsername}` : "Admin (Telegram)";
+  }
+
+  return "Admin";
+}
+
+/** Resolves the past reviewer label when deposit was already reviewed. */
+export async function resolvePastReviewerLabel(
+  reviewedBy: number | null | undefined,
+  db: ReturnType<typeof getDb>
+): Promise<string> {
+  if (!reviewedBy) return "Admin";
+  try {
+    const [staff] = await db
+      .select({
+        firstName: users.firstName,
+        lastName: users.lastName,
+        username: users.username,
+        email: users.email,
+      })
+      .from(users)
+      .where(eq(users.id, reviewedBy))
+      .limit(1);
+
+    if (staff) {
+      const fullName = [staff.firstName, staff.lastName].filter(Boolean).join(" ").trim();
+      return `${fullName || (staff.username ? `@${staff.username}` : staff.email || "Admin")} (Dashboard)`;
+    }
+  } catch {
+    // fallback
+  }
+  return "Admin";
+}
+
 /**
  * Approves or rejects a customer deposit — the single implementation shared by
  * the admin panel route (POST /api/admin/deposits/:id/review) and the internal
@@ -109,8 +180,10 @@ export async function reviewDeposit(params: {
   const { topUp, user } = depositRow;
   const customerLabel = buildCustomerDisplayName(user);
   const reviewerId = actor.kind === "ADMIN" ? (actor.adminUserId ?? null) : null;
+  const actorLabel = await resolveActorLabel(actor, db);
 
   if (topUp.status !== "SUBMITTED" && topUp.status !== "PENDING") {
+    const reviewedByLabel = await resolvePastReviewerLabel(topUp.reviewedBy, db);
     return {
       ok: false,
       code: "ALREADY_REVIEWED",
@@ -119,6 +192,7 @@ export async function reviewDeposit(params: {
       amountMmk: topUp.amountMmk,
       customerLabel,
       telegramId: user.telegramId,
+      reviewedByLabel,
     };
   }
 
@@ -201,6 +275,7 @@ export async function reviewDeposit(params: {
       });
     } catch (err) {
       if (err instanceof DepositAlreadyReviewedError) {
+        const reviewedByLabel = await resolvePastReviewerLabel(topUp.reviewedBy, db);
         return {
           ok: false,
           code: "ALREADY_REVIEWED",
@@ -209,6 +284,7 @@ export async function reviewDeposit(params: {
           amountMmk: topUp.amountMmk,
           customerLabel,
           telegramId: user.telegramId,
+          reviewedByLabel,
         };
       }
       throw err;
@@ -223,6 +299,21 @@ export async function reviewDeposit(params: {
         newBalanceMmk: newBalance,
       });
     }
+
+    // Sync review outcome to Telegram admin group
+    await syncTelegramDepositReviewOutcome({
+      outcome: "APPROVED",
+      actorLabel,
+      reference: topUp.reference,
+      amountMmk: topUp.amountMmk,
+      customerLabel,
+      telegramId: user.telegramId,
+      postedAt: topUp.createdAt,
+      chatId: topUp.telegramChatId,
+      messageId: topUp.telegramMessageId,
+    }).catch((err: any) => {
+      console.warn("[DepositReview] Failed to sync approval to Telegram group:", err?.message);
+    });
 
     await writeAudit({
       actorId: reviewerId,
@@ -248,6 +339,7 @@ export async function reviewDeposit(params: {
       newBalanceMmk: newBalance,
       customerLabel,
       telegramId: user.telegramId,
+      reviewedByLabel: actorLabel,
     };
   }
 
@@ -272,6 +364,7 @@ export async function reviewDeposit(params: {
     .returning({ id: topUpRequests.id });
 
   if (!rejected) {
+    const reviewedByLabel = await resolvePastReviewerLabel(topUp.reviewedBy, db);
     return {
       ok: false,
       code: "ALREADY_REVIEWED",
@@ -280,6 +373,7 @@ export async function reviewDeposit(params: {
       amountMmk: topUp.amountMmk,
       customerLabel,
       telegramId: user.telegramId,
+      reviewedByLabel,
     };
   }
 
@@ -292,6 +386,22 @@ export async function reviewDeposit(params: {
       reason,
     });
   }
+
+  // Sync review outcome to Telegram admin group
+  await syncTelegramDepositReviewOutcome({
+    outcome: "REJECTED",
+    actorLabel,
+    reference: topUp.reference,
+    amountMmk: topUp.amountMmk,
+    customerLabel,
+    telegramId: user.telegramId,
+    postedAt: topUp.createdAt,
+    chatId: topUp.telegramChatId,
+    messageId: topUp.telegramMessageId,
+    rejectReason: reason,
+  }).catch((err: any) => {
+    console.warn("[DepositReview] Failed to sync rejection to Telegram group:", err?.message);
+  });
 
   await writeAudit({
     actorId: reviewerId,
@@ -317,5 +427,6 @@ export async function reviewDeposit(params: {
     rejectReason: reason,
     customerLabel,
     telegramId: user.telegramId,
+    reviewedByLabel: actorLabel,
   };
 }

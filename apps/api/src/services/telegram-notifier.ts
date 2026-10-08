@@ -5,6 +5,7 @@ import {
   escapeHtml,
   parseCustomEmoji,
   findBrandEmojiId,
+  buildReviewOutcomeCaption,
 } from "@arena/shared";
 import { formatCredentialsText } from "./encryption";
 import { getDb, appSettings } from "@arena/db";
@@ -287,6 +288,129 @@ export async function notifyTopUpRejected(params: {
     `${chat} အချက်အလက်များ လွဲမှားနေပါက သို့မဟုတ် အကူအညီ လိုအပ်ပါက Admin Support သို့ ဆက်သွယ်နိုင်ပါသည်။`;
 
   return sendTelegramMessage(telegramId, text);
+}
+
+export interface SyncDepositReviewParams {
+  outcome: "APPROVED" | "REJECTED";
+  actorLabel: string;
+  reference: string;
+  amountMmk: number;
+  customerLabel: string;
+  telegramId?: string | null;
+  postedAt: Date;
+  chatId?: string | null;
+  messageId?: number | null;
+  topicId?: string | null;
+  rejectReason?: string;
+}
+
+/**
+ * Synchronizes a deposit slip review outcome to the Admin Telegram Group:
+ * 1. Edits the original slip photo message in-place:
+ *    - Updates caption with outcome + reviewer ("✅ @Admin က အတည်ပြုပြီး")
+ *    - Removes inline buttons (reply_markup: { inline_keyboard: [] })
+ * 2. If messageId is missing or editMessageCaption fails (e.g. > 48 hours),
+ *    sends a clear settlement notice message to the deposit topic.
+ */
+export async function syncTelegramDepositReviewOutcome(params: SyncDepositReviewParams): Promise<boolean> {
+  if (!config.TELEGRAM_BOT_TOKEN) {
+    console.warn("[Telegram Notifier] No TELEGRAM_BOT_TOKEN configured, skipped syncing deposit review outcome to group");
+    return false;
+  }
+
+  let chatId = params.chatId || config.TELEGRAM_GROUP_CHAT_ID;
+  let topicId = params.topicId;
+
+  if (!chatId || !topicId) {
+    try {
+      const db = getDb();
+      const settings = await db
+        .select()
+        .from(appSettings)
+        .where(
+          eq(appSettings.key, "telegramGroupChatId")
+        );
+      if (!chatId && settings[0]?.value) {
+        chatId = settings[0].value;
+      }
+      if (!topicId) {
+        const [topicSetting] = await db
+          .select()
+          .from(appSettings)
+          .where(eq(appSettings.key, "telegramDepositTopicId"));
+        if (topicSetting?.value) {
+          topicId = topicSetting.value;
+        }
+      }
+    } catch (err: any) {
+      console.warn("[Telegram Notifier] Failed to read telegram settings from DB:", err.message);
+    }
+  }
+
+  if (!chatId) {
+    console.warn("[Telegram Notifier] No admin group chatId configured, skipped syncing deposit review.");
+    return false;
+  }
+
+  const updatedCaption = buildReviewOutcomeCaption({
+    outcome: params.outcome,
+    actorLabel: params.actorLabel,
+    reference: params.reference,
+    amountMmk: params.amountMmk,
+    customerLabel: params.customerLabel,
+    telegramId: params.telegramId || undefined,
+    postedAt: params.postedAt,
+  });
+
+  // 1. Try editing the original slip message in-place if messageId is known
+  if (params.messageId && params.messageId > 0) {
+    try {
+      const editUrl = `https://api.telegram.org/bot${config.TELEGRAM_BOT_TOKEN}/editMessageCaption`;
+      const res = await fetch(editUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          message_id: params.messageId,
+          caption: updatedCaption,
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: [] },
+        }),
+      });
+
+      if (res.ok) {
+        return true;
+      }
+
+      const errJson = await res.json().catch(() => ({}));
+      console.warn(`[Telegram Notifier] editMessageCaption failed for message ${params.messageId}:`, errJson);
+    } catch (err: any) {
+      console.warn(`[Telegram Notifier] Network error during editMessageCaption:`, err.message);
+    }
+  }
+
+  // 2. Fallback: If no messageId or edit failed (e.g. > 48h limit), post a settlement notice to the topic
+  try {
+    const threadIdNum = topicId ? parseInt(topicId, 10) : undefined;
+    const receipt = tgEmoji(BOT_EMOJIS.RECEIPT, "🧾");
+    const money = tgEmoji(BOT_EMOJIS.MONEY, "💰");
+    const person = tgEmoji(BOT_EMOJIS.CHAT, "👤");
+    const statusLine = params.outcome === "APPROVED"
+      ? `✅ <b>${escapeHtml(params.actorLabel)}</b> က အတည်ပြုပြီး`
+      : `❌ <b>${escapeHtml(params.actorLabel)}</b> က ပယ်ဖျက်ပြီး${params.rejectReason ? `\n<i>အကြောင်းပြချက်: ${escapeHtml(params.rejectReason)}</i>` : ""}`;
+
+    const text =
+      `${tgEmoji(BOT_EMOJIS.MONEY, "💰")} <b>Deposit Slip စစ်ဆေးပြီးပါပြီ</b>\n\n` +
+      `${receipt} <b>Reference:</b> <code>${escapeHtml(params.reference)}</code>\n` +
+      `${money} <b>ပမာဏ:</b> <b>${params.amountMmk.toLocaleString("en-US")} MMK</b>\n` +
+      `${person} <b>ဝယ်ယူသူ:</b> ${escapeHtml(params.customerLabel)}\n\n` +
+      `${statusLine}`;
+
+    return await sendTelegramMessage(chatId, text, Number.isFinite(threadIdNum) && threadIdNum! > 0 ? threadIdNum : undefined);
+  } catch (err: any) {
+    console.error(`[Telegram Notifier] Fallback notice failed:`, err.message);
+    return false;
+  }
 }
 
 /**

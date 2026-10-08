@@ -1,5 +1,7 @@
 import type { Api } from "grammy";
 import type { InlineKeyboardMarkup, Message } from "grammy/types";
+import { eq } from "drizzle-orm";
+import { getDb, topUpRequests } from "@arena/db";
 import { BOT_EMOJIS, tgEmoji, escapeHtml } from "@arena/shared";
 import { botSettingsService } from "./settings.service";
 
@@ -54,67 +56,19 @@ export function buildDepositRejectConfirmKeyboard(topUpId: number): InlineKeyboa
 /** Removes the inline keyboard entirely — Telegram keeps the old one otherwise. */
 export const EMPTY_KEYBOARD: InlineKeyboardMarkup = { inline_keyboard: [] };
 
-function formatMmt(date: Date): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Yangon",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
-}
+import {
+  formatMmt,
+  SLIP_TITLE_HTML,
+  buildSlipCaptionBody,
+  buildReviewOutcomeCaption,
+} from "@arena/shared";
 
-const SLIP_TITLE_HTML = `${tgEmoji(BOT_EMOJIS.MONEY, "💰")} <b>Deposits အသစ်</b>`;
-
-/**
- * The slip details block (reference/amount/customer/time) shared by the
- * initial relay caption and the post-review caption edit, so the message
- * looks identical before and after an admin acts on it.
- */
-export function buildSlipCaptionBody(params: {
-  reference: string;
-  amountMmk: number;
-  customerLabel: string;
-  telegramId?: string;
-  postedAt: Date;
-}): string {
-  const receipt = tgEmoji(BOT_EMOJIS.RECEIPT, "🧾");
-  const money = tgEmoji(BOT_EMOJIS.MONEY, "💰");
-  const person = tgEmoji(BOT_EMOJIS.CHAT, "👤");
-  const clock = tgEmoji(BOT_EMOJIS.CLOCK, "🕐");
-
-  return (
-    `${receipt} <b>Reference:</b> <code>${escapeHtml(params.reference)}</code>\n` +
-    `${money} <b>ပမာဏ:</b> <b>${params.amountMmk.toLocaleString("en-US")} MMK</b>\n` +
-    `${person} <b>ဝယ်ယူသူ:</b> ${escapeHtml(params.customerLabel)}` +
-    (params.telegramId ? ` (<code>${escapeHtml(params.telegramId)}</code>)` : "") +
-    `\n${clock} <i>${formatMmt(params.postedAt)} MMT</i>`
-  );
-}
-
-/**
- * Post-review caption: same details block with the footer replaced by a short
- * outcome line — "✅ @admin က အတည်ပြုပြီး" / "❌ @admin က ပယ်ဖျက်ပြီး" — so the
- * next admin scanning the group sees the slip is already settled.
- */
-export function buildReviewOutcomeCaption(params: {
-  outcome: "APPROVED" | "REJECTED";
-  actorLabel: string;
-  reference: string;
-  amountMmk: number;
-  customerLabel: string;
-  telegramId?: string;
-  postedAt: Date;
-}): string {
-  const statusLine =
-    params.outcome === "APPROVED"
-      ? `✅ ${escapeHtml(params.actorLabel)} က အတည်ပြုပြီး`
-      : `❌ ${escapeHtml(params.actorLabel)} က ပယ်ဖျက်ပြီး`;
-
-  return `${SLIP_TITLE_HTML}\n\n${buildSlipCaptionBody(params)}\n\n${statusLine}`;
-}
+export {
+  formatMmt,
+  SLIP_TITLE_HTML,
+  buildSlipCaptionBody,
+  buildReviewOutcomeCaption,
+};
 
 /**
  * Turns the admin-mentions setting (comma/space/pipe separated Telegram
@@ -199,6 +153,24 @@ export async function notifyAdminGroupDepositSlip(
       } catch (err) {
         if (attempt >= MAX_ATTEMPTS) throw err;
         await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+      }
+    }
+
+    if (sent?.message_id) {
+      try {
+        const db = getDb();
+        await db
+          .update(topUpRequests)
+          .set({
+            telegramChatId: String(sent.chat.id),
+            telegramMessageId: sent.message_id,
+          })
+          .where(eq(topUpRequests.reference, notice.reference));
+      } catch (dbErr: any) {
+        console.warn(
+          `[AdminGroup] Failed to record telegram message id for ${notice.reference}:`,
+          dbErr?.message
+        );
       }
     }
 
