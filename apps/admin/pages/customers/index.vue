@@ -178,6 +178,7 @@ watch(currentPage, () => {
 onMounted(() => {
   fetchCustomers(false)
   pollInterval = setInterval(() => {
+    if (typeof document !== 'undefined' && document.hidden) return
     fetchCustomers(true)
   }, 4000)
 })

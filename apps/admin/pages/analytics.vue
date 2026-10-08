@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, defineAsyncComponent } from 'vue'
 import { useAuth } from '~/composables/useAuth'
 import { useToast } from '~/composables/useToast'
 import { getTodayMyanmarDate, type DateFilterPreset } from '~/utils/date'
-import AnalyticsTrendChart from '~/components/analytics/AnalyticsTrendChart.vue'
-import AnalyticsCategoryDonut from '~/components/analytics/AnalyticsCategoryDonut.vue'
+
+const AnalyticsTrendChart = defineAsyncComponent(() => import('~/components/analytics/AnalyticsTrendChart.vue'))
+const AnalyticsCategoryDonut = defineAsyncComponent(() => import('~/components/analytics/AnalyticsCategoryDonut.vue'))
 
 interface AnalyticsSummary {
   totalRevenueMmk: number

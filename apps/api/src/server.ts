@@ -1,6 +1,8 @@
 import Fastify, { FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import sensible from "@fastify/sensible";
+import compress from "@fastify/compress";
+import etag from "@fastify/etag";
 import { registerRateLimit } from "./plugins/rate-limit";
 import { healthRoutes } from "./routes/health";
 import { catalogRoutes } from "./routes/catalog";
@@ -54,6 +56,8 @@ export async function buildServer(): Promise<FastifyInstance> {
     credentials: true,
   });
   await server.register(sensible);
+  await server.register(compress, { global: true, threshold: 1024 });
+  await server.register(etag);
   await registerRateLimit(server);
 
   // Authentication preHandler hook for /api/admin/* — login is the only exempt

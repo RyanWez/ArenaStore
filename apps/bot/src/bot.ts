@@ -50,6 +50,10 @@ import { BOT_EMOJIS, tgEmoji, escapeHtml } from "@arena/shared";
 export function createBot(): Bot<BotContext> {
   const bot = new Bot<BotContext>(botConfig.TELEGRAM_BOT_TOKEN);
 
+  // In-flight locks to prevent concurrent duplicate actions (double-taps / burst photos)
+  const activeTopUpLocks = new Set<string>();
+  const activePhotoUploadLocks = new Set<string>();
+
   // 0. Admin-Group Deposit Review Callbacks
   // Must be registered BEFORE the private-chat-only guard below: the guard
   // swallows every non-private update, so the ✅/❌ buttons on relayed slip
@@ -626,56 +630,66 @@ export function createBot(): Bot<BotContext> {
     const amount = parseInt(ctx.match[1], 10);
     const telegramId = String(ctx.from?.id || "");
 
-    const topUp = await botOrderService.createTopUpRequest({ telegramId, amountMmk: amount });
-    const unmatchedPhoto = ctx.session.unmatchedPhotoFileId;
-
-    if (unmatchedPhoto) {
-      ctx.session.unmatchedPhotoFileId = undefined;
-      ctx.session.awaitingTopUpSlip = undefined;
-      ctx.session.awaitingCustomTopUp = false;
-
-      await botOrderService.submitTopUpSlip({
-        topUpId: topUp.reference,
-        telegramId,
-        fileId: unmatchedPhoto,
-        amountMmk: amount,
-        paymentMethod: "KPAY",
-      });
-      void notifyAdminGroupDepositSlip(ctx.api, ctx.from, {
-        topUpId: topUp.id,
-        reference: topUp.reference,
-        amountMmk: amount,
-        fileId: unmatchedPhoto,
-        telegramId,
-      });
-
-      await ctx.answerCallbackQuery({ text: "ပြေစာပုံကို အလိုအလျောက် ပူးတွဲတင်ပြပြီးပါပြီ!" });
-      await ctx.editMessageText(
-        formatTopUpSlipReceivedMessage({ amountMmk: amount, reference: topUp.reference }),
-        {
-          parse_mode: "HTML",
-          reply_markup: buildMainMenuKeyboard(),
-        }
-      );
+    if (activeTopUpLocks.has(telegramId)) {
+      await ctx.answerCallbackQuery({ text: "ခေတ္တစောင့်ပေးပါခင်ဗျာ..." }).catch(() => {});
       return;
     }
+    activeTopUpLocks.add(telegramId);
 
-    ctx.session.awaitingTopUpSlip = {
-      topUpId: topUp.reference,
-      amountMmk: amount,
-      reference: topUp.reference,
-      dbId: topUp.id,
-    };
-    ctx.session.awaitingCustomTopUp = false;
-    const settings = await botSettingsService.getSettings();
+    try {
+      const topUp = await botOrderService.createTopUpRequest({ telegramId, amountMmk: amount });
+      const unmatchedPhoto = ctx.session.unmatchedPhotoFileId;
 
-    await ctx.editMessageText(
-      formatTopUpInvoiceMessage({ amountMmk: amount, reference: topUp.reference, paymentInfo: settings }),
-      {
-        parse_mode: "HTML",
-        reply_markup: buildTopUpInvoiceKeyboard(),
+      if (unmatchedPhoto) {
+        ctx.session.unmatchedPhotoFileId = undefined;
+        ctx.session.awaitingTopUpSlip = undefined;
+        ctx.session.awaitingCustomTopUp = false;
+
+        await botOrderService.submitTopUpSlip({
+          topUpId: topUp.reference,
+          telegramId,
+          fileId: unmatchedPhoto,
+          amountMmk: amount,
+          paymentMethod: "KPAY",
+        });
+        void notifyAdminGroupDepositSlip(ctx.api, ctx.from, {
+          topUpId: topUp.id,
+          reference: topUp.reference,
+          amountMmk: amount,
+          fileId: unmatchedPhoto,
+          telegramId,
+        });
+
+        await ctx.answerCallbackQuery({ text: "ပြေစာပုံကို အလိုအလျောက် ပူးတွဲတင်ပြပြီးပါပြီ!" });
+        await ctx.editMessageText(
+          formatTopUpSlipReceivedMessage({ amountMmk: amount, reference: topUp.reference }),
+          {
+            parse_mode: "HTML",
+            reply_markup: buildMainMenuKeyboard(),
+          }
+        );
+        return;
       }
-    );
+
+      ctx.session.awaitingTopUpSlip = {
+        topUpId: topUp.reference,
+        amountMmk: amount,
+        reference: topUp.reference,
+        dbId: topUp.id,
+      };
+      ctx.session.awaitingCustomTopUp = false;
+      const settings = await botSettingsService.getSettings();
+
+      await ctx.editMessageText(
+        formatTopUpInvoiceMessage({ amountMmk: amount, reference: topUp.reference, paymentInfo: settings }),
+        {
+          parse_mode: "HTML",
+          reply_markup: buildTopUpInvoiceKeyboard(),
+        }
+      );
+    } finally {
+      setTimeout(() => activeTopUpLocks.delete(telegramId), 1500);
+    }
   });
 
   // 14. Top-Up for Deficit Shortcut (Recommendation A)
@@ -871,75 +885,85 @@ export function createBot(): Bot<BotContext> {
 
   // 21. Customer Sends Photo (Top-Up Slip Proof Receipt)
   bot.on("message:photo", async (ctx) => {
-    let topUpSlip = ctx.session.awaitingTopUpSlip;
     const telegramId = String(ctx.from?.id || "");
 
-    // Fallback: If session was lost (e.g. process restart), query DB for latest pending top-up
-    if (!topUpSlip && telegramId) {
-      const pending = await botOrderService.getLatestPendingTopUp(telegramId);
-      if (pending) {
-        topUpSlip = {
-          topUpId: pending.reference,
-          amountMmk: pending.amountMmk,
-          reference: pending.reference,
-          dbId: pending.id,
-        };
-      }
+    if (activePhotoUploadLocks.has(telegramId)) {
+      return; // Debounce burst photos
     }
+    activePhotoUploadLocks.add(telegramId);
 
-    // Top-up receipt slip
-    if (topUpSlip) {
-      const { topUpId, amountMmk, reference } = topUpSlip;
+    try {
+      let topUpSlip = ctx.session.awaitingTopUpSlip;
+
+      // Fallback: If session was lost (e.g. process restart), query DB for latest pending top-up
+      if (!topUpSlip && telegramId) {
+        const pending = await botOrderService.getLatestPendingTopUp(telegramId);
+        if (pending) {
+          topUpSlip = {
+            topUpId: pending.reference,
+            amountMmk: pending.amountMmk,
+            reference: pending.reference,
+            dbId: pending.id,
+          };
+        }
+      }
+
+      // Top-up receipt slip
+      if (topUpSlip) {
+        const { topUpId, amountMmk, reference } = topUpSlip;
+        const photo = ctx.message.photo;
+        const highestRes = photo[photo.length - 1];
+        const fileId = highestRes.file_id;
+
+        await botOrderService.submitTopUpSlip({
+          topUpId: reference || topUpId,
+          telegramId,
+          fileId,
+          amountMmk,
+          paymentMethod: "KPAY",
+        });
+        void notifyAdminGroupDepositSlip(ctx.api, ctx.from, {
+          topUpId: topUpSlip.dbId || "",
+          reference: reference || topUpId,
+          amountMmk,
+          fileId,
+          telegramId,
+        });
+
+        ctx.session.awaitingTopUpSlip = undefined;
+        ctx.session.awaitingCustomTopUp = false;
+        ctx.session.unmatchedPhotoFileId = undefined;
+
+        await ctx.reply(formatTopUpSlipReceivedMessage({ amountMmk, reference }), {
+          parse_mode: "HTML",
+          reply_markup: buildMainMenuKeyboard(),
+          reply_parameters: { message_id: ctx.message.message_id },
+        });
+        return;
+      }
+
+      // Unmatched photo: user sent photo before selecting top-up amount
       const photo = ctx.message.photo;
       const highestRes = photo[photo.length - 1];
-      const fileId = highestRes.file_id;
-
-      await botOrderService.submitTopUpSlip({
-        topUpId: reference || topUpId,
-        telegramId,
-        fileId,
-        amountMmk,
-        paymentMethod: "KPAY",
-      });
-      void notifyAdminGroupDepositSlip(ctx.api, ctx.from, {
-        topUpId: topUpSlip.dbId || "",
-        reference: reference || topUpId,
-        amountMmk,
-        fileId,
-        telegramId,
-      });
-
-      ctx.session.awaitingTopUpSlip = undefined;
-      ctx.session.awaitingCustomTopUp = false;
-      ctx.session.unmatchedPhotoFileId = undefined;
-
-      await ctx.reply(formatTopUpSlipReceivedMessage({ amountMmk, reference }), {
-        parse_mode: "HTML",
-        reply_markup: buildMainMenuKeyboard(),
-        reply_parameters: { message_id: ctx.message.message_id },
-      });
-      return;
-    }
-
-    // Unmatched photo: user sent photo before selecting top-up amount
-    const photo = ctx.message.photo;
-    const highestRes = photo[photo.length - 1];
-    const fileId = highestRes?.file_id;
-    if (fileId) {
-      ctx.session.unmatchedPhotoFileId = fileId;
-    }
-
-    // Friendly photo guidance with parse_mode: "HTML" and quick preset options
-    await ctx.reply(
-      `${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>ငွေလွှဲပြေစာ ပုံ လက်ခံရရှိပါသည်!</b>\n\n` +
-      `Wallet ထဲသို့ ငွေဖြည့်သွင်းလိုပါက လွှဲပြောင်းခဲ့သည့် <b>ငွေပမာဏ (MMK)</b> ကို အောက်တွင် ရွေးချယ်ပေးပါခင်ဗျာ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}\n\n` +
-      `<i>(ရွေးချယ်ပြီးပါက သင်ပေးပို့ထားသော ပြေစာပုံဖြင့် အလိုအလျောက် ပူးတွဲတင်ပြပေးသွားပါမည်)</i>`,
-      {
-        parse_mode: "HTML",
-        reply_markup: buildUnmatchedPhotoKeyboard(),
-        reply_parameters: { message_id: ctx.message.message_id },
+      const fileId = highestRes?.file_id;
+      if (fileId) {
+        ctx.session.unmatchedPhotoFileId = fileId;
       }
-    );
+
+      // Friendly photo guidance with parse_mode: "HTML" and quick preset options
+      await ctx.reply(
+        `${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>ငွေလွှဲပြေစာ ပုံ လက်ခံရရှိပါသည်!</b>\n\n` +
+        `Wallet ထဲသို့ ငွေဖြည့်သွင်းလိုပါက လွှဲပြောင်းခဲ့သည့် <b>ငွေပမာဏ (MMK)</b> ကို အောက်တွင် ရွေးချယ်ပေးပါခင်ဗျာ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}\n\n` +
+        `<i>(ရွေးချယ်ပြီးပါက သင်ပေးပို့ထားသော ပြေစာပုံဖြင့် အလိုအလျောက် ပူးတွဲတင်ပြပေးသွားပါမည်)</i>`,
+        {
+          parse_mode: "HTML",
+          reply_markup: buildUnmatchedPhotoKeyboard(),
+          reply_parameters: { message_id: ctx.message.message_id },
+        }
+      );
+    } finally {
+      setTimeout(() => activePhotoUploadLocks.delete(telegramId), 2500);
+    }
   });
 
   // 22. Text Handler (Custom Quantity, Custom Top-Up, Custom Emoji Detection, Fallback)
@@ -981,57 +1005,66 @@ export function createBot(): Bot<BotContext> {
         return;
       }
 
-      ctx.session.awaitingCustomTopUp = false;
-      const topUp = await botOrderService.createTopUpRequest({ telegramId, amountMmk: amount });
-      const unmatchedPhoto = ctx.session.unmatchedPhotoFileId;
+      if (activeTopUpLocks.has(telegramId)) {
+        return;
+      }
+      activeTopUpLocks.add(telegramId);
 
-      if (unmatchedPhoto) {
-        ctx.session.unmatchedPhotoFileId = undefined;
-        ctx.session.awaitingTopUpSlip = undefined;
+      try {
+        ctx.session.awaitingCustomTopUp = false;
+        const topUp = await botOrderService.createTopUpRequest({ telegramId, amountMmk: amount });
+        const unmatchedPhoto = ctx.session.unmatchedPhotoFileId;
 
-        await botOrderService.submitTopUpSlip({
+        if (unmatchedPhoto) {
+          ctx.session.unmatchedPhotoFileId = undefined;
+          ctx.session.awaitingTopUpSlip = undefined;
+
+          await botOrderService.submitTopUpSlip({
+            topUpId: topUp.reference,
+            telegramId,
+            fileId: unmatchedPhoto,
+            amountMmk: amount,
+            paymentMethod: "KPAY",
+          });
+          void notifyAdminGroupDepositSlip(ctx.api, ctx.from, {
+            topUpId: topUp.id,
+            reference: topUp.reference,
+            amountMmk: amount,
+            fileId: unmatchedPhoto,
+            telegramId,
+          });
+
+          await ctx.reply(
+            formatTopUpSlipReceivedMessage({ amountMmk: amount, reference: topUp.reference }),
+            {
+              parse_mode: "HTML",
+              reply_markup: buildMainMenuKeyboard(),
+              reply_parameters: { message_id: ctx.message.message_id },
+            }
+          );
+          return;
+        }
+
+        ctx.session.awaitingTopUpSlip = {
           topUpId: topUp.reference,
-          telegramId,
-          fileId: unmatchedPhoto,
           amountMmk: amount,
-          paymentMethod: "KPAY",
-        });
-        void notifyAdminGroupDepositSlip(ctx.api, ctx.from, {
-          topUpId: topUp.id,
           reference: topUp.reference,
-          amountMmk: amount,
-          fileId: unmatchedPhoto,
-          telegramId,
-        });
+          dbId: topUp.id,
+        };
 
+        const settings = await botSettingsService.getSettings();
         await ctx.reply(
-          formatTopUpSlipReceivedMessage({ amountMmk: amount, reference: topUp.reference }),
+          formatTopUpInvoiceMessage({ amountMmk: amount, reference: topUp.reference, paymentInfo: settings }),
           {
             parse_mode: "HTML",
-            reply_markup: buildMainMenuKeyboard(),
+            reply_markup: buildTopUpInvoiceKeyboard(),
             reply_parameters: { message_id: ctx.message.message_id },
           }
         );
         return;
+      } finally {
+        setTimeout(() => activeTopUpLocks.delete(telegramId), 1500);
       }
-
-      ctx.session.awaitingTopUpSlip = {
-        topUpId: topUp.reference,
-        amountMmk: amount,
-        reference: topUp.reference,
-        dbId: topUp.id,
-      };
-
-      const settings = await botSettingsService.getSettings();
-      await ctx.reply(
-        formatTopUpInvoiceMessage({ amountMmk: amount, reference: topUp.reference, paymentInfo: settings }),
-        {
-          parse_mode: "HTML",
-          reply_markup: buildTopUpInvoiceKeyboard(),
-          reply_parameters: { message_id: ctx.message.message_id },
-        }
-      );
-      return;
     }
 
     // Custom Product Quantity Input

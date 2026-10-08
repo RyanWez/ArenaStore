@@ -88,37 +88,53 @@ export function useAuth() {
     }
   }
 
-  async function fetchUser() {
-    try {
-      const res: any = await $fetch('/api/admin/auth/me', {
-        headers: getAuthHeaders(),
-      });
+let inFlightFetchUser: Promise<AdminUser | null> | null = null;
 
-      if (res.ok && res.user) {
-        if (res.token) {
-          token.value = res.token;
-        }
-        user.value = res.user;
-        permissions.value = Array.isArray(res.permissions) ? res.permissions : [];
-        roleInfo.value = res.role ?? null;
-        mustChangePassword.value = !!res.mustChangePassword;
-        return res.user;
-      } else {
-        token.value = null;
-        user.value = null;
-        permissions.value = [];
-        roleInfo.value = null;
-        mustChangePassword.value = false;
-        return null;
-      }
-    } catch {
-      token.value = null;
-      user.value = null;
-      permissions.value = [];
-      roleInfo.value = null;
-      mustChangePassword.value = false;
-      return null;
+  function clearAuthState() {
+    token.value = null;
+    user.value = null;
+    permissions.value = [];
+    roleInfo.value = null;
+    mustChangePassword.value = false;
+    const legacySession = useCookie('arena_admin_session');
+    if (legacySession.value) legacySession.value = null;
+  }
+
+  async function fetchUser(): Promise<AdminUser | null> {
+    if (inFlightFetchUser) {
+      return inFlightFetchUser;
     }
+
+    inFlightFetchUser = (async () => {
+      try {
+        const res: any = await $fetch('/api/admin/auth/me', {
+          headers: getAuthHeaders(),
+        });
+
+        if (res.ok && res.user) {
+          if (res.token) {
+            token.value = res.token;
+          }
+          user.value = res.user;
+          permissions.value = Array.isArray(res.permissions) ? res.permissions : [];
+          roleInfo.value = res.role ?? null;
+          mustChangePassword.value = !!res.mustChangePassword;
+          return res.user;
+        } else {
+          clearAuthState();
+          return null;
+        }
+      } catch (err: any) {
+        if (err?.statusCode === 401 || err?.response?.status === 401) {
+          clearAuthState();
+        }
+        return null;
+      } finally {
+        inFlightFetchUser = null;
+      }
+    })();
+
+    return inFlightFetchUser;
   }
 
   async function logout() {
@@ -128,13 +144,7 @@ export function useAuth() {
         headers: getAuthHeaders(),
       }).catch(() => {});
     } finally {
-      token.value = null;
-      user.value = null;
-      permissions.value = [];
-      roleInfo.value = null;
-      mustChangePassword.value = false;
-      const legacySession = useCookie('arena_admin_session');
-      if (legacySession.value) legacySession.value = null;
+      clearAuthState();
       await navigateTo('/login');
     }
   }

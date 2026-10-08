@@ -129,6 +129,7 @@ async function refreshSlips(isSilent = false) {
 onMounted(() => {
   fetchSlips(false)
   pollInterval = setInterval(() => {
+    if (typeof document !== 'undefined' && document.hidden) return
     fetchSlips(true)
   }, 4000)
 })
@@ -772,6 +773,9 @@ async function confirmReject() {
                     <img
                       :src="slip.slipImageUrl"
                       alt="Slip preview"
+                      loading="lazy"
+                      width="36"
+                      height="48"
                       class="w-full h-full object-cover group-hover:scale-105 transition-transform"
                     />
                     <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">

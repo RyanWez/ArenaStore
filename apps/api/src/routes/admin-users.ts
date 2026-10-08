@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { desc, eq, isNotNull, or } from "drizzle-orm";
+import { desc, eq, isNotNull, or, sql } from "drizzle-orm";
 import { getDb, roles, rolePermissions, users, auditLogs } from "@arena/db";
 import { authService } from "../services/auth.service";
 import { writeAudit } from "../services/audit.service";
@@ -502,12 +502,21 @@ export async function adminUsersRoutes(server: FastifyInstance) {
   );
 
   // GET /api/admin/audit (Recent audit log entries with actor names)
-  server.get<{ Querystring: { limit?: string } }>(
+  server.get<{ Querystring: { limit?: string; page?: string; pageSize?: string } }>(
     "/api/admin/audit",
     { preHandler: requirePermission("audit.view") },
     async (request) => {
       const db = getDb();
-      const limit = Math.min(Math.max(1, Number(request.query?.limit) || 100), 200);
+      const page = request.query?.page ? Math.max(1, Number(request.query.page) || 1) : 1;
+      const pageSize = request.query?.pageSize
+        ? Math.min(Math.max(1, Number(request.query.pageSize) || 50), 200)
+        : Math.min(Math.max(1, Number(request.query?.limit) || 100), 200);
+      const offset = (page - 1) * pageSize;
+
+      const [countResult] = await db
+        .select({ total: sql<number>`count(*)::int` })
+        .from(auditLogs);
+      const total = Number(countResult?.total || 0);
 
       const entries = await db
         .select({
@@ -525,7 +534,8 @@ export async function adminUsersRoutes(server: FastifyInstance) {
         .from(auditLogs)
         .leftJoin(users, eq(auditLogs.actorId, users.id))
         .orderBy(desc(auditLogs.createdAt), desc(auditLogs.id))
-        .limit(limit);
+        .limit(pageSize)
+        .offset(offset);
 
       return {
         ok: true,
@@ -541,6 +551,9 @@ export async function adminUsersRoutes(server: FastifyInstance) {
           details: e.details,
           createdAt: e.createdAt,
         })),
+        total,
+        page,
+        pageSize,
       };
     }
   );

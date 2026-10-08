@@ -53,6 +53,8 @@ class BotCatalogService {
     return `${amountMmk.toLocaleString("en-US")} Ks`;
   }
 
+  private activeRefreshPromise: Promise<void> | null = null;
+
   /**
    * Fetches fresh catalog data from upstream XPro Partner API.
    */
@@ -65,29 +67,43 @@ class BotCatalogService {
       headers["Authorization"] = `Bearer ${botConfig.UPSTREAM_API_KEY}`;
     }
 
-    // 1. Fetch wallet balance
-    let walletBalanceUsd = 1.0;
-    try {
-      const balanceRes = await fetch(`${baseUrl}/balance`, {
+    // Parallelize balance, categories, and products upstream requests
+    const [balanceResResult, catResResult, prodResResult] = await Promise.allSettled([
+      fetch(`${baseUrl}/balance`, {
         headers,
         signal: AbortSignal.timeout(2500),
-      });
-      if (balanceRes.ok) {
-        const balJson: any = await balanceRes.json();
+      }),
+      fetch(`${baseUrl}/catalog/categories`, {
+        headers,
+        signal: AbortSignal.timeout(2500),
+      }),
+      fetch(`${baseUrl}/catalog/products`, {
+        headers,
+        signal: AbortSignal.timeout(2500),
+      }),
+    ]);
+
+    // 1. Parse wallet balance
+    let walletBalanceUsd = 1.0;
+    if (balanceResResult.status === "fulfilled" && balanceResResult.value.ok) {
+      try {
+        const balJson: any = await balanceResResult.value.json();
         if (balJson.ok && balJson.balance !== undefined) {
           walletBalanceUsd = parseFloat(String(balJson.balance)) || 0;
         }
+      } catch {
+        // Keep default
       }
-    } catch {
-      // Keep default
     }
 
-    // 2. Fetch categories
-    const catRes = await fetch(`${baseUrl}/catalog/categories`, {
-      headers,
-      signal: AbortSignal.timeout(2500),
-    });
-    const catJson: any = await catRes.json();
+    // 2. Parse categories
+    if (catResResult.status === "rejected") {
+      throw catResResult.reason;
+    }
+    if (!catResResult.value.ok) {
+      throw new Error(`Upstream categories failed with status ${catResResult.value.status}`);
+    }
+    const catJson: any = await catResResult.value.json();
     const rawCategories: any[] = Array.isArray(catJson.categories)
       ? catJson.categories
       : Array.isArray(catJson.data)
@@ -105,12 +121,14 @@ class BotCatalogService {
       };
     });
 
-    // 3. Fetch products
-    const prodRes = await fetch(`${baseUrl}/catalog/products`, {
-      headers,
-      signal: AbortSignal.timeout(2500),
-    });
-    const prodJson: any = await prodRes.json();
+    // 3. Parse products
+    if (prodResResult.status === "rejected") {
+      throw prodResResult.reason;
+    }
+    if (!prodResResult.value.ok) {
+      throw new Error(`Upstream products failed with status ${prodResResult.value.status}`);
+    }
+    const prodJson: any = await prodResResult.value.json();
     const rawProducts: any[] = Array.isArray(prodJson.products)
       ? prodJson.products
       : Array.isArray(prodJson.data)
@@ -348,7 +366,7 @@ class BotCatalogService {
   }
 
   /**
-   * Refreshes in-memory cache if expired.
+   * Refreshes in-memory cache if expired (with in-flight deduplication against thundering herds).
    */
   private async ensureFreshCache(): Promise<void> {
     const now = Date.now();
@@ -356,32 +374,46 @@ class BotCatalogService {
       return;
     }
 
-    try {
-      // 1. Prioritize PostgreSQL Database in dev/prod (reflects real-time admin pricing changes instantly)
-      if (process.env.NODE_ENV !== "test" && !process.env.VITEST) {
-        const dbCatalog = await this.fetchDatabaseCatalog();
-        if (dbCatalog && dbCatalog.products.length > 0) {
-          this.categoriesCache = dbCatalog.categories;
-          this.productsCache = dbCatalog.products;
-          this.lastFetchedAt = now;
-          return;
-        }
-      }
-
-      // 2. Fallback to direct Upstream Partner API
-      const { categories, products } = await this.fetchUpstreamCatalog();
-      this.categoriesCache = categories;
-      this.productsCache = products;
-      this.lastFetchedAt = now;
-    } catch (err: any) {
-      console.error("[BotCatalogService] Failed to refresh catalog cache:", err.message);
-      // If we don't have cache at all, provide safe fallback
-      if (!this.categoriesCache || !this.productsCache) {
-        this.categoriesCache = this.getFallbackCategories();
-        this.productsCache = this.getFallbackProducts();
-        this.lastFetchedAt = now;
-      }
+    if (this.activeRefreshPromise) {
+      return this.activeRefreshPromise;
     }
+
+    this.activeRefreshPromise = (async () => {
+      try {
+        // 1. Prioritize PostgreSQL Database in dev/prod (reflects real-time admin pricing changes instantly)
+        if (process.env.NODE_ENV !== "test" && !process.env.VITEST) {
+          const dbCatalog = await this.fetchDatabaseCatalog();
+          if (dbCatalog && dbCatalog.products.length > 0) {
+            this.categoriesCache = dbCatalog.categories;
+            this.productsCache = dbCatalog.products;
+            this.lastFetchedAt = Date.now();
+            return;
+          }
+        }
+
+        // 2. Fallback to direct Upstream Partner API
+        const { categories, products } = await this.fetchUpstreamCatalog();
+        if (products.length > 0) {
+          this.categoriesCache = categories;
+          this.productsCache = products;
+          this.lastFetchedAt = Date.now();
+        } else {
+          throw new Error("Upstream returned empty catalog");
+        }
+      } catch (err: any) {
+        console.error("[BotCatalogService] Failed to refresh catalog cache:", err.message);
+        // If we don't have cache at all, provide safe fallback
+        if (!this.categoriesCache || !this.productsCache || this.productsCache.length === 0) {
+          this.categoriesCache = this.getFallbackCategories();
+          this.productsCache = this.getFallbackProducts();
+          this.lastFetchedAt = Date.now();
+        }
+      } finally {
+        this.activeRefreshPromise = null;
+      }
+    })();
+
+    return this.activeRefreshPromise;
   }
 
   async getCategories(): Promise<BotCategory[]> {

@@ -179,6 +179,7 @@ async function refreshOrders(isSilent = false) {
 onMounted(() => {
   fetchOrders(false)
   ordersPollInterval = setInterval(() => {
+    if (typeof document !== 'undefined' && document.hidden) return
     fetchOrders(true)
   }, 4000)
 })

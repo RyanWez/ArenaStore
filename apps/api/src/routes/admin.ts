@@ -53,6 +53,27 @@ const DeactivateCustomerSchema = z.object({
   reason: z.string().max(500).optional(),
 });
 
+// LRU in-memory cache for decrypted delivery payloads to avoid synchronous AES overhead on every polling cycle
+const decryptedDeliveryCache = new Map<string, string>();
+
+function getOrDecryptPayload(encryptedPayload?: string | null): string {
+  if (!encryptedPayload) return "";
+  const cached = decryptedDeliveryCache.get(encryptedPayload);
+  if (cached !== undefined) return cached;
+
+  try {
+    const plain = formatCredentialsText(decryptPayload(encryptedPayload));
+    if (decryptedDeliveryCache.size > 2000) {
+      const firstKey = decryptedDeliveryCache.keys().next().value;
+      if (firstKey) decryptedDeliveryCache.delete(firstKey);
+    }
+    decryptedDeliveryCache.set(encryptedPayload, plain);
+    return plain;
+  } catch {
+    return "[Encrypted Data]";
+  }
+}
+
 interface CachedSupplierStatus {
   supplier: "XPRO" | "DIGITALCORE";
   balanceUsd: string | number;
@@ -537,7 +558,7 @@ export async function adminRoutes(server: FastifyInstance) {
   );
 
   // GET /api/admin/products (List all products with category and supplier snapshot info)
-  server.get(
+  server.get<{ Querystring: { forceRefresh?: string } }>(
     "/api/admin/products",
     { preHandler: requirePermission("products.view") },
     async (request) => {
@@ -580,24 +601,13 @@ export async function adminRoutes(server: FastifyInstance) {
         )
         .orderBy(products.id);
 
-      let xproWalletBalanceUsd = String(supplierStatusCache.balanceUsd || "0.00");
-      let digitalcoreWalletBalanceUsd = String(digitalcoreStatusCache.balanceUsd || "0.00");
-      try {
-        const [xRes, dcRes] = await Promise.allSettled([
-          xproClient.getBalance(2500),
-          digitalcoreClient.getBalance(2500),
-        ]);
-        if (xRes.status === "fulfilled" && xRes.value) {
-          const val = xRes.value as any;
-          xproWalletBalanceUsd = String(val.balanceUsd ?? val.balance ?? xproWalletBalanceUsd);
-        }
-        if (dcRes.status === "fulfilled" && dcRes.value) {
-          const val = dcRes.value as any;
-          digitalcoreWalletBalanceUsd = String(val.balanceUsd ?? val.balance ?? digitalcoreWalletBalanceUsd);
-        }
-      } catch {
-        // Fallback to cache if available
-      }
+      const forceRefresh = request.query?.forceRefresh === "true";
+      const [xStatus, dcStatus] = await Promise.all([
+        refreshSupplierStatus(forceRefresh),
+        refreshDigitalcoreStatus(forceRefresh),
+      ]);
+      const xproWalletBalanceUsd = String(xStatus.balanceUsd || "0.00");
+      const digitalcoreWalletBalanceUsd = String(dcStatus.balanceUsd || "0.00");
 
       // Exchange rate for the server-computed margin %, so margin can be
       // hidden/shown independently of the USD cost column.
@@ -825,15 +835,49 @@ export async function adminRoutes(server: FastifyInstance) {
 
   // GET /api/admin/deposits (List wallet deposit slips)
   server.get<{
-    Querystring: { status?: string };
+    Querystring: { status?: string; search?: string; page?: string; pageSize?: string; limit?: string };
   }>(
     "/api/admin/deposits",
     { preHandler: requirePermission("payments.view") },
     async (request) => {
     const db = getDb();
-    const { status } = request.query;
+    const { status, search } = request.query;
 
-    let query = db
+    const page = request.query?.page ? Math.max(1, Number(request.query.page) || 1) : 1;
+    const pageSize = request.query?.pageSize
+      ? Math.min(Math.max(1, Number(request.query.pageSize) || 50), 200)
+      : Math.min(Math.max(1, Number(request.query?.limit) || 100), 200);
+    const offset = (page - 1) * pageSize;
+
+    const conditions = [];
+    if (status && status !== "ALL") {
+      conditions.push(eq(topUpRequests.status, status));
+    }
+    const term = search?.trim();
+    if (term) {
+      const cleanTerm = term.replace(/^@/, "").toLowerCase();
+      const pattern = `%${cleanTerm}%`;
+      conditions.push(
+        or(
+          ilike(topUpRequests.reference, pattern),
+          ilike(users.username, pattern),
+          ilike(users.telegramId, pattern),
+          sql`(coalesce(${users.firstName}, '') || ' ' || coalesce(${users.lastName}, '')) ilike ${pattern}`
+        )
+      );
+    }
+
+    const whereExpr = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countResult] = await db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(topUpRequests)
+      .innerJoin(users, eq(topUpRequests.userId, users.id))
+      .where(whereExpr);
+
+    const total = Number(countResult?.total || 0);
+
+    const query = db
       .select({
         id: topUpRequests.id,
         reference: topUpRequests.reference,
@@ -855,15 +899,16 @@ export async function adminRoutes(server: FastifyInstance) {
         },
       })
       .from(topUpRequests)
-      .innerJoin(users, eq(topUpRequests.userId, users.id))
-      .orderBy(desc(topUpRequests.createdAt))
-      .$dynamic();
+      .innerJoin(users, eq(topUpRequests.userId, users.id));
 
-    if (status && status !== "ALL") {
-      query = query.where(eq(topUpRequests.status, status));
+    if (whereExpr) {
+      query.where(whereExpr);
     }
 
-    const slips = await query.limit(100);
+    const slips = await query
+      .orderBy(desc(topUpRequests.createdAt))
+      .limit(pageSize)
+      .offset(offset);
 
     return {
       ok: true,
@@ -900,6 +945,9 @@ export async function adminRoutes(server: FastifyInstance) {
           rejectReason: s.rejectReason,
         };
       }),
+      total,
+      page,
+      pageSize,
     };
   });
 
@@ -1016,13 +1064,46 @@ export async function adminRoutes(server: FastifyInstance) {
   );
 
   // GET /api/admin/orders (List all product orders with items and deliveries)
-  server.get<{ Querystring: { limit?: string } }>(
+  server.get<{ Querystring: { limit?: string; page?: string; pageSize?: string; search?: string; status?: string } }>(
     "/api/admin/orders",
     { preHandler: requirePermission("orders.view") },
     async (request) => {
     const db = getDb();
-    const limit = Math.min(Math.max(1, Number(request.query?.limit) || 100), 100);
-    const orderList = await db
+    const page = request.query?.page ? Math.max(1, Number(request.query.page) || 1) : 1;
+    const pageSize = request.query?.pageSize
+      ? Math.min(Math.max(1, Number(request.query.pageSize) || 50), 200)
+      : Math.min(Math.max(1, Number(request.query?.limit) || 100), 200);
+    const offset = (page - 1) * pageSize;
+
+    const conditions = [];
+    if (request.query?.status && request.query.status !== "ALL") {
+      conditions.push(eq(orders.status, request.query.status));
+    }
+    const term = request.query?.search?.trim();
+    if (term) {
+      const cleanTerm = term.replace(/^@/, "").toLowerCase();
+      const pattern = `%${cleanTerm}%`;
+      conditions.push(
+        or(
+          ilike(orders.publicOrderNo, pattern),
+          ilike(users.username, pattern),
+          ilike(users.telegramId, pattern),
+          sql`(coalesce(${users.firstName}, '') || ' ' || coalesce(${users.lastName}, '')) ilike ${pattern}`
+        )
+      );
+    }
+
+    const whereExpr = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countResult] = await db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(orders)
+      .innerJoin(users, eq(orders.customerId, users.id))
+      .where(whereExpr);
+
+    const total = Number(countResult?.total || 0);
+
+    const orderListQuery = db
       .select({
         id: orders.id,
         publicOrderNo: orders.publicOrderNo,
@@ -1039,13 +1120,20 @@ export async function adminRoutes(server: FastifyInstance) {
         },
       })
       .from(orders)
-      .innerJoin(users, eq(orders.customerId, users.id))
+      .innerJoin(users, eq(orders.customerId, users.id));
+
+    if (whereExpr) {
+      orderListQuery.where(whereExpr);
+    }
+
+    const orderList = await orderListQuery
       .orderBy(desc(orders.createdAt))
-      .limit(limit);
+      .limit(pageSize)
+      .offset(offset);
 
     const orderIds = orderList.map((o) => o.id);
     if (orderIds.length === 0) {
-      return { ok: true, orders: [] };
+      return { ok: true, orders: [], total, page, pageSize };
     }
 
     // Batch fetch items and deliveries in parallel instead of N+1 per order
@@ -1087,12 +1175,7 @@ export async function adminRoutes(server: FastifyInstance) {
       const deliveries = deliveriesByOrderId.get(o.id) || [];
 
       const decryptedDeliveries = deliveries.map((d) => {
-        let payload: any = d.encryptedPayload;
-        try {
-          payload = formatCredentialsText(decryptPayload(d.encryptedPayload));
-        } catch {
-          // Raw text or fallback
-        }
+        const payload = getOrDecryptPayload(d.encryptedPayload);
         return {
           id: d.id,
           deliveryType: d.deliveryType,
@@ -1124,8 +1207,51 @@ export async function adminRoutes(server: FastifyInstance) {
     return {
       ok: true,
       orders: enrichedOrders,
+      total,
+      page,
+      pageSize,
     };
   });
+
+  // GET /api/admin/orders/:id/credentials (Decrypt on demand for specific order)
+  server.get<{ Params: { id: string } }>(
+    "/api/admin/orders/:id/credentials",
+    { preHandler: requirePermission("orders.view") },
+    async (request, reply) => {
+      const { id } = request.params;
+      const db = getDb();
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      const [order] = await db
+        .select()
+        .from(orders)
+        .where(isUuid ? eq(orders.id, id) : eq(orders.publicOrderNo, id))
+        .limit(1);
+
+      if (!order) {
+        return reply.status(404).send({ ok: false, error: "Order not found" });
+      }
+
+      const deliveries = await db
+        .select()
+        .from(orderDeliveries)
+        .where(eq(orderDeliveries.orderId, order.id));
+
+      const decryptedList = deliveries.map((d) => ({
+        id: d.id,
+        deliveryType: d.deliveryType,
+        deliveredAt: d.deliveredAt,
+        credentials: getOrDecryptPayload(d.encryptedPayload),
+      }));
+
+      return {
+        ok: true,
+        orderId: order.id,
+        publicOrderNo: order.publicOrderNo,
+        credentials: decryptedList[0]?.credentials || "",
+        deliveries: decryptedList,
+      };
+    }
+  );
 
   // POST /api/admin/orders/:id/refund (Refund order to customer's wallet and notify on Telegram)
   server.post(
@@ -1836,12 +1962,13 @@ export async function adminRoutes(server: FastifyInstance) {
       wallet = created;
     }
 
-    // Orders / Purchases
+    // Orders / Purchases (bounded to latest 50)
     const customerOrders = await db
       .select()
       .from(orders)
       .where(eq(orders.customerId, customerId))
-      .orderBy(desc(orders.createdAt));
+      .orderBy(desc(orders.createdAt))
+      .limit(50);
 
     const orderIds = customerOrders.map((o) => o.id);
     const [rawItems, rawDeliveries] = orderIds.length > 0
@@ -1884,14 +2011,7 @@ export async function adminRoutes(server: FastifyInstance) {
       const deliveries = deliveriesByOrder.get(o.id) || [];
 
       const decryptedDeliveries = deliveries.map((d) => {
-        let plainCredentials = "";
-        if (d.encryptedPayload) {
-          try {
-            plainCredentials = formatCredentialsText(decryptPayload(d.encryptedPayload));
-          } catch {
-            plainCredentials = "[Encrypted Data]";
-          }
-        }
+        const plainCredentials = getOrDecryptPayload(d.encryptedPayload);
         return {
           id: d.id,
           deliveryType: d.deliveryType,
@@ -1914,12 +2034,13 @@ export async function adminRoutes(server: FastifyInstance) {
         };
       });
 
-    // Deposit Slips / Top-ups
+    // Deposit Slips / Top-ups (bounded to latest 50)
     const topUps = await db
       .select()
       .from(topUpRequests)
       .where(eq(topUpRequests.userId, customerId))
-      .orderBy(desc(topUpRequests.createdAt));
+      .orderBy(desc(topUpRequests.createdAt))
+      .limit(50);
 
     const enrichedTopUps = topUps.map((t) => ({
       id: t.id,
