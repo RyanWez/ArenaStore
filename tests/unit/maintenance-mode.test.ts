@@ -26,7 +26,7 @@ describe("Telegram Bot Maintenance Mode", () => {
       const keyboard = buildMaintenanceKeyboard("https://t.me/ArenaStoreSupport");
       expect(keyboard.inline_keyboard.length).toBe(1);
       expect(keyboard.inline_keyboard[0][0].text).toContain("Customer Support");
-      expect(keyboard.inline_keyboard[0][0].url).toBe("https://t.me/ArenaStoreSupport");
+      expect((keyboard.inline_keyboard[0][0] as any).url).toBe("https://t.me/ArenaStoreSupport");
     });
 
     it("returns empty keyboard when no support url is present", () => {
