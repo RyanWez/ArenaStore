@@ -105,6 +105,44 @@ export function generateTopUpReference(): string {
   return `TOP-${timePart}${randomPart}`;
 }
 
+/**
+ * Collision-resistant public order reference.
+ *
+ * Format: `ARN-` + base36 timestamp + 8 random hex chars (32-bit entropy).
+ * Eliminates the millisecond-modulo wrap-around and collisions on concurrent orders.
+ */
+export function generateOrderReference(): string {
+  const timePart = Date.now().toString(36).toUpperCase();
+  const randomPart = crypto.randomBytes(4).toString("hex").toUpperCase();
+  return `ARN-${timePart}${randomPart}`;
+}
+
+/**
+ * Asynchronously notify the Fastify admin server over the internal token-secured
+ * endpoint so connected SSE clients (e.g. orders.vue, payments.vue) receive live
+ * updates immediately without waiting for background polling.
+ */
+async function emitAdminEvent(
+  type: "ORDER_CREATED" | "DEPOSIT_SUBMITTED" | "ORDER_STATUS_CHANGED",
+  payload?: Record<string, any>
+): Promise<void> {
+  if (!botConfig.INTERNAL_API_TOKEN || !botConfig.API_BASE_URL) return;
+  try {
+    const url = `${botConfig.API_BASE_URL.replace(/\/+$/, "")}/api/bot/events`;
+    await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-internal-token": botConfig.INTERNAL_API_TOKEN,
+      },
+      body: JSON.stringify({ type, payload }),
+      signal: AbortSignal.timeout(3000),
+    });
+  } catch {
+    // Non-blocking fire-and-forget
+  }
+}
+
 export class BotOrderService {
   // In-memory fallback caches if DB is briefly unreachable or during unit tests
   private memoryWallets = new Map<string, number>();
@@ -504,6 +542,11 @@ export class BotOrderService {
           mem.slipFileId = params.fileId;
           mem.paymentMethod = params.paymentMethod;
         }
+        void emitAdminEvent("DEPOSIT_SUBMITTED", {
+          depositId: updated.id,
+          reference: updated.reference,
+          amountMmk: updated.amountMmk,
+        });
         return {
           submissionId: updated.id,
           status: "SUBMITTED",
@@ -518,6 +561,11 @@ export class BotOrderService {
       mem.status = "SUBMITTED";
       mem.slipFileId = params.fileId;
       mem.paymentMethod = params.paymentMethod;
+      void emitAdminEvent("DEPOSIT_SUBMITTED", {
+        depositId: mem.id,
+        reference: mem.reference,
+        amountMmk: mem.amountMmk,
+      });
     }
 
     return {
@@ -689,7 +737,7 @@ export class BotOrderService {
         };
       }
       const totalMmk = product.retailPriceMmk * params.quantity;
-      const publicOrderNo = `ARN-${Date.now().toString().slice(-6)}`;
+      const publicOrderNo = generateOrderReference();
       const externalOrderId = publicOrderNo;
       const targetUpstreamId = product.upstreamProductId;
 
@@ -936,6 +984,10 @@ export class BotOrderService {
                 } catch (traceErr: any) {
                   console.error("[BotOrderService] Failed to persist timeout trace order:", traceErr.message);
                 }
+                void emitAdminEvent("ORDER_CREATED", {
+                  publicOrderNo,
+                  status: "TIMEOUT_REFUNDED",
+                });
               }
 
               void sendAdminTelegramAlert(
@@ -1057,6 +1109,14 @@ export class BotOrderService {
       list.unshift(orderRecord);
       this.memoryOrders.set(params.telegramId, list);
       this.memoryWallets.set(params.telegramId, remainingBalance);
+
+      void emitAdminEvent("ORDER_CREATED", {
+        orderId: publicOrderNo,
+        publicOrderNo,
+        productId: params.productId,
+        totalMmk,
+        status: "DELIVERED",
+      });
 
       return {
         success: true,

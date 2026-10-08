@@ -198,7 +198,6 @@ onMounted(() => {
   fetchOrders(false)
   ordersPollInterval = setInterval(() => {
     if (typeof document !== 'undefined' && document.hidden) return
-    if (isLiveConnected.value) return
     fetchOrders(true)
   }, 4000)
 })

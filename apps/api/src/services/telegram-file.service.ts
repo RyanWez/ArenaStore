@@ -109,14 +109,14 @@ export async function fetchTelegramFile(fileId: string): Promise<{ buffer: Buffe
     }
     fileCache.set(cleanId, { buffer, contentType, cachedAt: Date.now() });
 
-    // 5. Asynchronously persist to disk cache
-    try {
-      ensureDiskCacheDir();
-      fs.writeFileSync(binPath, buffer);
-      fs.writeFileSync(metaPath, JSON.stringify({ contentType, cachedAt: Date.now() }));
-    } catch (diskErr: any) {
+    // 5. Asynchronously persist to disk cache (non-blocking)
+    ensureDiskCacheDir();
+    Promise.all([
+      fs.promises.writeFile(binPath, buffer),
+      fs.promises.writeFile(metaPath, JSON.stringify({ contentType, cachedAt: Date.now() })),
+    ]).catch((diskErr) => {
       console.warn("[TelegramFileProxy] Could not persist to disk cache:", diskErr?.message || diskErr);
-    }
+    });
 
     return { buffer, contentType };
   } catch (err: any) {

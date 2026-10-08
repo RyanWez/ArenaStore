@@ -873,9 +873,9 @@ export async function adminRoutes(server: FastifyInstance) {
     const [aggregateResult] = await db
       .select({
         total: sql<number>`count(*)::int`,
-        totalDepositedMmk: sql<number>`coalesce(sum(case when ${topUpRequests.status} = 'APPROVED' then ${topUpRequests.amountMmk} else 0 end), 0)::int`,
+        totalDepositedMmk: sql<number>`coalesce(sum(case when ${topUpRequests.status} in ('APPROVED', 'COMPLETED') then ${topUpRequests.amountMmk} else 0 end), 0)::int`,
         pendingTotalMmk: sql<number>`coalesce(sum(case when ${topUpRequests.status} = 'SUBMITTED' then ${topUpRequests.amountMmk} else 0 end), 0)::int`,
-        approvedCount: sql<number>`count(case when ${topUpRequests.status} = 'APPROVED' then 1 end)::int`,
+        approvedCount: sql<number>`count(case when ${topUpRequests.status} in ('APPROVED', 'COMPLETED') then 1 end)::int`,
         pendingCount: sql<number>`count(case when ${topUpRequests.status} = 'SUBMITTED' then 1 end)::int`,
         rejectedCount: sql<number>`count(case when ${topUpRequests.status} = 'REJECTED' then 1 end)::int`,
       })

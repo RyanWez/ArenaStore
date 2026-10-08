@@ -3,6 +3,7 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { config } from "../config";
 import { reviewDeposit } from "../services/deposit-review.service";
+import { broadcastAdminEvent } from "../services/admin-event.service";
 
 const BotDepositReviewSchema = z.object({
   action: z.enum(["APPROVE", "REJECT"]),
@@ -69,6 +70,10 @@ export async function botRoutes(server: FastifyInstance) {
     });
 
     if (result.ok) {
+      broadcastAdminEvent("DEPOSIT_REVIEWED", {
+        depositId,
+        action: result.action,
+      });
       return result;
     }
     if (result.code === "NOT_FOUND") {
@@ -77,5 +82,20 @@ export async function botRoutes(server: FastifyInstance) {
     // ALREADY_REVIEWED — 409 carries the current state so the bot can render
     // "another admin already reviewed this" on the stale group message.
     return reply.status(409).send(result);
+  });
+
+  // POST /api/bot/events — internal event dispatch from bot process to admin SSE stream
+  server.post<{
+    Body: { type: "ORDER_CREATED" | "DEPOSIT_SUBMITTED"; payload?: Record<string, any> };
+  }>("/api/bot/events", async (request, reply) => {
+    if (!internalTokenMatches(request.headers["x-internal-token"] as string | undefined)) {
+      return reply.status(401).send({ ok: false, error: "Unauthorized" });
+    }
+
+    const { type, payload } = request.body || {};
+    if (type) {
+      broadcastAdminEvent(type, payload);
+    }
+    return { ok: true };
   });
 }

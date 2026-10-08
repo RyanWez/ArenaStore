@@ -148,7 +148,6 @@ onMounted(() => {
   fetchSlips(false)
   pollInterval = setInterval(() => {
     if (typeof document !== 'undefined' && document.hidden) return
-    if (isLiveConnected.value) return
     fetchSlips(true)
   }, 4000)
 })
