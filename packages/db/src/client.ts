@@ -19,10 +19,21 @@ export function getDb(connectionString?: string) {
     connectionString: url,
     max: 10,
     idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+  });
+
+  // Attach idle error listener to prevent Node.js uncaughtException crashes
+  // when Neon serverless auto-suspends compute and terminates idle connections
+  poolInstance.on("error", (err) => {
+    console.error("[DatabasePool] Unexpected error on idle PostgreSQL client:", err?.message || err);
   });
 
   dbInstance = drizzle(poolInstance, { schema });
   return dbInstance;
+}
+
+export function getPool(): pg.Pool | null {
+  return poolInstance;
 }
 
 export async function closeDb() {

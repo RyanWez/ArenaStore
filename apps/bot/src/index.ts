@@ -1,5 +1,5 @@
-// Must stay the first import: Sentry instrumentation has to initialize before
-// grammY handlers run (see instrument.ts).
+import http from "node:http";
+import { webhookCallback } from "grammy";
 import "./instrument";
 import * as Sentry from "@sentry/node";
 import { closeSentry } from "./instrument";
@@ -75,8 +75,28 @@ async function main() {
         }
       }
 
-      isPolling = true;
       bot.botInfo = botInfo;
+
+      if (process.env.BOT_MODE === "webhook") {
+        const webhookPort = Number(process.env.BOT_PORT || process.env.PORT || 3001);
+        const webhookSecret = process.env.BOT_WEBHOOK_SECRET;
+        const webhookUrl = process.env.BOT_WEBHOOK_URL;
+        if (webhookUrl) {
+          try {
+            await bot.api.setWebhook(webhookUrl, { secret_token: webhookSecret });
+            console.log(`📡 [Telegram Bot] Webhook URL registered with Telegram: ${webhookUrl}`);
+          } catch (whErr: any) {
+            console.warn(`[Telegram Bot] Failed to register webhook: ${whErr?.message || whErr}`);
+          }
+        }
+        const server = http.createServer(webhookCallback(bot, "http", { secretToken: webhookSecret }));
+        server.listen(webhookPort, () => {
+          console.log(`🚀 Storefront bot @${botInfo.username} running in WEBHOOK mode on port ${webhookPort}!`);
+        });
+        return;
+      }
+
+      isPolling = true;
       await bot.start({
         onStart: (info) => {
           console.log(`🚀 Storefront bot @${info.username} listening for customer updates!`);

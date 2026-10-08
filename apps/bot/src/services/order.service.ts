@@ -721,16 +721,43 @@ export class BotOrderService {
       if (user && wallet) {
         try {
           const db = getDb();
-          const [updated] = await db
-            .update(wallets)
-            .set({
-              balanceMmk: sql`${wallets.balanceMmk} - ${totalMmk}`,
-              totalSpentMmk: sql`${wallets.totalSpentMmk} + ${totalMmk}`,
-              updatedAt: new Date(),
-            })
-            .where(and(eq(wallets.id, wallet.id), gte(wallets.balanceMmk, totalMmk)))
-            .returning();
+          const debitResult = await db.transaction(async (tx) => {
+            // Transaction-level PostgreSQL Advisory Lock for multi-instance cluster concurrency
+            // hashtext converts the user namespace string to a 32-bit integer for pg advisory lock
+            try {
+              const lockRes: any = await tx.execute(
+                sql`SELECT pg_try_advisory_xact_lock(hashtext(${'user:' + params.telegramId})) as acquired`
+              );
+              const acquired = lockRes?.rows?.[0]?.acquired ?? lockRes?.[0]?.acquired;
+              if (acquired === false) {
+                return { lockFailed: true } as const;
+              }
+            } catch {
+              // Ignore in environments where advisory lock is unsupported
+            }
 
+            const [updated] = await tx
+              .update(wallets)
+              .set({
+                balanceMmk: sql`${wallets.balanceMmk} - ${totalMmk}`,
+                totalSpentMmk: sql`${wallets.totalSpentMmk} + ${totalMmk}`,
+                updatedAt: new Date(),
+              })
+              .where(and(eq(wallets.id, wallet.id), gte(wallets.balanceMmk, totalMmk)))
+              .returning();
+
+            return { updated } as const;
+          });
+
+          if ("lockFailed" in debitResult && debitResult.lockFailed) {
+            return {
+              success: false,
+              error: "OPERATION_IN_PROGRESS",
+              errorMessage: "⚠️ ယခင် အော်ဒါ ဆောင်ရွက်နေဆဲ ဖြစ်ပါသည်ခင်ဗျာ။ ခေတ္တစောင့်ပေးပါ။",
+            };
+          }
+
+          const updated = (debitResult as any).updated;
           if (!updated) {
             return {
               success: false,

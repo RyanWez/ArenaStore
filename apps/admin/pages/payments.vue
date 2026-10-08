@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
 import { usePermission } from '~/composables/usePermission'
+import { useAdminEvents, type AdminEventPayload } from '~/composables/useAdminEvents'
 import {
   formatMyanmarDateTime,
   formatMyanmarDate,
@@ -63,6 +64,14 @@ watch(searchQuery, (newVal) => {
 })
 
 const slips = ref<DepositItem[]>([])
+const serverStats = ref<{
+  totalSlips: number
+  totalDepositedMmk: number
+  pendingTotalMmk: number
+  approvedCount: number
+  pendingCount: number
+  rejectedCount: number
+} | null>(null)
 let pollInterval: ReturnType<typeof setInterval> | null = null
 
 async function fetchSlips(isSilent = false) {
@@ -79,6 +88,9 @@ async function fetchSlips(isSilent = false) {
     })
 
     if (res.ok && Array.isArray(res.slips)) {
+      if (res.stats) {
+        serverStats.value = res.stats
+      }
       slips.value = res.slips.map((s: any) => {
         const displayName = s.displayName || s.customer?.displayName || (
           [s.customer?.firstName, s.customer?.lastName].filter(Boolean).join(' ').trim() ||
@@ -126,10 +138,17 @@ async function refreshSlips(isSilent = false) {
   await fetchSlips(isSilent)
 }
 
+const { isConnected: isLiveConnected } = useAdminEvents((event: AdminEventPayload) => {
+  if (event.type === 'DEPOSIT_SUBMITTED' || event.type === 'DEPOSIT_REVIEWED') {
+    fetchSlips(true)
+  }
+})
+
 onMounted(() => {
   fetchSlips(false)
   pollInterval = setInterval(() => {
     if (typeof document !== 'undefined' && document.hidden) return
+    if (isLiveConnected.value) return
     fetchSlips(true)
   }, 4000)
 })
@@ -263,11 +282,12 @@ function goToPage(p: number) {
   }
 }
 
-// Global metrics
-const pendingCount = computed(() => slips.value.filter((s) => s.status === 'SUBMITTED').length)
+// Global metrics (server-aggregated with fallback to local slice)
+const pendingCount = computed(() => serverStats.value?.pendingCount ?? slips.value.filter((s) => s.status === 'SUBMITTED').length)
 const pendingUploadCount = computed(() => slips.value.filter((s) => s.status === 'PENDING').length)
 const cancelledCount = computed(() => slips.value.filter((s) => s.status === 'CANCELLED').length)
 const pendingTotalMmk = computed(() =>
+  serverStats.value?.pendingTotalMmk ??
   slips.value
     .filter((s) => s.status === 'SUBMITTED')
     .reduce((sum, s) => sum + s.depositAmountMmk, 0)
@@ -277,12 +297,25 @@ const pendingTotalMmk = computed(() =>
 const periodApprovedSlips = computed(() =>
   dateFilteredSlips.value.filter((s) => s.status === 'APPROVED')
 )
-const periodApprovedMmk = computed(() =>
-  periodApprovedSlips.value.reduce((sum, s) => sum + s.depositAmountMmk, 0)
-)
-const periodApprovedCount = computed(() => periodApprovedSlips.value.length)
+const periodApprovedMmk = computed(() => {
+  if (selectedDateFilter.value === 'ALL' && serverStats.value?.totalDepositedMmk !== undefined) {
+    return serverStats.value.totalDepositedMmk
+  }
+  return periodApprovedSlips.value.reduce((sum, s) => sum + s.depositAmountMmk, 0)
+})
+const periodApprovedCount = computed(() => {
+  if (selectedDateFilter.value === 'ALL' && serverStats.value?.approvedCount !== undefined) {
+    return serverStats.value.approvedCount
+  }
+  return periodApprovedSlips.value.length
+})
 
-const periodTotalSlipsCount = computed(() => dateFilteredSlips.value.length)
+const periodTotalSlipsCount = computed(() => {
+  if (selectedDateFilter.value === 'ALL' && serverStats.value?.totalSlips !== undefined) {
+    return serverStats.value.totalSlips
+  }
+  return dateFilteredSlips.value.length
+})
 const periodTotalMmk = computed(() =>
   dateFilteredSlips.value.reduce((sum, s) => sum + s.depositAmountMmk, 0)
 )

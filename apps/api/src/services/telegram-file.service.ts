@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
 import { config } from "../config";
 
 interface CachedFile {
@@ -9,6 +12,25 @@ interface CachedFile {
 const fileCache = new Map<string, CachedFile>();
 const MAX_CACHE_ITEMS = 200;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const DISK_CACHE_DIR = process.env.SLIP_DISK_CACHE_DIR || path.resolve(process.cwd(), ".cache/slips");
+
+function getDiskCachePaths(fileId: string) {
+  const hash = crypto.createHash("sha256").update(fileId).digest("hex");
+  return {
+    binPath: path.join(DISK_CACHE_DIR, `${hash}.bin`),
+    metaPath: path.join(DISK_CACHE_DIR, `${hash}.json`),
+  };
+}
+
+function ensureDiskCacheDir() {
+  try {
+    if (!fs.existsSync(DISK_CACHE_DIR)) {
+      fs.mkdirSync(DISK_CACHE_DIR, { recursive: true });
+    }
+  } catch (err: any) {
+    console.warn("[TelegramFileProxy] Could not create disk cache directory:", err?.message || err);
+  }
+}
 
 /**
  * Downloads and caches a Telegram photo/file by file_id without exposing bot credentials to the browser.
@@ -24,6 +46,19 @@ export async function fetchTelegramFile(fileId: string): Promise<{ buffer: Buffe
   const cached = fileCache.get(cleanId);
   if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
     return { buffer: cached.buffer, contentType: cached.contentType };
+  }
+
+  // 2. Check persistent disk cache
+  const { binPath, metaPath } = getDiskCachePaths(cleanId);
+  try {
+    if (fs.existsSync(binPath) && fs.existsSync(metaPath)) {
+      const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+      const buffer = fs.readFileSync(binPath);
+      fileCache.set(cleanId, { buffer, contentType: meta.contentType, cachedAt: Date.now() });
+      return { buffer, contentType: meta.contentType };
+    }
+  } catch {
+    // Disk read failed, fallback to network
   }
 
   const token = config.TELEGRAM_BOT_TOKEN;
@@ -73,6 +108,15 @@ export async function fetchTelegramFile(fileId: string): Promise<{ buffer: Buffe
       if (oldestKey) fileCache.delete(oldestKey);
     }
     fileCache.set(cleanId, { buffer, contentType, cachedAt: Date.now() });
+
+    // 5. Asynchronously persist to disk cache
+    try {
+      ensureDiskCacheDir();
+      fs.writeFileSync(binPath, buffer);
+      fs.writeFileSync(metaPath, JSON.stringify({ contentType, cachedAt: Date.now() }));
+    } catch (diskErr: any) {
+      console.warn("[TelegramFileProxy] Could not persist to disk cache:", diskErr?.message || diskErr);
+    }
 
     return { buffer, contentType };
   } catch (err: any) {

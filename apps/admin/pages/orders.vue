@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
 import { usePermission } from '~/composables/usePermission'
+import { useAdminEvents, type AdminEventPayload } from '~/composables/useAdminEvents'
 import {
   formatMyanmarDateTime,
   formatMyanmarDate,
@@ -111,6 +112,14 @@ function cleanCredentialsText(raw: any): string {
   return res
 }
 
+const serverStats = ref<{
+  totalOrders: number
+  totalRevenueMmk: number
+  deliveredCount: number
+  processingCount: number
+  refundedCount: number
+} | null>(null)
+
 async function fetchOrders(isSilent = false) {
   if (!isSilent) {
     if (ordersList.value.length > 0) {
@@ -125,6 +134,9 @@ async function fetchOrders(isSilent = false) {
     })
 
     if (res.ok && Array.isArray(res.orders)) {
+      if (res.stats) {
+        serverStats.value = res.stats
+      }
       ordersList.value = res.orders.map((o: any) => ({
         id: o.orderId || o.id,
         publicOrderNo: o.id || o.publicOrderNo,
@@ -176,10 +188,17 @@ async function refreshOrders(isSilent = false) {
   await fetchOrders(isSilent)
 }
 
+const { isConnected: isLiveConnected } = useAdminEvents((event: AdminEventPayload) => {
+  if (event.type === 'ORDER_CREATED' || event.type === 'ORDER_STATUS_CHANGED') {
+    fetchOrders(true)
+  }
+})
+
 onMounted(() => {
   fetchOrders(false)
   ordersPollInterval = setInterval(() => {
     if (typeof document !== 'undefined' && document.hidden) return
+    if (isLiveConnected.value) return
     fetchOrders(true)
   }, 4000)
 })
@@ -228,12 +247,13 @@ const periodRevenueMmk = computed(() =>
 )
 const periodTotalOrdersCount = computed(() => dateFilteredOrders.value.length)
 
-// Global computed statistics
-const totalOrdersCount = computed(() => ordersList.value.length)
-const deliveredCount = computed(() => ordersList.value.filter((o) => o.status === 'DELIVERED').length)
-const processingCount = computed(() => ordersList.value.filter((o) => o.status === 'PROCESSING_SUPPLIER').length)
-const refundedCount = computed(() => ordersList.value.filter((o) => o.status === 'REFUNDED').length)
+// Global computed statistics (server-aggregated with fallback to local slice)
+const totalOrdersCount = computed(() => serverStats.value?.totalOrders ?? ordersList.value.length)
+const deliveredCount = computed(() => serverStats.value?.deliveredCount ?? ordersList.value.filter((o) => o.status === 'DELIVERED').length)
+const processingCount = computed(() => serverStats.value?.processingCount ?? ordersList.value.filter((o) => o.status === 'PROCESSING_SUPPLIER').length)
+const refundedCount = computed(() => serverStats.value?.refundedCount ?? ordersList.value.filter((o) => o.status === 'REFUNDED').length)
 const totalRevenueMmk = computed(() =>
+  serverStats.value?.totalRevenueMmk ??
   ordersList.value
     .filter((o) => o.status === 'DELIVERED')
     .reduce((sum, o) => sum + o.totalAmountMmk, 0)

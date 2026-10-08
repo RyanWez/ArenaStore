@@ -38,6 +38,7 @@ import {
 import { reviewDeposit, buildCustomerDisplayName } from "../services/deposit-review.service";
 import { decryptPayload, formatCredentialsText } from "../services/encryption";
 import { fetchTelegramFile, getPlaceholderSlipSvg } from "../services/telegram-file.service";
+import { adminEventBus, broadcastAdminEvent } from "../services/admin-event.service";
 import { writeAudit } from "../services/audit.service";
 import { getAnalytics } from "../services/analytics.service";
 import { getRbac, requirePermission } from "../rbac/require-permission";
@@ -869,13 +870,28 @@ export async function adminRoutes(server: FastifyInstance) {
 
     const whereExpr = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const [countResult] = await db
-      .select({ total: sql<number>`count(*)::int` })
+    const [aggregateResult] = await db
+      .select({
+        total: sql<number>`count(*)::int`,
+        totalDepositedMmk: sql<number>`coalesce(sum(case when ${topUpRequests.status} = 'APPROVED' then ${topUpRequests.amountMmk} else 0 end), 0)::int`,
+        pendingTotalMmk: sql<number>`coalesce(sum(case when ${topUpRequests.status} = 'SUBMITTED' then ${topUpRequests.amountMmk} else 0 end), 0)::int`,
+        approvedCount: sql<number>`count(case when ${topUpRequests.status} = 'APPROVED' then 1 end)::int`,
+        pendingCount: sql<number>`count(case when ${topUpRequests.status} = 'SUBMITTED' then 1 end)::int`,
+        rejectedCount: sql<number>`count(case when ${topUpRequests.status} = 'REJECTED' then 1 end)::int`,
+      })
       .from(topUpRequests)
       .innerJoin(users, eq(topUpRequests.userId, users.id))
       .where(whereExpr);
 
-    const total = Number(countResult?.total || 0);
+    const total = Number(aggregateResult?.total || 0);
+    const stats = {
+      totalSlips: total,
+      totalDepositedMmk: Number(aggregateResult?.totalDepositedMmk || 0),
+      pendingTotalMmk: Number(aggregateResult?.pendingTotalMmk || 0),
+      approvedCount: Number(aggregateResult?.approvedCount || 0),
+      pendingCount: Number(aggregateResult?.pendingCount || 0),
+      rejectedCount: Number(aggregateResult?.rejectedCount || 0),
+    };
 
     const query = db
       .select({
@@ -948,6 +964,7 @@ export async function adminRoutes(server: FastifyInstance) {
       total,
       page,
       pageSize,
+      stats,
     };
   });
 
@@ -1056,10 +1073,49 @@ export async function adminRoutes(server: FastifyInstance) {
         });
       }
 
+      broadcastAdminEvent("DEPOSIT_REVIEWED", {
+        depositId,
+        action: result.action,
+      });
+
       if (result.action === "APPROVED") {
         return { ok: true, action: "APPROVED", newBalanceMmk: result.newBalanceMmk };
       }
       return { ok: true, action: "REJECTED" };
+    }
+  );
+
+  // GET /api/admin/events (Server-Sent Events for real-time order and deposit updates)
+  server.get(
+    "/api/admin/events",
+    { preHandler: requirePermission("orders.view") },
+    async (request, reply) => {
+      reply.raw.setHeader("Content-Type", "text/event-stream");
+      reply.raw.setHeader("Cache-Control", "no-cache, no-transform");
+      reply.raw.setHeader("Connection", "keep-alive");
+      reply.raw.setHeader("X-Accel-Buffering", "no");
+      reply.raw.flushHeaders();
+
+      reply.raw.write(`data: ${JSON.stringify({ type: "CONNECTED", timestamp: new Date().toISOString() })}\n\n`);
+
+      const onEvent = (event: any) => {
+        try {
+          reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+        } catch {}
+      };
+
+      adminEventBus.on("event", onEvent);
+
+      const heartbeat = setInterval(() => {
+        try {
+          reply.raw.write(": heartbeat\n\n");
+        } catch {}
+      }, 25000);
+
+      request.raw.on("close", () => {
+        clearInterval(heartbeat);
+        adminEventBus.off("event", onEvent);
+      });
     }
   );
 
@@ -1095,13 +1151,26 @@ export async function adminRoutes(server: FastifyInstance) {
 
     const whereExpr = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const [countResult] = await db
-      .select({ total: sql<number>`count(*)::int` })
+    const [aggregateResult] = await db
+      .select({
+        total: sql<number>`count(*)::int`,
+        totalRevenueMmk: sql<number>`coalesce(sum(case when ${orders.status} = 'DELIVERED' then ${orders.totalAmountMmk} else 0 end), 0)::int`,
+        deliveredCount: sql<number>`count(case when ${orders.status} = 'DELIVERED' then 1 end)::int`,
+        processingCount: sql<number>`count(case when ${orders.status} in ('PROCESSING', 'PROCESSING_SUPPLIER', 'PENDING_PAYMENT') then 1 end)::int`,
+        refundedCount: sql<number>`count(case when ${orders.status} in ('REFUNDED', 'CANCELLED') then 1 end)::int`,
+      })
       .from(orders)
       .innerJoin(users, eq(orders.customerId, users.id))
       .where(whereExpr);
 
-    const total = Number(countResult?.total || 0);
+    const total = Number(aggregateResult?.total || 0);
+    const stats = {
+      totalOrders: total,
+      totalRevenueMmk: Number(aggregateResult?.totalRevenueMmk || 0),
+      deliveredCount: Number(aggregateResult?.deliveredCount || 0),
+      processingCount: Number(aggregateResult?.processingCount || 0),
+      refundedCount: Number(aggregateResult?.refundedCount || 0),
+    };
 
     const orderListQuery = db
       .select({
@@ -1133,7 +1202,7 @@ export async function adminRoutes(server: FastifyInstance) {
 
     const orderIds = orderList.map((o) => o.id);
     if (orderIds.length === 0) {
-      return { ok: true, orders: [], total, page, pageSize };
+      return { ok: true, orders: [], total, page, pageSize, stats };
     }
 
     // Batch fetch items and deliveries in parallel instead of N+1 per order
@@ -1210,6 +1279,7 @@ export async function adminRoutes(server: FastifyInstance) {
       total,
       page,
       pageSize,
+      stats,
     };
   });
 
@@ -1365,6 +1435,12 @@ export async function adminRoutes(server: FastifyInstance) {
         newBalanceMmk: newBalance,
         reason,
       },
+    });
+
+    broadcastAdminEvent("ORDER_STATUS_CHANGED", {
+      orderId: order.id,
+      publicOrderNo: order.publicOrderNo,
+      status: "REFUNDED",
     });
 
     return {
