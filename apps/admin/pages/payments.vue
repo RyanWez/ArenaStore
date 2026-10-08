@@ -138,7 +138,7 @@ async function refreshSlips(isSilent = false) {
   await fetchSlips(isSilent)
 }
 
-const { isConnected: isLiveConnected } = useAdminEvents((event: AdminEventPayload) => {
+useAdminEvents((event: AdminEventPayload) => {
   if (event.type === 'DEPOSIT_SUBMITTED' || event.type === 'DEPOSIT_REVIEWED') {
     fetchSlips(true)
   }

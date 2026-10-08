@@ -188,7 +188,7 @@ async function refreshOrders(isSilent = false) {
   await fetchOrders(isSilent)
 }
 
-const { isConnected: isLiveConnected } = useAdminEvents((event: AdminEventPayload) => {
+useAdminEvents((event: AdminEventPayload) => {
   if (event.type === 'ORDER_CREATED' || event.type === 'ORDER_STATUS_CHANGED') {
     fetchOrders(true)
   }
