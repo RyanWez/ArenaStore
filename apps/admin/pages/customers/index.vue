@@ -62,7 +62,7 @@ watch(searchQuery, (newVal) => {
 })
 
 const balanceFilter = ref<'all' | 'has_balance' | 'zero_balance'>('all')
-const sortBy = ref<'balance_desc' | 'balance_asc' | 'spent_desc' | 'orders_desc' | 'newest'>('balance_desc')
+const sortBy = ref<'balance_desc' | 'balance_asc' | 'spent_desc' | 'orders_desc' | 'newest' | 'recently_active'>('balance_desc')
 const statusFilter = ref<'active' | 'deactivated' | 'all'>('active')
 const copiedId = ref<string | null>(null)
 
@@ -584,6 +584,7 @@ function formatCurrency(amount: number): string {
           >
             <option value="balance_desc">Balance: High → Low</option>
             <option value="balance_asc">Balance: Low → High</option>
+            <option value="recently_active">Recently Active</option>
             <option value="spent_desc">Most Spent</option>
             <option value="orders_desc">Most Orders</option>
             <option value="newest">Newest Customers</option>
@@ -749,7 +750,10 @@ function formatCurrency(amount: number): string {
                 </td>
 
                 <!-- Joined / Active -->
-                <td class="py-3 px-4 text-xs text-slate-500 dark:text-slate-400 font-mono whitespace-nowrap">
+                <td
+                  class="py-3 px-4 text-xs text-slate-500 dark:text-slate-400 font-mono whitespace-nowrap"
+                  :title="c.lastActive ? `Last Active: ${formatMyanmarDateTime(c.lastActive)} (Joined: ${c.createdAt ? formatMyanmarDate(c.createdAt) : '-'})` : ''"
+                >
                   <div>{{ c.lastActive ? formatMyanmarDate(c.lastActive) : (c.createdAt ? formatMyanmarDate(c.createdAt) : '-') }}</div>
                   <div class="text-[10px] text-slate-400">{{ c.lastActive ? formatMyanmarTime(c.lastActive) : '' }}</div>
                 </td>

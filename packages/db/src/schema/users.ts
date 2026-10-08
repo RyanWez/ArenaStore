@@ -15,6 +15,7 @@ export const users = pgTable(
     roleId: integer("role_id").references(() => roles.id), // staff-only: FK to custom role
     mustChangePassword: boolean("must_change_password").notNull().default(false),
     status: varchar("status", { length: 32 }).notNull().default("ACTIVE"),
+    lastActiveAt: timestamp("last_active_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -22,6 +23,7 @@ export const users = pgTable(
     index("idx_users_telegram_id").on(table.telegramId),
     index("idx_users_email").on(table.email),
     index("idx_users_role").on(table.role),
+    index("idx_users_last_active_at").on(table.lastActiveAt),
   ]
 );
 

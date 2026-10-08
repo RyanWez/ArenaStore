@@ -169,6 +169,7 @@ export class BotOrderService {
 
       let user = existingUser;
       if (!user) {
+        const now = new Date();
         const [newUser] = await db
           .insert(users)
           .values({
@@ -178,6 +179,7 @@ export class BotOrderService {
             username: params.username || null,
             role: "CUSTOMER",
             status: "ACTIVE",
+            lastActiveAt: now,
           })
           .onConflictDoUpdate({
             target: users.telegramId,
@@ -185,7 +187,8 @@ export class BotOrderService {
               firstName: sql`COALESCE(EXCLUDED.first_name, ${users.firstName})`,
               lastName: sql`COALESCE(EXCLUDED.last_name, ${users.lastName})`,
               username: sql`COALESCE(EXCLUDED.username, ${users.username})`,
-              updatedAt: new Date(),
+              lastActiveAt: now,
+              updatedAt: now,
             },
           })
           .returning();
@@ -245,8 +248,64 @@ export class BotOrderService {
     }
   }
 
+  private userProfileSyncCache = new Map<string, { key: string; expiresAt: number }>();
+  private lastActiveThrottle = new Map<string, number>();
+  private lastActiveCleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * High-performance, throttled last-active tracker.
+   * Only touches the database at most once every 5 minutes per user.
+   * Runs non-blocking in the background to ensure 0ms delay to Telegram handlers.
+   */
+  touchLastActive(telegramId: string): void {
+    if (!telegramId) return;
+
+    if (!this.lastActiveCleanupTimer) {
+      this.lastActiveCleanupTimer = setInterval(() => {
+        const threshold = Date.now() - 60 * 60 * 1000;
+        for (const [id, timestamp] of this.lastActiveThrottle.entries()) {
+          if (timestamp < threshold) {
+            this.lastActiveThrottle.delete(id);
+          }
+        }
+        for (const [id, item] of this.userProfileSyncCache.entries()) {
+          if (item.expiresAt < Date.now()) {
+            this.userProfileSyncCache.delete(id);
+          }
+        }
+      }, 30 * 60 * 1000);
+      if (this.lastActiveCleanupTimer.unref) {
+        this.lastActiveCleanupTimer.unref();
+      }
+    }
+
+    const now = Date.now();
+    const lastRecorded = this.lastActiveThrottle.get(telegramId);
+    const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+
+    if (lastRecorded && now - lastRecorded < COOLDOWN_MS) {
+      return; // Cooldown active, skip DB write completely
+    }
+
+    this.lastActiveThrottle.set(telegramId, now);
+
+    // Non-blocking async DB update
+    try {
+      const db = getDb();
+      db.update(users)
+        .set({ lastActiveAt: new Date() })
+        .where(eq(users.telegramId, telegramId))
+        .catch((err) => {
+          console.warn(`[BotOrderService] touchLastActive DB error for ${telegramId}:`, err.message);
+        });
+    } catch (err: any) {
+      console.warn(`[BotOrderService] touchLastActive error for ${telegramId}:`, err.message);
+    }
+  }
+
   /**
    * Synchronizes latest Telegram user info (id, name, username) directly into DB.
+   * Skips DB query if the user profile was already verified in the last 10 minutes.
    */
   async upsertTelegramUser(params: {
     telegramId: string;
@@ -254,7 +313,20 @@ export class BotOrderService {
     lastName?: string | null;
     username?: string | null;
   }) {
-    return this.getOrCreateUser(params);
+    const cacheKey = `${params.firstName}:${params.lastName || ""}:${params.username || ""}`;
+    const cached = this.userProfileSyncCache.get(params.telegramId);
+    if (cached && cached.key === cacheKey && cached.expiresAt > Date.now()) {
+      return null;
+    }
+
+    const res = await this.getOrCreateUser(params);
+    if (res?.user) {
+      this.userProfileSyncCache.set(params.telegramId, {
+        key: cacheKey,
+        expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
+      });
+    }
+    return res;
   }
 
   private userStatusCache = new Map<string, { status: string | null; expiresAt: number }>();

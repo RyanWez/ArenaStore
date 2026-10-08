@@ -94,7 +94,7 @@ async function fetchCustomerDetails() {
         totalDepositedMmk: res.wallet?.totalDepositedMmk ?? res.customer.totalDepositedMmk ?? 0,
         totalSpentMmk: res.wallet?.totalSpentMmk ?? res.customer.totalSpentMmk ?? 0,
         ordersCount: res.customer.ordersCount ?? (res.orders ? res.orders.length : 0),
-        lastActive: res.customer.lastActive,
+        lastActive: res.customer.lastActive || res.customer.updatedAt || res.customer.createdAt,
         createdAt: res.customer.createdAt,
       }
       orders.value = res.orders || []

@@ -1915,7 +1915,9 @@ export async function adminRoutes(server: FastifyInstance) {
       else if (sortBy === "spent_desc") orderByExpr = desc(spentExpr);
       else if (sortBy === "orders_desc") orderByExpr = desc(orderCountExpr);
       else if (sortBy === "newest") orderByExpr = desc(users.createdAt);
-      else orderByExpr = desc(balanceExpr);
+      else if (sortBy === "recently_active") {
+        orderByExpr = desc(sql`coalesce(${users.lastActiveAt}, ${orderStats.lastOrderAt}, ${users.updatedAt}, ${users.createdAt})`);
+      } else orderByExpr = desc(balanceExpr);
 
       // 6. Page of customer users joined with wallets and order stats
       const rows = await db
@@ -1929,6 +1931,7 @@ export async function adminRoutes(server: FastifyInstance) {
           status: users.status,
           createdAt: users.createdAt,
           updatedAt: users.updatedAt,
+          lastActiveAt: users.lastActiveAt,
           walletId: wallets.id,
           balanceMmk: sql<number>`coalesce(${wallets.balanceMmk}, 0)`,
           totalDepositedMmk: sql<number>`coalesce(${wallets.totalDepositedMmk}, 0)`,
@@ -1976,7 +1979,7 @@ export async function adminRoutes(server: FastifyInstance) {
           totalDepositedMmk: Number(r.totalDepositedMmk || 0),
           totalSpentMmk: effectiveSpent,
           ordersCount: Number(r.orderCount || 0),
-          lastActive: r.lastOrderAt || r.updatedAt || r.createdAt,
+          lastActive: r.lastActiveAt || r.lastOrderAt || r.updatedAt || r.createdAt,
           createdAt: r.createdAt,
         };
       });
@@ -2173,6 +2176,7 @@ export async function adminRoutes(server: FastifyInstance) {
         displayName,
         role: user.role,
         status: user.status,
+        lastActive: (user as any).lastActiveAt || enrichedOrders[0]?.createdAt || user.updatedAt || user.createdAt,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },

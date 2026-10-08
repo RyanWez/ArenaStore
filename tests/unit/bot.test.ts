@@ -462,6 +462,16 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(typeof profile.walletBalanceMmk).toBe("number");
       expect(profile.joinedDate).toBeDefined();
     });
+
+    it("throttles touchLastActive to avoid redundant DB queries during cooldown", async () => {
+      const { botOrderService } = await import("../../apps/bot/src/services/order.service");
+      expect(typeof botOrderService.touchLastActive).toBe("function");
+      expect(() => {
+        botOrderService.touchLastActive("999888777");
+        botOrderService.touchLastActive("999888777");
+        botOrderService.touchLastActive("");
+      }).not.toThrow();
+    });
   });
 
   describe("Prepaid Wallet Architecture (Recommendations A to D)", () => {

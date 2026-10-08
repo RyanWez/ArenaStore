@@ -82,9 +82,14 @@ export function createBot(): Bot<BotContext> {
 
   // 2. Global Telegram User Profile Auto-Sync Middleware
   // Immediately synchronizes Name, @username, and Telegram ID to DB on any interaction
+  // and updates Last Active timestamp with 5-minute in-memory throttling
   bot.use(async (ctx, next) => {
     if (ctx.from && ctx.from.id) {
       const telegramId = String(ctx.from.id);
+      
+      // High-performance last active tracker (5-minute in-memory cooldown, 0ms latency)
+      botOrderService.touchLastActive(telegramId);
+
       const firstName = ctx.from.first_name || "Customer";
       const lastName = ctx.from.last_name || null;
       const username = ctx.from.username || null;

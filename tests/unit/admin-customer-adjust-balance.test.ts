@@ -387,4 +387,19 @@ describe("Admin Adjust Balance Route", () => {
     expect(res.body.ledger[0]).toMatchObject({ amountMmk: -3000, balanceAfterMmk: 2000 });
     expect(res.body.ledger[1]).toMatchObject({ amountMmk: 5000, balanceAfterMmk: 5000 });
   });
+
+  it("returns lastActive timestamp in customer details", async () => {
+    const activeDate = new Date("2026-10-08T12:00:00Z");
+    h.reset({
+      users: [{ ...testUser, lastActiveAt: activeDate, createdAt: new Date("2026-10-01T00:00:00Z") }],
+      wallets: [{ ...testWallet }],
+      walletLedger: [],
+    });
+
+    const res = await callRoute("GET", CUSTOMER_DETAIL_URL, testUser.id);
+
+    expect(res.status).toBe(200);
+    expect(res.body.customer.lastActive).toBeDefined();
+    expect(new Date(res.body.customer.lastActive).toISOString()).toBe(activeDate.toISOString());
+  });
 });
