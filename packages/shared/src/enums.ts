@@ -29,6 +29,7 @@ export const PaymentMethod = {
   CB_PAY: "CB_PAY",
   AYAPAY: "AYAPAY",
   WALLET: "WALLET",
+  MMPAY: "MMPAY",
 } as const;
 export type PaymentMethod = (typeof PaymentMethod)[keyof typeof PaymentMethod];
 

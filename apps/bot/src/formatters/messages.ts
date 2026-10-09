@@ -457,3 +457,100 @@ System Maintenance</blockquote>
 
 လုပ်ဆောင်ချက်များ မကြာမီ ပြီးစီးတော့မှာဖြစ်ပြီး ပြန်ဖွင့်ချိန်တွင် ပုံမှန်အတိုင်း ပြန်လည် ဝယ်ယူနိုင်ပါမည်။${contactText}`;
 }
+
+/**
+ * Formats the MyanMyanPay dynamic MMQR invoice message.
+ * Strictly complies with MyanMyanPay guidelines:
+ * 1. MMK currency only
+ * 2. 15-minute countdown and expiration time
+ * 3. Mandatory uppercase attribution: "PAYMENT POWERED BY MYANMYANPAY"
+ */
+export function formatMmpayQrInvoiceMessage(params: {
+  amountMmk: number;
+  reference: string;
+  expiresAt: Date;
+}): string {
+  const expiresTimeStr = params.expiresAt.toLocaleTimeString("en-GB", {
+    timeZone: "Asia/Yangon",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return `<blockquote>${tgEmoji(BOT_EMOJIS.LIGHTNING, "⚡")} <b>MMQR အလိုအလျောက် ငွေပေးချေလွှာ</b> ❞
+ငွေလွှဲပြေစာ ပေးပို့ရန် မလိုဘဲ စက္ကန့်ပိုင်းအတွင်း အလိုအလျောက် ငွေဝင်ရောက်ပါမည်။</blockquote>
+
+${tgEmoji(BOT_EMOJIS.PRICE, "💵")} <b>ငွေပမာဏ:</b> <b>${params.amountMmk.toLocaleString("en-US")} MMK</b>
+${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>အော်ဒါ အမှတ်:</b> <code>${escapeHtml(params.reference)}</code>
+${tgEmoji(BOT_EMOJIS.HOURGLASS, "⏳")} <b>သက်တမ်း:</b> <b>၁၅ မိနစ် (15:00 Mins)</b>
+🕒 <b>နောက်ဆုံး ပေးချေရမည့်အချိန်:</b> <b>${expiresTimeStr} MMT</b>
+
+📱 <b>ပေးချေနိုင်သော Mobile Banking များ:</b>
+KBZPay, WavePay, AYA Pay, CB Pay, UAB Pay စသည့် MMQR ထောက်ပံ့သော မည်သည့် Mobile Banking / Wallet ဖြင့်မဆို အထက်ပါ QR ကုဒ်ကို Scan ဖတ်၍ ပေးချေနိုင်ပါသည် ခင်ဗျာ။
+
+💡 <i>အပေါ်မှ QR ပုံကို နှိပ်၍ ဖုန်း Gallery ထဲသို့ Save Image ပြုလုပ်ပြီး မိမိ Banking App (KPay / WavePay) ထဲမှ Scan From Gallery ဖြင့် ပေးချေပါက အဆင်ပြေဆုံး ဖြစ်ပါသည်။</i>
+
+───────────────────────────
+⚡️ PAYMENT POWERED BY MYANMYANPAY
+───────────────────────────`;
+}
+
+/**
+ * Formats the Payment Method Choice prompt (Instant MMQR vs Manual Slip).
+ */
+export function formatPaymentMethodChoiceMessage(params: {
+  amountMmk: number;
+}): string {
+  return `<blockquote>${tgEmoji(BOT_EMOJIS.MONEY, "💰")} <b>ငွေပေးချေမှု နည်းလမ်း ရွေးချယ်ပါ</b> ❞
+ငွေဖြည့်သွင်းမည့် ပမာဏ: <b>${params.amountMmk.toLocaleString("en-US")} MMK</b></blockquote>
+
+မိမိ အဆင်ပြေရာ ငွေပေးချေမှု ပုံစံကို အောက်ပါ ခလုတ်များမှ ရွေးချယ်ပေးပါခင်ဗျာ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}
+
+⚡️ <b>MMQR (အလိုအလျောက် ပေးချေခြင်း):</b>
+• ပြေစာ စလစ် တင်ရန် မလိုပါ။
+• Scan ဖတ်ပြီးသည်နှင့် ၁ စက္ကန့်အတွင်း Wallet ထဲသို့ ငွေရောက်ရှိပါမည်။
+
+🧾 <b>Manual Slip (လက်စွဲ ပြေစာ တင်ခြင်း):</b>
+• ပုံမှန် KPay / WavePay အကောင့်သို့ ငွေလွှဲပြီး ပြေစာ ပုံ တင်ပေးရပါမည်။`;
+}
+
+/**
+ * Formats notice when user attempts to create a new top-up while an unexpired
+ * MMQR order is already active (Strict MyanMyanPay compliance rule).
+ */
+export function formatActiveMmpayExistsMessage(params: {
+  reference: string;
+  amountMmk: number;
+  expiresAt: Date;
+}): string {
+  const expiresTimeStr = params.expiresAt.toLocaleTimeString("en-GB", {
+    timeZone: "Asia/Yangon",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return `<blockquote>${tgEmoji(BOT_EMOJIS.WARNING, "⚠️")} <b>မပြီးပြတ်သေးသော MMQR အော်ဒါ ရှိနေပါသည်</b> ❞
+အော်ဒါ အမှတ်: <b>${escapeHtml(params.reference)}</b>
+ငွေပမာဏ: <b>${params.amountMmk.toLocaleString("en-US")} MMK</b>
+သက်တမ်းကုန်ဆုံးချိန်: <b>${expiresTimeStr} MMT</b></blockquote>
+
+MyanMyanPay စည်းကမ်းချက်အရ လက်ရှိ အော်ဒါကို ပြီးဆုံးအောင် ပေးချေခြင်း သို့မဟုတ် Cancel လုပ်ခြင်း မပြုမချင်း နောက်ထပ် ငွေပေးချေမှု အသစ် ထပ်မံ တောင်းခံခွင့် မရှိပါခင်ဗျာ။
+
+လက်ရှိ QR ကုဒ်ကို ပြန်လည်ကြည့်ရှုလိုပါက သို့မဟုတ် အော်ဒါ ဖျက်သိမ်းလိုပါက အောက်ပါ ခလုတ်ကို ရွေးချယ်ပါ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}`;
+}
+
+/**
+ * Formats notice after a successful MMQR top-up confirmation.
+ */
+export function formatMmpaySuccessMessage(params: {
+  amountMmk: number;
+  reference: string;
+  walletBalanceMmk: number;
+}): string {
+  return `<blockquote>${tgEmoji(BOT_EMOJIS.CHECK, "✅")} <b>MMQR ငွေပေးချေမှု အောင်မြင်ပါပြီ!</b> ❞
+အော်ဒါ အမှတ်: <b>${escapeHtml(params.reference)}</b>
+ဖြည့်သွင်းငွေ: <b>+${params.amountMmk.toLocaleString("en-US")} MMK</b>
+လက်ရှိ Wallet Balance: <b>${params.walletBalanceMmk.toLocaleString("en-US")} MMK</b></blockquote>
+
+ကျေးဇူးတင်ရှိပါသည်ခင်ဗျာ! အခုပဲ ပစ္စည်းများကို ဆက်လက် ဝယ်ယူနိုင်ပါပြီ ${tgEmoji(BOT_EMOJIS.SPARKLES, "✨")}`;
+}
+

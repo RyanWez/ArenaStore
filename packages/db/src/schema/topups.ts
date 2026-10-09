@@ -21,11 +21,16 @@ export const topUpRequests = pgTable(
     rejectReason: varchar("reject_reason", { length: 255 }),
     intendedProduct: varchar("intended_product", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    mmpayOrderId: varchar("mmpay_order_id", { length: 64 }),
+    mmpayQrString: varchar("mmpay_qr_string", { length: 1024 }),
+    mmpayVendorQrRef: varchar("mmpay_vendor_qr_ref", { length: 128 }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
   },
   (table) => [
     index("idx_topups_user_id").on(table.userId),
     index("idx_topups_reference").on(table.reference),
     index("idx_topups_status").on(table.status),
+    index("idx_topups_mmpay_order_id").on(table.mmpayOrderId),
   ]
 );
 

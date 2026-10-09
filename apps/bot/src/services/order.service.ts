@@ -577,6 +577,137 @@ export class BotOrderService {
   }
 
   /**
+   * Retrieves an active, unexpired MyanMyanPay top-up order for a given customer if one exists.
+   * Complies with Single Active Order & Caching guidelines.
+   */
+  async getActiveMmpayTopUp(telegramId: string): Promise<{
+    id: number;
+    reference: string;
+    amountMmk: number;
+    qr: string;
+    expiresAt: Date;
+  } | null> {
+    try {
+      const userRecord = await this.getOrCreateUser({ telegramId });
+      if (!userRecord?.user) return null;
+
+      const db = getDb();
+      const [active] = await db
+        .select()
+        .from(topUpRequests)
+        .where(
+          and(
+            eq(topUpRequests.userId, userRecord.user.id),
+            eq(topUpRequests.paymentMethod, "MMPAY"),
+            eq(topUpRequests.status, "PENDING"),
+            sql`${topUpRequests.expiresAt} > NOW()`
+          )
+        )
+        .limit(1);
+
+      if (active && active.mmpayQrString && active.expiresAt) {
+        return {
+          id: active.id,
+          reference: active.reference,
+          amountMmk: active.amountMmk,
+          qr: active.mmpayQrString,
+          expiresAt: new Date(active.expiresAt),
+        };
+      }
+    } catch (err: any) {
+      console.warn("[BotOrderService] Error fetching active MMPay topup:", err.message);
+    }
+    return null;
+  }
+
+  /**
+   * Creates or returns an active MyanMyanPay MMQR instance by delegating to API service.
+   */
+  async createMmpayTopUp(params: {
+    telegramId: string;
+    amountMmk: number;
+    intendedProduct?: string;
+  }): Promise<{
+    ok: boolean;
+    isExisting?: boolean;
+    reference?: string;
+    amountMmk?: number;
+    qr?: string;
+    expiresAt?: Date;
+    error?: string;
+  }> {
+    try {
+      const res = await fetch(`${botConfig.API_BASE_URL}/api/payments/mmpay/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params),
+      });
+
+      const data = (await res.json()) as any;
+      if (!res.ok || !data.ok) {
+        return { ok: false, error: data?.error || `HTTP ${res.status}` };
+      }
+
+      return {
+        ok: true,
+        isExisting: Boolean(data.isExisting),
+        reference: data.reference,
+        amountMmk: data.amountMmk,
+        qr: data.qr,
+        expiresAt: new Date(data.expiresAt),
+      };
+    } catch (err: any) {
+      console.error("[BotOrderService] createMmpayTopUp error:", err.message);
+      return { ok: false, error: err.message };
+    }
+  }
+
+  /**
+   * Cancels an active MyanMyanPay MMQR payment request.
+   */
+  async cancelMmpayTopUp(reference: string, telegramId: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${botConfig.API_BASE_URL}/api/payments/mmpay/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reference, telegramId }),
+      });
+      const data = (await res.json()) as any;
+      return Boolean(res.ok && data?.ok);
+    } catch (err: any) {
+      console.error("[BotOrderService] cancelMmpayTopUp error:", err.message);
+      return false;
+    }
+  }
+
+  /**
+   * Checks the status of an MMPay payment request.
+   */
+  async checkMmpayStatus(reference: string): Promise<{
+    status: string;
+    amountMmk: number;
+    expiresAt?: Date;
+  } | null> {
+    try {
+      const res = await fetch(
+        `${botConfig.API_BASE_URL}/api/payments/mmpay/status/${encodeURIComponent(reference)}`
+      );
+      const data = (await res.json()) as any;
+      if (res.ok && data?.ok) {
+        return {
+          status: data.status,
+          amountMmk: data.amountMmk,
+          expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
+        };
+      }
+    } catch (err: any) {
+      console.error("[BotOrderService] checkMmpayStatus error:", err.message);
+    }
+    return null;
+  }
+
+
+  /**
    * Submits a top-up payment slip screenshot proof to Neon DB.
    * Matches by reference ('TOP-XXXXXX') OR numeric database ID.
    */

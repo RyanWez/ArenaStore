@@ -58,6 +58,10 @@ const envSchema = z.object({
    * alerts are not delayed by catalog syncs.
    */
   BALANCE_CHECK_INTERVAL_MINUTES: z.coerce.number().int().min(0).default(2),
+  MMPAY_APP_ID: z.string().default(""),
+  MMPAY_PUBLISHABLE_KEY: z.string().default(""),
+  MMPAY_SECRET_KEY: z.string().default(""),
+  MMPAY_API_BASE_URL: z.string().default("https://bbapi.myanmyanpay.com"),
   /**
    * Whether Fastify should trust reverse proxy headers like X-Forwarded-For.
    * - "loopback, uniquelocal" (or 1): trusts local & private reverse proxies (e.g. Render,

@@ -1,9 +1,10 @@
-import { Bot, session, InlineKeyboard } from "grammy";
+import { Bot, session, InlineKeyboard, InputFile } from "grammy";
 import { botConfig } from "./config";
 import { BotContext, createInitialSessionData } from "./types";
 import { botCatalog } from "./services/catalog.service";
 import { botOrderService } from "./services/order.service";
 import { botSettingsService, resolveTelegramSupportUrl } from "./services/settings.service";
+import { generateQrImageBuffer } from "./services/qr.service";
 import {
   buildMainMenuKeyboard,
   buildCategoriesKeyboard,
@@ -14,6 +15,9 @@ import {
   buildProfileKeyboard,
   buildWalletKeyboard,
   buildTopUpInvoiceKeyboard,
+  buildPaymentMethodChoiceKeyboard,
+  buildMmpayInvoiceKeyboard,
+  buildActiveMmpayPromptKeyboard,
   buildInsufficientBalanceKeyboard,
   buildPurchaseConfirmKeyboard,
   buildOrderDetailKeyboard,
@@ -32,6 +36,10 @@ import {
   formatProfileMessage,
   formatWalletMessage,
   formatTopUpInvoiceMessage,
+  formatMmpayQrInvoiceMessage,
+  formatPaymentMethodChoiceMessage,
+  formatActiveMmpayExistsMessage,
+  formatMmpaySuccessMessage,
   formatTopUpSlipReceivedMessage,
   formatInsufficientBalanceMessage,
   formatPurchaseConfirmMessage,
@@ -642,10 +650,26 @@ export function createBot(): Bot<BotContext> {
     activeTopUpLocks.add(telegramId);
 
     try {
-      const topUp = await botOrderService.createTopUpRequest({ telegramId, amountMmk: amount });
-      const unmatchedPhoto = ctx.session.unmatchedPhotoFileId;
+      // 1. Check for unexpired active MMQR order (Rule 8: Single Active Order)
+      const activeMmpay = await botOrderService.getActiveMmpayTopUp(telegramId);
+      if (activeMmpay) {
+        await ctx.editMessageText(
+          formatActiveMmpayExistsMessage({
+            reference: activeMmpay.reference,
+            amountMmk: activeMmpay.amountMmk,
+            expiresAt: activeMmpay.expiresAt,
+          }),
+          {
+            parse_mode: "HTML",
+            reply_markup: buildActiveMmpayPromptKeyboard(activeMmpay.reference),
+          }
+        );
+        return;
+      }
 
+      const unmatchedPhoto = ctx.session.unmatchedPhotoFileId;
       if (unmatchedPhoto) {
+        const topUp = await botOrderService.createTopUpRequest({ telegramId, amountMmk: amount });
         ctx.session.unmatchedPhotoFileId = undefined;
         ctx.session.awaitingTopUpSlip = undefined;
         ctx.session.awaitingCustomTopUp = false;
@@ -676,20 +700,12 @@ export function createBot(): Bot<BotContext> {
         return;
       }
 
-      ctx.session.awaitingTopUpSlip = {
-        topUpId: topUp.reference,
-        amountMmk: amount,
-        reference: topUp.reference,
-        dbId: topUp.id,
-      };
-      ctx.session.awaitingCustomTopUp = false;
-      const settings = await botSettingsService.getSettings();
-
+      // Prompt choice: MMQR vs Manual Slip
       await ctx.editMessageText(
-        formatTopUpInvoiceMessage({ amountMmk: amount, reference: topUp.reference, paymentInfo: settings }),
+        formatPaymentMethodChoiceMessage({ amountMmk: amount }),
         {
           parse_mode: "HTML",
-          reply_markup: buildTopUpInvoiceKeyboard(),
+          reply_markup: buildPaymentMethodChoiceKeyboard(amount),
         }
       );
     } finally {
@@ -705,10 +721,26 @@ export function createBot(): Bot<BotContext> {
     const telegramId = String(ctx.from?.id || "");
 
     ctx.session.intendedOrderAfterTopUp = { productId, quantity };
-    const topUp = await botOrderService.createTopUpRequest({ telegramId, amountMmk: deficit });
-    const unmatchedPhoto = ctx.session.unmatchedPhotoFileId;
 
+    const activeMmpay = await botOrderService.getActiveMmpayTopUp(telegramId);
+    if (activeMmpay) {
+      await ctx.editMessageText(
+        formatActiveMmpayExistsMessage({
+          reference: activeMmpay.reference,
+          amountMmk: activeMmpay.amountMmk,
+          expiresAt: activeMmpay.expiresAt,
+        }),
+        {
+          parse_mode: "HTML",
+          reply_markup: buildActiveMmpayPromptKeyboard(activeMmpay.reference),
+        }
+      );
+      return;
+    }
+
+    const unmatchedPhoto = ctx.session.unmatchedPhotoFileId;
     if (unmatchedPhoto) {
+      const topUp = await botOrderService.createTopUpRequest({ telegramId, amountMmk: deficit });
       ctx.session.unmatchedPhotoFileId = undefined;
       ctx.session.awaitingTopUpSlip = undefined;
       ctx.session.awaitingCustomTopUp = false;
@@ -739,9 +771,83 @@ export function createBot(): Bot<BotContext> {
       return;
     }
 
+    // Prompt payment method choice for deficit
+    await ctx.editMessageText(
+      formatPaymentMethodChoiceMessage({ amountMmk: deficit }),
+      {
+        parse_mode: "HTML",
+        reply_markup: buildPaymentMethodChoiceKeyboard(deficit, `def_${productId}_${quantity}`),
+      }
+    );
+  });
+
+  // 14A. MyanMyanPay MMQR Instant Auto-Payment Request
+  bot.callbackQuery(/^mmpay_pay_(\d+)(?:_(.+))?$/, async (ctx) => {
+    const amount = parseInt(ctx.match[1], 10);
+    const intendedContext = ctx.match[2];
+    const telegramId = String(ctx.from?.id || "");
+
+    if (activeTopUpLocks.has(telegramId)) {
+      await ctx.answerCallbackQuery({ text: "ခေတ္တစောင့်ပေးပါခင်ဗျာ..." }).catch(() => {});
+      return;
+    }
+    activeTopUpLocks.add(telegramId);
+
+    try {
+      await ctx.answerCallbackQuery({ text: "MMQR ဖန်တီးနေပါသည်..." }).catch(() => {});
+
+      const res = await botOrderService.createMmpayTopUp({
+        telegramId,
+        amountMmk: amount,
+        intendedProduct: intendedContext,
+      });
+
+      if (!res.ok || !res.qr || !res.reference || !res.expiresAt) {
+        await ctx.editMessageText(
+          `${tgEmoji(BOT_EMOJIS.WARNING, "⚠️")} <b>MMQR ဖန်တီးရာတွင် အဆင်မပြေဖြစ်သွားပါသည်:</b>\n<code>${escapeHtml(res.error || "Gateway error")}</code>\n\nကျေးဇူးပြု၍ ပြေစာ စလစ်တင်သည့် နည်းလမ်းဖြင့် ဆက်လက် ပေးချေပေးပါခင်ဗျာ။`,
+          {
+            parse_mode: "HTML",
+            reply_markup: buildPaymentMethodChoiceKeyboard(amount, intendedContext),
+          }
+        );
+        return;
+      }
+
+      const qrBuffer = await generateQrImageBuffer(res.qr);
+      await ctx.deleteMessage().catch(() => {});
+
+      await ctx.replyWithPhoto(new InputFile(qrBuffer, `mmqr-${res.reference}.png`), {
+        caption: formatMmpayQrInvoiceMessage({
+          amountMmk: res.amountMmk || amount,
+          reference: res.reference,
+          expiresAt: res.expiresAt,
+        }),
+        parse_mode: "HTML",
+        reply_markup: buildMmpayInvoiceKeyboard(res.reference),
+      });
+    } catch (err: any) {
+      console.error("[Bot] mmpay_pay error:", err.message);
+      await ctx.reply("⚠️ MMQR ပြုလုပ်ရာတွင် ချို့ယွင်းချက် ဖြစ်ပေါ်ခဲ့ပါသည်။ ခေတ္တစောင့်ပြီး ပြန်လည် ကြိုးစားပေးပါခင်ဗျာ။");
+    } finally {
+      setTimeout(() => activeTopUpLocks.delete(telegramId), 1500);
+    }
+  });
+
+  // 14B. Manual Slip Top-Up Selection (Preserving Existing Manual Flow)
+  bot.callbackQuery(/^manual_slip_(\d+)(?:_(.+))?$/, async (ctx) => {
+    const amount = parseInt(ctx.match[1], 10);
+    const intendedContext = ctx.match[2];
+    const telegramId = String(ctx.from?.id || "");
+
+    const topUp = await botOrderService.createTopUpRequest({
+      telegramId,
+      amountMmk: amount,
+      intendedProduct: intendedContext,
+    });
+
     ctx.session.awaitingTopUpSlip = {
       topUpId: topUp.reference,
-      amountMmk: deficit,
+      amountMmk: amount,
       reference: topUp.reference,
       dbId: topUp.id,
     };
@@ -749,13 +855,122 @@ export function createBot(): Bot<BotContext> {
     const settings = await botSettingsService.getSettings();
 
     await ctx.editMessageText(
-      formatTopUpInvoiceMessage({ amountMmk: deficit, reference: topUp.reference, paymentInfo: settings }),
+      formatTopUpInvoiceMessage({ amountMmk: amount, reference: topUp.reference, paymentInfo: settings }),
       {
         parse_mode: "HTML",
         reply_markup: buildTopUpInvoiceKeyboard(),
       }
     );
   });
+
+  // 14C. Re-show Active MMQR Invoice (Compliance Rule 7: Data Caching)
+  bot.callbackQuery(/^mmpay_show_(.+)$/, async (ctx) => {
+    const reference = ctx.match[1];
+    const telegramId = String(ctx.from?.id || "");
+
+    const active = await botOrderService.getActiveMmpayTopUp(telegramId);
+    if (!active || active.reference !== reference) {
+      await ctx.answerCallbackQuery({ text: "အော်ဒါ သက်တမ်းကုန်ဆုံးသွားပါပြီ သို့မဟုတ် မရှိတော့ပါခင်ဗျာ။", show_alert: true });
+      const stats = await botOrderService.getUserProfile(telegramId);
+      const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || "Customer";
+      await ctx.editMessageText(
+        formatWalletMessage({
+          fullName,
+          balanceMmk: stats.walletBalanceMmk,
+          totalSpentMmk: stats.totalSpentMmk,
+        }),
+        {
+          parse_mode: "HTML",
+          reply_markup: buildWalletKeyboard(),
+        }
+      );
+      return;
+    }
+
+    await ctx.answerCallbackQuery({ text: "QR ကုဒ်ကို ပြသနေပါသည်..." }).catch(() => {});
+    const qrBuffer = await generateQrImageBuffer(active.qr);
+    await ctx.deleteMessage().catch(() => {});
+
+    await ctx.replyWithPhoto(new InputFile(qrBuffer, `mmqr-${active.reference}.png`), {
+      caption: formatMmpayQrInvoiceMessage({
+        amountMmk: active.amountMmk,
+        reference: active.reference,
+        expiresAt: active.expiresAt,
+      }),
+      parse_mode: "HTML",
+      reply_markup: buildMmpayInvoiceKeyboard(active.reference),
+    });
+  });
+
+  // 14D. Cancel Active MMQR Invoice (Compliance Rule 8 & 9: Manual Cancellation)
+  bot.callbackQuery(/^mmpay_cancel_(.+)$/, async (ctx) => {
+    const reference = ctx.match[1];
+    const telegramId = String(ctx.from?.id || "");
+
+    await botOrderService.cancelMmpayTopUp(reference, telegramId);
+    await ctx.answerCallbackQuery({ text: "ငွေပေးချေမှုကို ဖျက်သိမ်းပြီးပါပြီ!" });
+    await ctx.deleteMessage().catch(() => {});
+
+    await ctx.reply(
+      "❌ <b>MMQR ငွေပေးချေမှုကို ဖျက်သိမ်းပြီးပါပြီ။</b>\nငွေဖြည့်သွင်းလိုပါက အသစ် ပြန်လည် တောင်းခံနိုင်ပါပြီ ခင်ဗျာ။",
+      {
+        parse_mode: "HTML",
+        reply_markup: buildWalletKeyboard(),
+      }
+    );
+  });
+
+  // 14E. Check MMQR Status / Refresh
+  bot.callbackQuery(/^mmpay_check_(.+)$/, async (ctx) => {
+    const reference = ctx.match[1];
+    const telegramId = String(ctx.from?.id || "");
+
+    const statusRes = await botOrderService.checkMmpayStatus(reference);
+    if (!statusRes) {
+      await ctx.answerCallbackQuery({ text: "အော်ဒါ အချက်အလက် စစ်ဆေးမရသေးပါ ခင်ဗျာ။", show_alert: true });
+      return;
+    }
+
+    if (statusRes.status === "APPROVED") {
+      const stats = await botOrderService.getUserProfile(telegramId);
+      await ctx.answerCallbackQuery({ text: "ငွေပေးချေမှု အောင်မြင်ပြီးဖြစ်ပါသည်!" });
+      await ctx.deleteMessage().catch(() => {});
+      await ctx.reply(
+        formatMmpaySuccessMessage({
+          amountMmk: statusRes.amountMmk,
+          reference,
+          walletBalanceMmk: stats.walletBalanceMmk,
+        }),
+        {
+          parse_mode: "HTML",
+          reply_markup: buildMainMenuKeyboard(),
+        }
+      );
+    } else if (statusRes.status === "EXPIRED") {
+      await ctx.answerCallbackQuery({ text: "ဤ QR ကုဒ် သက်တမ်းကုန်ဆုံးသွားပါပြီ။", show_alert: true });
+      await ctx.deleteMessage().catch(() => {});
+      await ctx.reply(
+        "⚠️ <b>MMQR သက်တမ်းကုန်ဆုံးသွားပါပြီ (Expired)</b>\nကျေးဇူးပြု၍ ငွေပမာဏ အသစ် ရွေးချယ်ပေးပါခင်ဗျာ။",
+        {
+          parse_mode: "HTML",
+          reply_markup: buildWalletKeyboard(),
+        }
+      );
+    } else if (statusRes.status === "CANCELLED") {
+      await ctx.answerCallbackQuery({ text: "ဤအော်ဒါကို ဖျက်သိမ်းထားပြီးဖြစ်ပါသည်။", show_alert: true });
+      await ctx.deleteMessage().catch(() => {});
+      await ctx.reply("❌ <b>ဤအော်ဒါကို ဖျက်သိမ်းထားပြီးဖြစ်ပါသည်။</b>", {
+        parse_mode: "HTML",
+        reply_markup: buildWalletKeyboard(),
+      });
+    } else {
+      await ctx.answerCallbackQuery({
+        text: "⏳ ငွေပေးချေမှုကို စောင့်ဆိုင်းနေဆဲဖြစ်ပါသည်။ Mobile Banking App (KPay / WavePay) တွင် Scan ဖတ်၍ ပေးချေပေးပါခင်ဗျာ။",
+        show_alert: true,
+      });
+    }
+  });
+
 
   // 15. Custom Top-Up Amount Prompt
   bot.callbackQuery("topup_custom", async (ctx) => {
@@ -815,6 +1030,7 @@ export function createBot(): Bot<BotContext> {
     const telegramId = String(ctx.from?.id || "");
     const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || "Customer";
     const stats = await botOrderService.getUserProfile(telegramId);
+    const activeMmpay = await botOrderService.getActiveMmpayTopUp(telegramId);
 
     await ctx.editMessageText(
       formatWalletMessage({
@@ -824,7 +1040,7 @@ export function createBot(): Bot<BotContext> {
       }),
       {
         parse_mode: "HTML",
-        reply_markup: buildWalletKeyboard(),
+        reply_markup: buildWalletKeyboard(activeMmpay?.reference),
       }
     );
   });
@@ -1017,10 +1233,27 @@ export function createBot(): Bot<BotContext> {
 
       try {
         ctx.session.awaitingCustomTopUp = false;
-        const topUp = await botOrderService.createTopUpRequest({ telegramId, amountMmk: amount });
-        const unmatchedPhoto = ctx.session.unmatchedPhotoFileId;
 
+        const activeMmpay = await botOrderService.getActiveMmpayTopUp(telegramId);
+        if (activeMmpay) {
+          await ctx.reply(
+            formatActiveMmpayExistsMessage({
+              reference: activeMmpay.reference,
+              amountMmk: activeMmpay.amountMmk,
+              expiresAt: activeMmpay.expiresAt,
+            }),
+            {
+              parse_mode: "HTML",
+              reply_markup: buildActiveMmpayPromptKeyboard(activeMmpay.reference),
+              reply_parameters: { message_id: ctx.message.message_id },
+            }
+          );
+          return;
+        }
+
+        const unmatchedPhoto = ctx.session.unmatchedPhotoFileId;
         if (unmatchedPhoto) {
+          const topUp = await botOrderService.createTopUpRequest({ telegramId, amountMmk: amount });
           ctx.session.unmatchedPhotoFileId = undefined;
           ctx.session.awaitingTopUpSlip = undefined;
 
@@ -1050,19 +1283,12 @@ export function createBot(): Bot<BotContext> {
           return;
         }
 
-        ctx.session.awaitingTopUpSlip = {
-          topUpId: topUp.reference,
-          amountMmk: amount,
-          reference: topUp.reference,
-          dbId: topUp.id,
-        };
-
-        const settings = await botSettingsService.getSettings();
+        // Offer choice: MMQR vs Manual Slip
         await ctx.reply(
-          formatTopUpInvoiceMessage({ amountMmk: amount, reference: topUp.reference, paymentInfo: settings }),
+          formatPaymentMethodChoiceMessage({ amountMmk: amount }),
           {
             parse_mode: "HTML",
-            reply_markup: buildTopUpInvoiceKeyboard(),
+            reply_markup: buildPaymentMethodChoiceKeyboard(amount),
             reply_parameters: { message_id: ctx.message.message_id },
           }
         );

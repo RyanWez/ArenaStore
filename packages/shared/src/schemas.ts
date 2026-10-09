@@ -73,3 +73,19 @@ export const CreateBroadcastSchema = z.object({
   targetAudience: z.enum(["ALL", "CUSTOMERS", "WITH_BALANCE"]).default("ALL"),
 });
 export type CreateBroadcastInput = z.infer<typeof CreateBroadcastSchema>;
+
+// MyanMyanPay Webhook Payload
+export const MMPayWebhookPayloadSchema = z.object({
+  orderId: z.string(),
+  amount: z.number(),
+  currency: z.string().default("MMK"),
+  vendor: z.string().optional(),
+  method: z.string().optional(),
+  status: z.enum(["PENDING", "SUCCESS", "FAILED", "REFUNDED", "EXPIRED", "CANCELLED"]),
+  condition: z.string().optional(),
+  transactionRefId: z.string().optional(),
+  vendorQrRefId: z.string().optional(),
+  customMessage: z.string().optional(),
+});
+export type MMPayWebhookPayload = z.infer<typeof MMPayWebhookPayloadSchema>;
+
