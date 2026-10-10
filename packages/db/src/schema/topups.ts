@@ -1,4 +1,5 @@
-import { pgTable, serial, integer, varchar, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, varchar, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { users } from "./users";
 
 export const topUpRequests = pgTable(
@@ -31,6 +32,11 @@ export const topUpRequests = pgTable(
     index("idx_topups_reference").on(table.reference),
     index("idx_topups_status").on(table.status),
     index("idx_topups_mmpay_order_id").on(table.mmpayOrderId),
+    // At most one active (PENDING) MMPay top-up per user — enforces the
+    // single-active-order rule at the DB level (migration 0011).
+    uniqueIndex("uq_topups_user_active_mmpay")
+      .on(table.userId)
+      .where(sql`${table.paymentMethod} = 'MMPAY' AND ${table.status} = 'PENDING'`),
   ]
 );
 

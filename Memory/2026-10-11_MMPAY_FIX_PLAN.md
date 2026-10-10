@@ -172,13 +172,32 @@
   full suite 312/313 (the 1 failure is the #8 caption attribution assertion,
   deferred to Phase 3 per owner).
 
-### Phase 3 — Robustness
+### Phase 3 — Robustness  ✅ DONE 2026-10-11
 - #7 atomic single-active-order (partial unique index or advisory lock)
 - #11 scope auto-cancel/expire per payment method
 - #8 resolve attribution + fix/keep the unit test
 - Verify: concurrent create yields one order; cross-flow no longer cancels MMQR.
 
-### Phase 4 — Type safety & polish
+**Implementation notes (Phase 3):**
+- #7: new migration `0011_add_mmpay_single_active_order.sql` + schema partial
+  unique index `uq_topups_user_active_mmpay` on `(user_id)` WHERE
+  `payment_method='MMPAY' AND status='PENDING'` (one active MMQR per user,
+  DB-enforced). The migration first expires any pre-existing duplicates. The
+  create route now catches the unique violation (23505): returns the existing
+  QR if ready, else 409 "being prepared, retry".
+- #11: the manual (KPAY) `createTopUpRequest` auto-cancel is now scoped with
+  `ne(paymentMethod,'MMPAY')`, so starting a manual top-up no longer cancels an
+  active MMQR (which has its own cancel/expire path).
+- #8: owner's decision — attribution removed from the caption text, kept on the
+  QR card image. Updated the formatter doc comment and realigned the stale unit
+  assertions (`tests/unit/mmpay.test.ts`) to the current concise caption
+  (MMK/no-USD, 15-min notice, reference, KPay/WavePay) and asserted the caption
+  no longer contains the uppercase attribution.
+- Tests: added single-active-order integration cases (duplicate rejected 23505;
+  fresh order allowed after the previous is terminal). DB + API + bot typecheck
+  clean; full suite **315/315 green**.
+
+### Phase 4 — Type safety & polish  (PENDING)
 - #9 central `TopUpStatus` enum + fix `TopUpRecord` types
 - #10 qr.service comment + cached logo path
 - Also: add `PUBLIC_API_URL` to `.env.example`.

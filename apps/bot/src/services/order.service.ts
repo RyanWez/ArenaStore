@@ -21,7 +21,7 @@ import {
   orderItems,
   orderDeliveries,
 } from "@arena/db";
-import { eq, desc, or, and, sql, gte } from "drizzle-orm";
+import { eq, desc, or, and, sql, gte, ne } from "drizzle-orm";
 
 async function sendAdminTelegramAlert(text: string): Promise<boolean> {
   try {
@@ -458,8 +458,11 @@ export class BotOrderService {
       if (userRecord?.user) {
         const db = getDb();
 
-        // Auto-cancel any previous unsubmitted PENDING top-up for this user
-        // so abandoned invoices do not accumulate in the admin panel as "Awaiting Slip"
+        // Auto-cancel any previous unsubmitted PENDING *manual* top-up for this
+        // user so abandoned "Awaiting Slip" invoices do not accumulate. Scoped
+        // to non-MMPAY: an active MMQR (also PENDING) is a separate, gateway-
+        // driven payment attempt and must not be cancelled by starting a manual
+        // top-up — it has its own cancel/expire path.
         try {
           await db
             .update(topUpRequests)
@@ -467,7 +470,8 @@ export class BotOrderService {
             .where(
               and(
                 eq(topUpRequests.userId, userRecord.user.id),
-                eq(topUpRequests.status, "PENDING")
+                eq(topUpRequests.status, "PENDING"),
+                ne(topUpRequests.paymentMethod, "MMPAY")
               )
             );
         } catch (cleanupErr: any) {

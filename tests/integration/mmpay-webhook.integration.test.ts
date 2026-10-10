@@ -221,3 +221,27 @@ describe("MMPay manual-review guard (#2)", () => {
     expect(walletRow.balanceMmk).toBe(0);
   });
 });
+
+describe("MMPay single-active-order invariant (#7)", () => {
+  it("rejects a second concurrent PENDING MMPay order for the same user", async () => {
+    const telegramId = syntheticTelegramId();
+    const { user } = await seedCustomer(telegramId, 0);
+    await seedPendingMmpay(user.id, 5000);
+
+    // The partial unique index raises a Postgres unique_violation (23505);
+    // drizzle wraps it, so the code can sit on the error or its `cause`.
+    const err = await seedPendingMmpay(user.id, 5000).catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err?.code ?? err?.cause?.code).toBe("23505");
+  });
+
+  it("allows a fresh PENDING MMPay order once the previous one is terminal", async () => {
+    const telegramId = syntheticTelegramId();
+    const { user } = await seedCustomer(telegramId, 0);
+    const first = await seedPendingMmpay(user.id, 5000);
+    // Completing it (as the webhook would) frees the single-active slot.
+    await getDb().update(topUpRequests).set({ status: "COMPLETED" }).where(eq(topUpRequests.id, first.id));
+    const second = await seedPendingMmpay(user.id, 5000);
+    expect(second.id).toBeTruthy();
+  });
+});

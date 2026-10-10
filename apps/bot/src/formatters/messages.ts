@@ -463,7 +463,8 @@ System Maintenance</blockquote>
  * Strictly complies with MyanMyanPay guidelines:
  * 1. MMK currency only
  * 2. 15-minute countdown and expiration time
- * 3. Mandatory uppercase attribution: "PAYMENT POWERED BY MYANMYANPAY"
+ * 3. "Powered by MyanMyanPay" attribution is rendered on the QR card image
+ *    (see qr.service.ts); the caption text is kept concise and omits it.
  */
 export function formatMmpayQrInvoiceMessage(params: {
   amountMmk: number;

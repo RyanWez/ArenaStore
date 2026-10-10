@@ -79,7 +79,7 @@ describe("MyanMyanPay (MMPay) Integration Unit Tests", () => {
   });
 
   describe("MyanMyanPay UI/UX Compliance Formatter", () => {
-    it("strictly includes mandatory compliance caption, MMK currency, and 15m timer", () => {
+    it("renders a concise MMK caption with the 15-minute notice, reference and wallet guidance", () => {
       const now = new Date();
       const expiresAt = new Date(now.getTime() + 15 * 60 * 1000);
       const message = formatMmpayQrInvoiceMessage({
@@ -88,22 +88,22 @@ describe("MyanMyanPay (MMPay) Integration Unit Tests", () => {
         expiresAt,
       });
 
-      // 1. Mandatory uppercase attribution
-      expect(message).toContain("PAYMENT POWERED BY MYANMYANPAY");
-
-      // 2. Strict MMK display
+      // Strict MMK display (never USD)
       expect(message).toContain("5,000 MMK");
       expect(message).not.toContain("USD");
 
-      // 3. 15-minute timer notice
-      expect(message).toContain("၁၅ မိနစ် (15:00 Mins)");
+      // 15-minute window notice
+      expect(message).toContain("၁၅ မိနစ်");
 
-      // 4. Reference
+      // Reference
       expect(message).toContain("MMQR-123456-7890");
 
-      // 5. Supported apps guidance
-      expect(message).toContain("KBZPay");
+      // Supported e-wallet guidance
+      expect(message).toContain("KPay");
       expect(message).toContain("WavePay");
+
+      // Attribution lives on the QR card image, not in the caption text.
+      expect(message).not.toContain("PAYMENT POWERED BY MYANMYANPAY");
     });
   });
 

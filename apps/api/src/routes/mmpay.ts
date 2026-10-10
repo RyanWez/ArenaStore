@@ -263,19 +263,60 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
         .toUpperCase()}`;
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes per MMPay compliance
 
-      // 2. Create topup request in DB
-      const [newTopUp] = await db
-        .insert(topUpRequests)
-        .values({
-          reference,
-          userId: user.id,
-          amountMmk,
-          paymentMethod: "MMPAY",
-          status: "PENDING",
-          intendedProduct,
-          expiresAt,
-        })
-        .returning();
+      // 2. Create topup request in DB. The partial unique index
+      // (uq_topups_user_active_mmpay) guarantees at most one PENDING MMPay row
+      // per user, so a concurrent create loses the race here with a unique
+      // violation instead of producing a duplicate active order.
+      let newTopUp!: typeof topUpRequests.$inferSelect;
+      try {
+        const [row] = await db
+          .insert(topUpRequests)
+          .values({
+            reference,
+            userId: user.id,
+            amountMmk,
+            paymentMethod: "MMPAY",
+            status: "PENDING",
+            intendedProduct,
+            expiresAt,
+          })
+          .returning();
+        newTopUp = row;
+      } catch (insertErr: any) {
+        if (insertErr?.code === "23505") {
+          // Another concurrent request already holds the single active slot.
+          const [concurrent] = await db
+            .select()
+            .from(topUpRequests)
+            .where(
+              and(
+                eq(topUpRequests.userId, user.id),
+                eq(topUpRequests.paymentMethod, "MMPAY"),
+                eq(topUpRequests.status, "PENDING"),
+                sql`${topUpRequests.expiresAt} > NOW()`
+              )
+            )
+            .limit(1);
+
+          if (concurrent?.mmpayQrString) {
+            return reply.send({
+              ok: true,
+              isExisting: true,
+              topUpId: concurrent.id,
+              reference: concurrent.reference,
+              amountMmk: concurrent.amountMmk,
+              qr: concurrent.mmpayQrString,
+              expiresAt: concurrent.expiresAt?.toISOString(),
+            });
+          }
+
+          return reply.status(409).send({
+            ok: false,
+            error: "A payment request is already being prepared. Please try again in a moment.",
+          });
+        }
+        throw insertErr;
+      }
 
       try {
         // 3. Call MyanMyanPay Gateway
