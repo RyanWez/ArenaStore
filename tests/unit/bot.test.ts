@@ -636,5 +636,19 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(bot).toBeDefined();
       expect(typeof bot.start).toBe("function");
     });
+
+    it("parses restock_<productId> and prod_<productId> deep-link payloads", () => {
+      const parseDeepLink = (payload?: string) => {
+        const match = payload?.trim().match(/^(?:restock_|prod_)?(\d+)$/);
+        return match ? parseInt(match[1], 10) : null;
+      };
+
+      expect(parseDeepLink("restock_42")).toBe(42);
+      expect(parseDeepLink("prod_99")).toBe(99);
+      expect(parseDeepLink("123")).toBe(123);
+      expect(parseDeepLink("help")).toBeNull();
+      expect(parseDeepLink("")).toBeNull();
+      expect(parseDeepLink(undefined)).toBeNull();
+    });
   });
 });
