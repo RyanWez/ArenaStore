@@ -5,6 +5,7 @@ import { getDb, topUpRequests, users } from "@arena/db";
 import { MMPayWebhookPayloadSchema } from "@arena/shared";
 import { mmpayService } from "../services/mmpay.service";
 import { reviewDeposit } from "../services/deposit-review.service";
+import { registerRawJsonBodyParser } from "../plugins/raw-body";
 import { config } from "../config";
 
 const CreateMmpayPaymentBodySchema = z.object({
@@ -19,6 +20,11 @@ const CancelMmpayPaymentBodySchema = z.object({
 });
 
 export const mmpayRoutes: FastifyPluginAsync = async (server) => {
+  // Capture the exact raw request body (scoped to this plugin) so webhook HMAC
+  // signatures are verified over the bytes MyanMyanPay actually signed, not a
+  // re-serialized copy that JSON.stringify may format differently.
+  registerRawJsonBodyParser(server);
+
   /**
    * Shared webhook handler function to process incoming callbacks from MyanMyanPay.
    */
@@ -32,8 +38,11 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
       (request.headers["x_mmpay_nonce"] as string) ||
       "";
 
-    // Stringify the parsed body to get raw payload representation
-    const payloadString = typeof request.body === "string" ? request.body : JSON.stringify(request.body);
+    // Use the exact raw bytes captured by the raw-body parser; fall back to a
+    // re-serialized body only if the raw copy is somehow unavailable.
+    const payloadString =
+      (request as unknown as { rawBody?: string }).rawBody ??
+      (typeof request.body === "string" ? request.body : JSON.stringify(request.body));
 
     // Verify HMAC-SHA256 signature
     const isValidSignature = mmpayService.verifyWebhookSignature(
@@ -81,7 +90,10 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
 
     // Handle SUCCESS event
     if (payload.status === "SUCCESS") {
-      if (topUp.status === "APPROVED") {
+      // Already-credited guard. Approved MMPay deposits are flipped to
+      // "COMPLETED" by reviewDeposit, so that is the status a duplicate SUCCESS
+      // callback will see ("APPROVED" kept for backward compatibility).
+      if (topUp.status === "COMPLETED" || topUp.status === "APPROVED") {
         return reply.send({ ok: true, status: "ALREADY_APPROVED" });
       }
 
@@ -94,10 +106,15 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
         })
         .where(eq(topUpRequests.id, topUp.id));
 
-      // Use atomic deposit approval service to credit wallet, log audit, and notify user
+      // Use atomic deposit approval service to credit wallet, log audit, and
+      // notify user. `viaGatewayWebhook` lets reviewDeposit credit a PENDING
+      // MMPay request — the gateway callback is the only legitimate approver of
+      // an MMPay top-up (manual panel/group approval of PENDING MMPay is
+      // blocked precisely because the customer may not have paid yet).
       const outcome = await reviewDeposit({
         depositId: topUp.id,
         action: "APPROVE",
+        viaGatewayWebhook: true,
         actor: {
           kind: "ADMIN",
           adminUserId: null,
@@ -106,6 +123,9 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
 
       if (!outcome.ok) {
         request.log.warn({ outcome }, "[MMPay Webhook] Deposit review outcome not ok");
+        if (outcome.code === "ALREADY_REVIEWED") {
+          return reply.send({ ok: true, status: "ALREADY_APPROVED" });
+        }
       }
 
       return reply.send({ ok: true, status: "APPROVED" });

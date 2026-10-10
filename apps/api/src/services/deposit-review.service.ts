@@ -46,6 +46,14 @@ export type DepositReviewOutcome =
   | { ok: false; code: "NOT_FOUND" }
   | {
       ok: false;
+      code: "MMPAY_AUTO_ONLY";
+      reference: string;
+      amountMmk: number;
+      customerLabel: string;
+      telegramId: string | null;
+    }
+  | {
+      ok: false;
       code: "ALREADY_REVIEWED";
       status: string;
       reference: string;
@@ -161,6 +169,13 @@ export async function reviewDeposit(params: {
   action: DepositReviewAction;
   rejectReason?: string;
   actor: DepositReviewActor;
+  /**
+   * True only for the MyanMyanPay gateway webhook. It allows crediting a
+   * PENDING MMPay request (the gateway callback is the sole legitimate
+   * approver). Human reviews leave this unset, so they can never approve a
+   * PENDING MMPay top-up the customer may not have paid for yet.
+   */
+  viaGatewayWebhook?: boolean;
 }): Promise<DepositReviewOutcome> {
   const { depositId, action, actor } = params;
   const db = getDb();
@@ -181,6 +196,25 @@ export async function reviewDeposit(params: {
   const customerLabel = buildCustomerDisplayName(user);
   const reviewerId = actor.kind === "ADMIN" ? (actor.adminUserId ?? null) : null;
   const actorLabel = await resolveActorLabel(actor, db);
+
+  // MMPay top-ups are auto-confirmed by the payment gateway webhook. A human
+  // (panel or Telegram group) must never manually approve/reject one while it
+  // is still PENDING — the customer may not have paid the MMQR yet, so a manual
+  // approval would credit money that never arrived.
+  if (
+    !params.viaGatewayWebhook &&
+    topUp.paymentMethod === "MMPAY" &&
+    topUp.status === "PENDING"
+  ) {
+    return {
+      ok: false,
+      code: "MMPAY_AUTO_ONLY",
+      reference: topUp.reference,
+      amountMmk: topUp.amountMmk,
+      customerLabel,
+      telegramId: user.telegramId,
+    };
+  }
 
   if (topUp.status !== "SUBMITTED" && topUp.status !== "PENDING") {
     const reviewedByLabel = await resolvePastReviewerLabel(topUp.reviewedBy, db);

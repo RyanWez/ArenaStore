@@ -259,6 +259,29 @@ export function createBot(): Bot<BotContext> {
 
     if (!(await ensureChannelMember(ctx))) return;
 
+    // Deep-link support: /start restock_<productId> or /start prod_<productId>
+    const deepLinkPayload = ctx.match?.trim();
+    if (deepLinkPayload) {
+      const match = deepLinkPayload.match(/^(?:restock_|prod_)?(\d+)$/);
+      if (match) {
+        const productId = parseInt(match[1], 10);
+        const product = await botCatalog.getProductById(productId);
+
+        if (product) {
+          ctx.session.activeProductId = productId;
+          ctx.session.activeCategoryId = product.categoryId;
+          ctx.session.selectedQuantity = 1;
+
+          await ctx.reply(formatProductDetailMessage(product, 1), {
+            parse_mode: "HTML",
+            reply_markup: buildProductDetailKeyboard(product, 1),
+            ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
+          });
+          return;
+        }
+      }
+    }
+
     const supportUrl = await botSettingsService.getSupportUrl();
     await ctx.reply(formatStartMessage(firstName), {
       parse_mode: "HTML",
@@ -931,7 +954,9 @@ export function createBot(): Bot<BotContext> {
       return;
     }
 
-    if (statusRes.status === "APPROVED") {
+    // Approved MMPay deposits are stored as "COMPLETED" by the deposit-review
+    // service ("APPROVED" kept for backward compatibility).
+    if (statusRes.status === "COMPLETED" || statusRes.status === "APPROVED") {
       const stats = await botOrderService.getUserProfile(telegramId);
       await ctx.answerCallbackQuery({ text: "ငွေပေးချေမှု အောင်မြင်ပြီးဖြစ်ပါသည်!" });
       await ctx.deleteMessage().catch(() => {});

@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import crypto from "node:crypto";
+import Fastify from "fastify";
 import { MMPayWebhookPayloadSchema } from "@arena/shared";
 import { formatMmpayQrInvoiceMessage } from "../../apps/bot/src/formatters/messages";
 import { generateQrImageBuffer } from "../../apps/bot/src/services/qr.service";
+import { registerRawJsonBodyParser } from "../../apps/api/src/plugins/raw-body";
 
 describe("MyanMyanPay (MMPay) Integration Unit Tests", () => {
   const TEST_SECRET = "sk_test_testsecretkey1234567890abcdef";
@@ -102,6 +104,79 @@ describe("MyanMyanPay (MMPay) Integration Unit Tests", () => {
       // 5. Supported apps guidance
       expect(message).toContain("KBZPay");
       expect(message).toContain("WavePay");
+    });
+  });
+
+  describe("Webhook Raw-Body Capture (signature integrity)", () => {
+    it("preserves the exact raw request bytes, which JSON.stringify would alter", async () => {
+      const app = Fastify();
+      registerRawJsonBodyParser(app);
+
+      let captured = "";
+      let parsed: unknown = null;
+      app.post("/wh", (req, reply) => {
+        captured = (req as unknown as { rawBody: string }).rawBody;
+        parsed = req.body;
+        reply.send({ ok: true });
+      });
+
+      // Body whose byte form (extra spaces + non-alphabetical key order) differs
+      // from JSON.stringify(parsed) — the exact scenario that silently broke
+      // signature verification when the handler hashed a re-serialized body.
+      const rawBody = '{"amount": 5000,  "orderId":"MMQR-1","status":"SUCCESS"}';
+      const res = await app.inject({
+        method: "POST",
+        url: "/wh",
+        headers: { "content-type": "application/json" },
+        payload: rawBody,
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(captured).toBe(rawBody);
+      expect(captured).not.toBe(JSON.stringify(parsed));
+      await app.close();
+    });
+
+    it("recomputes a matching HMAC over the captured raw body", async () => {
+      const secret = "sk_test_rawbodysecret";
+      const nonce = "1700000000000";
+      const app = Fastify();
+      registerRawJsonBodyParser(app);
+
+      let verified = false;
+      app.post("/wh", (req, reply) => {
+        const raw = (req as unknown as { rawBody: string }).rawBody;
+        const sig = req.headers["x-mmpay-signature"] as string;
+        const expected = crypto
+          .createHmac("sha256", secret)
+          .update(`${nonce}.${raw}`)
+          .digest("hex");
+        verified =
+          expected.length === sig.length &&
+          crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(sig));
+        reply.send({ ok: true });
+      });
+
+      const rawBody = '{"orderId":"MMQR-9","amount":  12000 ,"status":"SUCCESS"}';
+      const signature = crypto
+        .createHmac("sha256", secret)
+        .update(`${nonce}.${rawBody}`)
+        .digest("hex");
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/wh",
+        headers: {
+          "content-type": "application/json",
+          "x-mmpay-signature": signature,
+          "x-mmpay-nonce": nonce,
+        },
+        payload: rawBody,
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(verified).toBe(true);
+      await app.close();
     });
   });
 

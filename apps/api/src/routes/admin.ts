@@ -266,14 +266,24 @@ export async function adminRoutes(server: FastifyInstance) {
       })
       .from(orders);
 
-    // 2. Pending deposit slips count — both reviewable statuses, matching
-    // the review flow's SUBMITTED|PENDING claim guard.
+    // 2. Pending deposit slips count — deposits actually awaiting a human
+    // review: all SUBMITTED, plus non-MMPay PENDING (awaiting-slip manual
+    // top-ups). Unpaid PENDING MMPay QR requests are excluded — they are
+    // confirmed automatically by the gateway webhook, never by an admin.
     const [depositsResult] = await db
       .select({
         pendingDepositsCount: sql<number>`count(${topUpRequests.id})`,
       })
       .from(topUpRequests)
-      .where(inArray(topUpRequests.status, ["SUBMITTED", "PENDING"]));
+      .where(
+        or(
+          eq(topUpRequests.status, "SUBMITTED"),
+          and(
+            eq(topUpRequests.status, "PENDING"),
+            ne(topUpRequests.paymentMethod, "MMPAY")
+          )
+        )
+      );
 
     // 3. Active products count
     const [productsResult] = await db
@@ -1066,6 +1076,13 @@ export async function adminRoutes(server: FastifyInstance) {
       if (!result.ok) {
         if (result.code === "NOT_FOUND") {
           return reply.status(404).send({ ok: false, error: "Deposit request not found" });
+        }
+        if (result.code === "MMPAY_AUTO_ONLY") {
+          return reply.status(409).send({
+            ok: false,
+            error:
+              "This MyanMyanPay deposit is confirmed automatically by the payment gateway and cannot be approved or rejected manually.",
+          });
         }
         return reply.status(400).send({
           ok: false,

@@ -79,6 +79,13 @@ export async function botRoutes(server: FastifyInstance) {
     if (result.code === "NOT_FOUND") {
       return reply.status(404).send({ ok: false, error: "Deposit request not found" });
     }
+    if (result.code === "MMPAY_AUTO_ONLY") {
+      return reply.status(409).send({
+        ok: false,
+        error:
+          "This MyanMyanPay deposit is confirmed automatically by the payment gateway and cannot be reviewed manually.",
+      });
+    }
     // ALREADY_REVIEWED — 409 carries the current state so the bot can render
     // "another admin already reviewed this" on the stale group message.
     return reply.status(409).send(result);

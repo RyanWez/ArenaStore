@@ -204,9 +204,9 @@ export async function sendTelegramBroadcastItem(
 }
 
 /**
- * Builds the customer-facing "Restocked!" broadcast message. Product display
- * mirrors the bot's product cards: custom emoji id from the name's {pe:<id>}
- * placeholder or the brand map, with the clean name escaped for HTML mode.
+ * Builds the customer-facing "Restocked!" broadcast message in Burmese.
+ * Product display mirrors the bot's product cards: custom brand emoji,
+ * clear MMK pricing, in-stock status, and an engaging Burmese CTA with deep link.
  */
 export function buildRestockedMessage(params: {
   productName: string;
@@ -218,24 +218,28 @@ export function buildRestockedMessage(params: {
   const displayName = parsed.cleanText || params.productName;
   const emojiId = parsed.emojiId || findBrandEmojiId(displayName);
   const productEmoji = emojiId ? tgEmoji(emojiId, "🎁") : "🎁";
-  const gift = tgEmoji(BOT_EMOJIS.GIFT, "🎁");
+  const party = tgEmoji(BOT_EMOJIS.PARTY, "🎉");
+  const sparkles = tgEmoji(BOT_EMOJIS.SPARKLES, "✨");
   const price = tgEmoji(BOT_EMOJIS.PRICE, "💵");
   const bags = tgEmoji(BOT_EMOJIS.BAGS, "🛍");
-  const check = tgEmoji(BOT_EMOJIS.CHECK, "✔");
+  const check = tgEmoji(BOT_EMOJIS.CHECK, "✅");
+  const downArrow = tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇");
 
-  let cta = `👉 Open the bot and tap ${bags} <b>Products</b> to buy!`;
+  let cta = `👉 Bot ထဲသို့ ဝင်ရောက်ပြီး ${bags} <b>[ ပစ္စည်း ဝယ်ယူရန် ]</b> ကို နှိပ်၍ အမြန်ဆုံး ဝယ်ယူလိုက်ပါခင်ဗျာ ${downArrow}`;
   const botUsername = (params.botUsername || "").replace(/^@/, "");
   if (botUsername && params.productId) {
     cta =
-      `👉 Open the bot and tap ${bags} ` +
-      `<b><a href="https://t.me/${botUsername}?start=restock_${params.productId}">Products</a></b> to buy!`;
+      `👉 အောက်ပါ ${bags} ` +
+      `<b><a href="https://t.me/${botUsername}?start=restock_${params.productId}">[ ပစ္စည်း ဝယ်ယူရန် ]</a></b> ကို နှိပ်ပြီး အမြန်ဆုံး ဝယ်ယူလိုက်ပါခင်ဗျာ ${downArrow}`;
   }
 
   return (
-    `${gift} <b>Restocked!</b>\n\n` +
+    `<blockquote>${party} <b>Restocked!</b> <b>စတော့ ပြန်လည်ရရှိပါပြီ</b> ❞\n` +
+    `ပစ္စည်း စတော့အသစ် ထပ်မံဖြည့်တင်းထားပါသည်ခင်ဗျာ ${sparkles}</blockquote>\n\n` +
     `${productEmoji} <b>${escapeHtml(displayName)}</b>\n` +
-    `${price} Price: <b>${params.priceMmk.toLocaleString("en-US")} Ks</b>\n` +
-    `${gift} Status: ${check} <b>In Stock</b>\n\n` +
+    `${price} <b>စျေးနှုန်း:</b> <b>${params.priceMmk.toLocaleString("en-US")} Ks</b>\n` +
+    `${check} <b>အခြေအနေ:</b> <b>In Stock</b> (အသင့်ဝယ်ယူနိုင်ပါသည်)\n\n` +
+    `💡 <i>စတော့အရေအတွက် ကန့်သတ်ချက်လေး ရှိတာကြောင့် စတော့ရှိတုန်းလေး ဆွဲထားလိုက်ဗျာ!</i>\n\n` +
     cta
   );
 }
