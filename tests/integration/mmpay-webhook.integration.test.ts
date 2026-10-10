@@ -153,6 +153,54 @@ describe("MMPay webhook (POST /api/webhooks/mmpay)", () => {
     const res = await webhook({ orderId: "MMQR-DOES-NOT-EXIST", amount: 1000, status: "SUCCESS" });
     expect(res.statusCode).toBe(404);
   });
+
+  it("rejects a SUCCESS whose amount does not match the request (no credit)", async () => {
+    const telegramId = syntheticTelegramId();
+    const amountMmk = 10000;
+    const { user } = await seedCustomer(telegramId, 0);
+    const topUp = await seedPendingMmpay(user.id, amountMmk);
+
+    const res = await webhook({
+      orderId: topUp.reference,
+      amount: amountMmk - 1,
+      currency: "MMK",
+      status: "SUCCESS",
+    });
+
+    expect(res.statusCode).toBe(400);
+    const [row] = await getDb().select().from(topUpRequests).where(eq(topUpRequests.id, topUp.id));
+    expect(row.status).toBe("PENDING");
+    const [walletRow] = await getDb().select().from(wallets).where(eq(wallets.userId, user.id));
+    expect(walletRow.balanceMmk).toBe(0);
+  });
+
+  it("rejects a SUCCESS with a non-MMK currency (no credit)", async () => {
+    const telegramId = syntheticTelegramId();
+    const amountMmk = 11000;
+    const { user } = await seedCustomer(telegramId, 0);
+    const topUp = await seedPendingMmpay(user.id, amountMmk);
+
+    const res = await webhook({
+      orderId: topUp.reference,
+      amount: amountMmk,
+      currency: "USD",
+      status: "SUCCESS",
+    });
+
+    expect(res.statusCode).toBe(400);
+    const [row] = await getDb().select().from(topUpRequests).where(eq(topUpRequests.id, topUp.id));
+    expect(row.status).toBe("PENDING");
+  });
+
+  it("no longer exposes a root/bare catch-all webhook route", async () => {
+    const root = await app.inject({
+      method: "POST",
+      url: "/",
+      headers: { "content-type": "application/json" },
+      payload: { orderId: "x", amount: 1, status: "SUCCESS" },
+    });
+    expect(root.statusCode).toBe(404);
+  });
 });
 
 describe("MMPay manual-review guard (#2)", () => {

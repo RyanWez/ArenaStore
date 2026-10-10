@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from "fastify";
+import crypto from "node:crypto";
 import { z } from "zod";
 import { and, eq, or, sql } from "drizzle-orm";
 import { getDb, topUpRequests, users } from "@arena/db";
@@ -51,8 +52,14 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
       signature
     );
 
-    if (!isValidSignature && config.NODE_ENV === "production") {
-      request.log.warn({ signature, nonce }, "[MMPay Webhook] Signature verification failed");
+    // Signature is enforced whenever a secret key is configured — in every
+    // environment, not only production. A deployment with real MMPay
+    // credentials (staging or prod) therefore always rejects unsigned/forged
+    // callbacks. Only a local/dev/test instance with no secret configured
+    // skips the check (there is nothing to verify against).
+    const signatureRequired = Boolean(config.MMPAY_SECRET_KEY);
+    if (!isValidSignature && signatureRequired) {
+      request.log.warn({ nonce }, "[MMPay Webhook] Signature verification failed");
       return reply.status(401).send({ ok: false, error: "Invalid MMPay webhook signature" });
     }
 
@@ -95,6 +102,25 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
       // callback will see ("APPROVED" kept for backward compatibility).
       if (topUp.status === "COMPLETED" || topUp.status === "APPROVED") {
         return reply.send({ ok: true, status: "ALREADY_APPROVED" });
+      }
+
+      // Defense-in-depth: a dynamic MMQR is a fixed-amount, MMK request, so the
+      // callback must report the exact amount and currency we created it with.
+      // A mismatch means tampering or a gateway anomaly — never auto-credit;
+      // leave the request PENDING for manual handling and surface it loudly.
+      if (payload.currency && payload.currency !== "MMK") {
+        request.log.error(
+          { topUpId: topUp.id, reference: topUp.reference, currency: payload.currency },
+          "[MMPay Webhook] Rejecting SUCCESS with unexpected currency"
+        );
+        return reply.status(400).send({ ok: false, error: "Unexpected payment currency" });
+      }
+      if (payload.amount !== topUp.amountMmk) {
+        request.log.error(
+          { topUpId: topUp.id, reference: topUp.reference, expected: topUp.amountMmk, received: payload.amount },
+          "[MMPay Webhook] Rejecting SUCCESS with amount mismatch"
+        );
+        return reply.status(400).send({ ok: false, error: "Payment amount mismatch" });
       }
 
       // Store transaction references
@@ -149,13 +175,13 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
   };
 
   /**
-   * Webhook endpoint routes. Supports multiple path aliases to guarantee delivery
-   * regardless of whether developer specified full path or base URL in developer portal.
+   * Webhook endpoint routes. The developer portal is configured with the full
+   * `/api/webhooks/mmpay` path; `/webhooks/mmpay` is kept as a tolerant alias.
+   * No root (`/`) or bare `/webhook` catch-all is registered — those shadow
+   * unrelated routes and widen the forgeable surface.
    */
   server.post("/api/webhooks/mmpay", handleMmpayWebhook);
   server.post("/webhooks/mmpay", handleMmpayWebhook);
-  server.post("/webhook", handleMmpayWebhook);
-  server.post("/", handleMmpayWebhook);
 
   // Health / verification pings from portal
   server.get("/api/webhooks/mmpay", async (_req, reply) => reply.send({ ok: true, message: "MMPay Webhook endpoint active" }));
@@ -227,8 +253,14 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
           )
         );
 
-      // Generate unique reference (e.g. MMQR-2026-94829)
-      const reference = `MMQR-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
+      // Collision-resistant reference: base36 timestamp + 32 bits of CSPRNG
+      // entropy (same scheme as the bot's TOP-/ARN- generators). The old
+      // `Date.now().slice(-6)` + 4 random digits form wrapped every ~16 min and
+      // collided on the UNIQUE `reference` column under concurrency.
+      const reference = `MMQR-${Date.now().toString(36).toUpperCase()}${crypto
+        .randomBytes(4)
+        .toString("hex")
+        .toUpperCase()}`;
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes per MMPay compliance
 
       // 2. Create topup request in DB
