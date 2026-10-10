@@ -7,20 +7,21 @@ import { fileURLToPath } from "node:url";
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * Resolves the path to the official MyanmarPay MMQR logo asset.
+ * Resolves the path to the official MyanmarPay MMQR logo asset once, at module
+ * load, so repeated QR renders don't re-run filesystem existence checks on
+ * every call. `null` means the asset was not found and the logo is skipped.
  */
-function getLogoPath(): string | null {
+const LOGO_PATH: string | null = (() => {
   const candidates = [
     path.resolve(currentDir, "../../assets/mmqr-logo.png"),
     path.resolve(process.cwd(), "apps/bot/assets/mmqr-logo.png"),
     path.resolve(process.cwd(), "assets/mmqr-logo.png"),
   ];
-
   for (const p of candidates) {
     if (fs.existsSync(p)) return p;
   }
   return null;
-}
+})();
 
 /**
  * Generates a branded, high-resolution MMQR Payment Card PNG image buffer.
@@ -39,7 +40,8 @@ export async function generateQrImageBuffer(qrString: string): Promise<Buffer> {
   const qrSize = 520;
   const logoHeight = 72;
 
-  // 1. Generate crisp, unobstructed QR code (Level M for fast, error-free mobile scanning)
+  // 1. Generate crisp, unobstructed QR code (Level 'H' error correction —
+  // recovers up to 30% so the centered logo overlay never breaks scanning)
   const qrBuffer = await QRCode.toBuffer(qrString, {
     type: "png",
     width: qrSize,
@@ -66,7 +68,7 @@ export async function generateQrImageBuffer(qrString: string): Promise<Buffer> {
   `);
 
   const composites: OverlayOptions[] = [];
-  const logoPath = getLogoPath();
+  const logoPath = LOGO_PATH;
 
   // 3. Composite official MyanmarPay MMQR logo at the top header
   if (logoPath) {

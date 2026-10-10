@@ -53,7 +53,7 @@ import {
 import { channelVerificationService } from "./services/channel-verification.service";
 import { notifyAdminGroupDepositSlip } from "./services/admin-group.service";
 import { registerAdminDepositReviewHandlers } from "./handlers/admin-deposit-review";
-import { BOT_EMOJIS, tgEmoji, escapeHtml } from "@arena/shared";
+import { BOT_EMOJIS, tgEmoji, escapeHtml, TopUpStatus } from "@arena/shared";
 
 export function createBot(): Bot<BotContext> {
   const bot = new Bot<BotContext>(botConfig.TELEGRAM_BOT_TOKEN);
@@ -956,7 +956,7 @@ export function createBot(): Bot<BotContext> {
 
     // Approved MMPay deposits are stored as "COMPLETED" by the deposit-review
     // service ("APPROVED" kept for backward compatibility).
-    if (statusRes.status === "COMPLETED" || statusRes.status === "APPROVED") {
+    if (statusRes.status === TopUpStatus.COMPLETED || statusRes.status === TopUpStatus.APPROVED) {
       const stats = await botOrderService.getUserProfile(telegramId);
       await ctx.answerCallbackQuery({ text: "ငွေပေးချေမှု အောင်မြင်ပြီးဖြစ်ပါသည်!" });
       await ctx.deleteMessage().catch(() => {});
@@ -971,7 +971,7 @@ export function createBot(): Bot<BotContext> {
           reply_markup: buildMainMenuKeyboard(),
         }
       );
-    } else if (statusRes.status === "EXPIRED") {
+    } else if (statusRes.status === TopUpStatus.EXPIRED) {
       await ctx.answerCallbackQuery({ text: "ဤ QR ကုဒ် သက်တမ်းကုန်ဆုံးသွားပါပြီ။", show_alert: true });
       await ctx.deleteMessage().catch(() => {});
       await ctx.reply(
@@ -981,7 +981,7 @@ export function createBot(): Bot<BotContext> {
           reply_markup: buildWalletKeyboard(),
         }
       );
-    } else if (statusRes.status === "CANCELLED") {
+    } else if (statusRes.status === TopUpStatus.CANCELLED) {
       await ctx.answerCallbackQuery({ text: "ဤအော်ဒါကို ဖျက်သိမ်းထားပြီးဖြစ်ပါသည်။", show_alert: true });
       await ctx.deleteMessage().catch(() => {});
       await ctx.reply("❌ <b>ဤအော်ဒါကို ဖျက်သိမ်းထားပြီးဖြစ်ပါသည်။</b>", {

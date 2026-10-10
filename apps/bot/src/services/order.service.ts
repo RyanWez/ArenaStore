@@ -3,7 +3,7 @@ import { botConfig } from "../config";
 import { botCatalog } from "./catalog.service";
 import { botSettingsService } from "./settings.service";
 import { createSupplierClient, SupplierError, type SupplierId } from "@arena/suppliers";
-import { escapeHtml } from "@arena/shared";
+import { escapeHtml, type TopUpStatus } from "@arena/shared";
 import {
   encryptPayload,
   decryptPayload,
@@ -79,9 +79,9 @@ export interface TopUpRecord {
   telegramId: string;
   amountMmk: number;
   reference: string;
-  paymentMethod?: "KPAY" | "WAVEPAY";
+  paymentMethod?: "KPAY" | "WAVEPAY" | "MMPAY";
   slipFileId?: string;
-  status: "PENDING" | "SUBMITTED" | "APPROVED" | "REJECTED" | "CANCELLED";
+  status: TopUpStatus;
   createdAt: string;
 }
 

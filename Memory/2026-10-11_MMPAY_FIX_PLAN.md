@@ -197,8 +197,32 @@
   fresh order allowed after the previous is terminal). DB + API + bot typecheck
   clean; full suite **315/315 green**.
 
-### Phase 4 — Type safety & polish  (PENDING)
+### Phase 4 — Type safety & polish  ✅ DONE 2026-10-11
 - #9 central `TopUpStatus` enum + fix `TopUpRecord` types
 - #10 qr.service comment + cached logo path
 - Also: add `PUBLIC_API_URL` to `.env.example`.
 - Verify: typecheck clean; QR still scans.
+
+**Implementation notes (Phase 4):**
+- #9: added `TopUpStatus` enum to `packages/shared/src/enums.ts`
+  (PENDING/SUBMITTED/COMPLETED/APPROVED/REJECTED/CANCELLED/FAILED/EXPIRED).
+  `TopUpRecord` (order.service) now types `status: TopUpStatus` and
+  `paymentMethod` includes MMPAY. The #3-prone comparison sites now reference the
+  enum: bot `mmpay_check` (COMPLETED/APPROVED/EXPIRED/CANCELLED) and the webhook
+  already-credited guard (COMPLETED/APPROVED).
+- #10: `qr.service` resolves the logo path once at module load (`LOGO_PATH`)
+  instead of `fs.existsSync` on every render; corrected the stale "Level M"
+  comment to match the actual Level 'H' error correction.
+- `.env.example`: documented `PUBLIC_API_URL` (used to build the webhook
+  callback URL) under the MMPay section.
+- Verify: shared/API/bot typecheck clean; full suite **315/315 green**.
+
+---
+
+## Status: all four phases complete (2026-10-11)
+
+Remaining operational step for the owner: run `pnpm --filter @arena/db db:migrate`
+against production before/with deploy so migration `0011` (single-active-order
+index) is applied. Set `PUBLIC_API_URL=https://arena.ryanwez.com` and ensure
+`MMPAY_SECRET_KEY` is set in production (webhook signature is enforced whenever
+it is present).

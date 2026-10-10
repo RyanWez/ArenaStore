@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { z } from "zod";
 import { and, eq, or, sql } from "drizzle-orm";
 import { getDb, topUpRequests, users } from "@arena/db";
-import { MMPayWebhookPayloadSchema } from "@arena/shared";
+import { MMPayWebhookPayloadSchema, TopUpStatus } from "@arena/shared";
 import { mmpayService } from "../services/mmpay.service";
 import { reviewDeposit } from "../services/deposit-review.service";
 import { registerRawJsonBodyParser } from "../plugins/raw-body";
@@ -100,7 +100,7 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
       // Already-credited guard. Approved MMPay deposits are flipped to
       // "COMPLETED" by reviewDeposit, so that is the status a duplicate SUCCESS
       // callback will see ("APPROVED" kept for backward compatibility).
-      if (topUp.status === "COMPLETED" || topUp.status === "APPROVED") {
+      if (topUp.status === TopUpStatus.COMPLETED || topUp.status === TopUpStatus.APPROVED) {
         return reply.send({ ok: true, status: "ALREADY_APPROVED" });
       }
 
