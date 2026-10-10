@@ -137,6 +137,10 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
   server.post("/webhook", handleMmpayWebhook);
   server.post("/", handleMmpayWebhook);
 
+  // Health / verification pings from portal
+  server.get("/api/webhooks/mmpay", async (_req, reply) => reply.send({ ok: true, message: "MMPay Webhook endpoint active" }));
+  server.get("/webhooks/mmpay", async (_req, reply) => reply.send({ ok: true, message: "MMPay Webhook endpoint active" }));
+
   /**
    * Creates or returns an active MyanMyanPay MMQR instance for a customer top-up.
    * Strictly enforces MyanMyanPay Rule: Single Active Order per customer until paid or cancelled.
@@ -223,13 +227,13 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
 
       try {
         // 3. Call MyanMyanPay Gateway
-        const publicBaseUrl = process.env.PUBLIC_API_URL || "https://busy-hornets-work.loca.lt";
-        const callbackUrl = `${publicBaseUrl.replace(/\/+$/, "")}/api/webhooks/mmpay`;
+        const publicBaseUrl = process.env.PUBLIC_API_URL;
+        const callbackUrl = publicBaseUrl ? `${publicBaseUrl.replace(/\/+$/, "")}/api/webhooks/mmpay` : undefined;
 
         const mmpayRes = await mmpayService.createPayment({
           orderId: reference,
           amountMmk,
-          callbackUrl: callbackUrl.startsWith("http") ? callbackUrl : undefined,
+          callbackUrl: callbackUrl?.startsWith("http") ? callbackUrl : undefined,
           customMessage: `Arena Store Top-Up ${reference}`,
         });
 

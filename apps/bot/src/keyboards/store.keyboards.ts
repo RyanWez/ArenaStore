@@ -336,7 +336,7 @@ export function buildWalletKeyboard(activeMmpayRef?: string): InlineKeyboard {
   if (activeMmpayRef) {
     keyboard
       .add({
-        text: "⚡️ လက်ရှိ MMQR ငွေပေးချေလွှာ ပြန်ကြည့်မည်",
+        text: "လက်ရှိ MMQR ငွေပေးချေလွှာ ပြန်ကြည့်မည်",
         callback_data: `mmpay_show_${activeMmpayRef}`,
         icon_custom_emoji_id: BOT_EMOJIS.LIGHTNING,
         style: "success",
@@ -414,7 +414,7 @@ export function buildUnmatchedPhotoKeyboard(): InlineKeyboard {
     })
     .row()
     .add({
-      text: "🏠 Main Menu",
+      text: "Main Menu",
       callback_data: "menu_start",
       icon_custom_emoji_id: BOT_EMOJIS.BACK,
     });
@@ -439,20 +439,20 @@ export function buildPaymentMethodChoiceKeyboard(amountMmk: number, contextData?
   const ctxSuffix = contextData ? `_${contextData}` : "";
   return new InlineKeyboard()
     .add({
-      text: "⚡️ MMQR ဖြင့် အလိုအလျောက် ပေးချေမည်",
+      text: "MMQR ဖြင့် အလိုအလျောက် ပေးချေမည်",
       callback_data: `mmpay_pay_${amountMmk}${ctxSuffix}`,
       icon_custom_emoji_id: BOT_EMOJIS.LIGHTNING,
       style: "success",
     } as any)
     .row()
     .add({
-      text: "🧾 ငွေလွှဲပြေစာ ပို့မည် (Manual Slip)",
+      text: "ငွေလွှဲပြေစာ ပို့မည် (Manual Slip)",
       callback_data: `manual_slip_${amountMmk}${ctxSuffix}`,
       icon_custom_emoji_id: BOT_EMOJIS.RECEIPT,
     })
     .row()
     .add({
-      text: "« နောက်သို့ ပြန်သွားမည်",
+      text: "နောက်သို့ ပြန်သွားမည်",
       callback_data: "menu_wallet",
       icon_custom_emoji_id: BOT_EMOJIS.BACK,
     });
@@ -464,13 +464,13 @@ export function buildPaymentMethodChoiceKeyboard(amountMmk: number, contextData?
 export function buildMmpayInvoiceKeyboard(reference: string): InlineKeyboard {
   return new InlineKeyboard()
     .add({
-      text: "🔄 အခြေအနေ ပြန်စစ်မည် (Refresh)",
+      text: "အခြေအနေ ပြန်စစ်မည် (Refresh)",
       callback_data: `mmpay_check_${reference}`,
       icon_custom_emoji_id: BOT_EMOJIS.COUNTER,
     })
     .row()
     .add({
-      text: "❌ ငွေပေးချေမှု ဖျက်သိမ်းမည် (Cancel)",
+      text: "ငွေပေးချေမှု ဖျက်သိမ်းမည် (Cancel)",
       callback_data: `mmpay_cancel_${reference}`,
       icon_custom_emoji_id: BOT_EMOJIS.CANCEL,
       style: "danger",
@@ -483,21 +483,21 @@ export function buildMmpayInvoiceKeyboard(reference: string): InlineKeyboard {
 export function buildActiveMmpayPromptKeyboard(reference: string): InlineKeyboard {
   return new InlineKeyboard()
     .add({
-      text: "🔍 လက်ရှိ QR ပြန်ကြည့်မည်",
+      text: "လက်ရှိ QR ပြန်ကြည့်မည်",
       callback_data: `mmpay_show_${reference}`,
       icon_custom_emoji_id: BOT_EMOJIS.BOX,
       style: "success",
     } as any)
     .row()
     .add({
-      text: "❌ လက်ရှိ အော်ဒါ ဖျက်သိမ်းမည် (Cancel)",
+      text: "လက်ရှိ အော်ဒါ ဖျက်သိမ်းမည် (Cancel)",
       callback_data: `mmpay_cancel_${reference}`,
       icon_custom_emoji_id: BOT_EMOJIS.CANCEL,
       style: "danger",
     } as any)
     .row()
     .add({
-      text: "« Wallet သို့ ပြန်သွားမည်",
+      text: "Wallet သို့ ပြန်သွားမည်",
       callback_data: "menu_wallet",
       icon_custom_emoji_id: BOT_EMOJIS.BACK,
     });

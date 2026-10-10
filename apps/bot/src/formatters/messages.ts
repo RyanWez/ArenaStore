@@ -476,18 +476,13 @@ export function formatMmpayQrInvoiceMessage(params: {
     minute: "2-digit",
   });
 
-  return `<blockquote>${tgEmoji(BOT_EMOJIS.LIGHTNING, "⚡")} <b>MMQR အလိုအလျောက် ငွေပေးချေလွှာ</b> ❞
-ငွေလွှဲပြေစာ ပေးပို့ရန် မလိုဘဲ စက္ကန့်ပိုင်းအတွင်း အလိုအလျောက် ငွေဝင်ရောက်ပါမည်။</blockquote>
+  return `<blockquote>${tgEmoji(BOT_EMOJIS.LIGHTNING, "⚡")} <b>MMQR အလိုအလျောက် ငွေပေးချေလွှာ</b>
+ငွေပမာဏ: <b>${params.amountMmk.toLocaleString("en-US")} MMK</b> (၁၅ မိနစ်အတွင်း ပေးချေပါ)</blockquote>
 
-${tgEmoji(BOT_EMOJIS.PRICE, "💵")} <b>ငွေပမာဏ:</b> <b>${params.amountMmk.toLocaleString("en-US")} MMK</b>
-${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>အော်ဒါ အမှတ်:</b> <code>${escapeHtml(params.reference)}</code>
-${tgEmoji(BOT_EMOJIS.HOURGLASS, "⏳")} <b>သက်တမ်း:</b> <b>၁၅ မိနစ် (15:00 Mins)</b>
-🕒 <b>နောက်ဆုံး ပေးချေရမည့်အချိန်:</b> <b>${expiresTimeStr} MMT</b>
+${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>အော်ဒါ:</b> <code>${escapeHtml(params.reference)}</code>
+🕒 <b>နောက်ဆုံးအချိန်:</b> <b>${expiresTimeStr} MMT</b>
 
-📱 <b>ပေးချေနိုင်သော Mobile Banking များ:</b>
-KBZPay, WavePay, AYA Pay, CB Pay, UAB Pay စသည့် MMQR ထောက်ပံ့သော မည်သည့် Mobile Banking / Wallet ဖြင့်မဆို အထက်ပါ QR ကုဒ်ကို Scan ဖတ်၍ ပေးချေနိုင်ပါသည် ခင်ဗျာ။
-
-💡 <i>အပေါ်မှ QR ပုံကို နှိပ်၍ ဖုန်း Gallery ထဲသို့ Save Image ပြုလုပ်ပြီး မိမိ Banking App (KPay / WavePay) ထဲမှ Scan From Gallery ဖြင့် ပေးချေပါက အဆင်ပြေဆုံး ဖြစ်ပါသည်။</i>
+💡 <i>KPay / WavePay စသည့် (MMQR ဖြင့် လက်ခံနိုင်သည့်) မည်သည့် E-Wallet ဖြင့်မဆို Scan ဖတ်ပြီးသည်နှင့် စက္ကန့်ပိုင်းအတွင်း အလိုအလျောက် ငွေဝင်ပါမည်။ (ပြေစာ စလစ် တင်ရန် မလိုပါ)</i>
 
 ───────────────────────────
 ⚡️ PAYMENT POWERED BY MYANMYANPAY
@@ -501,16 +496,12 @@ export function formatPaymentMethodChoiceMessage(params: {
   amountMmk: number;
 }): string {
   return `<blockquote>${tgEmoji(BOT_EMOJIS.MONEY, "💰")} <b>ငွေပေးချေမှု နည်းလမ်း ရွေးချယ်ပါ</b> ❞
-ငွေဖြည့်သွင်းမည့် ပမာဏ: <b>${params.amountMmk.toLocaleString("en-US")} MMK</b></blockquote>
+ငွေပမာဏ: <b>${params.amountMmk.toLocaleString("en-US")} MMK</b></blockquote>
 
-မိမိ အဆင်ပြေရာ ငွေပေးချေမှု ပုံစံကို အောက်ပါ ခလုတ်များမှ ရွေးချယ်ပေးပါခင်ဗျာ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}
+${tgEmoji(BOT_EMOJIS.LIGHTNING, "⚡")} <b>MMQR:</b> စလစ်တင်ရန် မလိုဘဲ စက္ကန့်ပိုင်းအတွင်း အလိုအလျောက် ငွေဝင်မည်။
+${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>Manual Slip:</b> ပုံမှန် KPay/WavePay သို့ လွှဲပြီး ပြေစာ ပုံ တင်ပေးရမည်။
 
-⚡️ <b>MMQR (အလိုအလျောက် ပေးချေခြင်း):</b>
-• ပြေစာ စလစ် တင်ရန် မလိုပါ။
-• Scan ဖတ်ပြီးသည်နှင့် ၁ စက္ကန့်အတွင်း Wallet ထဲသို့ ငွေရောက်ရှိပါမည်။
-
-🧾 <b>Manual Slip (လက်စွဲ ပြေစာ တင်ခြင်း):</b>
-• ပုံမှန် KPay / WavePay အကောင့်သို့ ငွေလွှဲပြီး ပြေစာ ပုံ တင်ပေးရပါမည်။`;
+အဆင်ပြေရာ နည်းလမ်းကို အောက်တွင် ရွေးချယ်ပေးပါ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}`;
 }
 
 /**

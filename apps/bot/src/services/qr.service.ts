@@ -1,17 +1,19 @@
 import QRCode from "qrcode";
-import sharp from "sharp";
+import sharp, { type OverlayOptions } from "sharp";
 import path from "node:path";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
+
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Resolves the path to the official MyanmarPay MMQR logo asset.
  */
 function getLogoPath(): string | null {
   const candidates = [
+    path.resolve(currentDir, "../../assets/mmqr-logo.png"),
     path.resolve(process.cwd(), "apps/bot/assets/mmqr-logo.png"),
     path.resolve(process.cwd(), "assets/mmqr-logo.png"),
-    path.resolve(__dirname, "../../assets/mmqr-logo.png"),
-    path.resolve(__dirname, "../assets/mmqr-logo.png"),
   ];
 
   for (const p of candidates) {
@@ -32,82 +34,73 @@ function getLogoPath(): string | null {
  * Fully compliant with EMVCo MMQR standards and verified to scan error-free across all banking apps.
  */
 export async function generateQrImageBuffer(qrString: string): Promise<Buffer> {
-  const qrSize = 540;
+  const canvasWidth = 620;
+  const canvasHeight = 670;
+  const qrSize = 520;
+  const logoHeight = 72;
 
-  // 1. Generate base QR code using Error Correction Level H (30% recovery tolerance)
+  // 1. Generate crisp, unobstructed QR code (Level M for fast, error-free mobile scanning)
   const qrBuffer = await QRCode.toBuffer(qrString, {
     type: "png",
     width: qrSize,
     margin: 1,
     errorCorrectionLevel: "H",
     color: {
-      dark: "#0f172a", // Slate-900 for high-contrast crisp scanning
+      dark: "#0f172a", // Slate-900 high contrast
       light: "#ffffff",
     },
   });
 
-  const logoPath = getLogoPath();
-  let qrWithCenterLogo = qrBuffer;
+  // 2. Prepare card background with subtle 'Powered by MyanMyanPay' footer pushed to bottom edge
+  const cardBackgroundSvg = Buffer.from(`
+    <svg width="${canvasWidth}" height="${canvasHeight}" viewBox="0 0 ${canvasWidth} ${canvasHeight}" xmlns="http://www.w3.org/2000/svg">
+      <rect width="${canvasWidth}" height="${canvasHeight}" rx="28" fill="#ffffff" />
+      <text x="${canvasWidth / 2}" y="${canvasHeight - 16}" 
+            text-anchor="middle" 
+            font-family="-apple-system, BlinkMacSystemFont, Arial, sans-serif" 
+            font-size="13" 
+            font-weight="500" 
+            letter-spacing="0.5" 
+            fill="#646f7dff">Powered by MyanMyanPay</text>
+    </svg>
+  `);
 
-  // 2. Composite center MMQR logo if asset exists
+  const composites: OverlayOptions[] = [];
+  const logoPath = getLogoPath();
+
+  // 3. Composite official MyanmarPay MMQR logo at the top header
   if (logoPath) {
     try {
-      const logoSize = 110;
-      const bgSize = 124;
-
-      // Rounded white safety badge behind logo to prevent data module collision
-      const badgeSvg = Buffer.from(`
-        <svg width="${bgSize}" height="${bgSize}" viewBox="0 0 ${bgSize} ${bgSize}" xmlns="http://www.w3.org/2000/svg">
-          <rect width="${bgSize}" height="${bgSize}" rx="24" fill="#ffffff" />
-        </svg>
-      `);
-
       const logoResized = await sharp(logoPath)
-        .resize(logoSize, logoSize, {
+        .resize(null, logoHeight, {
           fit: "contain",
           background: { r: 255, g: 255, b: 255, alpha: 0 },
         })
         .toBuffer();
 
-      const centerBadge = await sharp(badgeSvg)
-        .composite([{ input: logoResized, gravity: "center" }])
-        .png()
-        .toBuffer();
+      const logoMeta = await sharp(logoResized).metadata();
+      const logoLeft = Math.round((canvasWidth - (logoMeta.width || 100)) / 2);
 
-      qrWithCenterLogo = await sharp(qrBuffer)
-        .composite([{ input: centerBadge, gravity: "center" }])
-        .png()
-        .toBuffer();
+      composites.push({
+        input: logoResized,
+        top: 16,
+        left: logoLeft,
+      });
     } catch (err: any) {
-      console.warn("[QrService] Could not overlay center MMQR logo, falling back to clean QR:", err.message);
+      console.warn("[QrService] Could not overlay top MMQR logo:", err.message);
     }
   }
 
-  // 3. Assemble onto a clean Payment Card with subtle 'Powered by MyanMyanPay' footer
-  const canvasWidth = 620;
-  const canvasHeight = 670;
-
-  const cardBackgroundSvg = Buffer.from(`
-    <svg width="${canvasWidth}" height="${canvasHeight}" viewBox="0 0 ${canvasWidth} ${canvasHeight}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="${canvasWidth}" height="${canvasHeight}" rx="28" fill="#ffffff" />
-      <text x="${canvasWidth / 2}" y="${canvasHeight - 32}" 
-            text-anchor="middle" 
-            font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" 
-            font-size="16" 
-            font-weight="500" 
-            letter-spacing="0.5"
-            fill="#94a3b8">Powered by MyanMyanPay</text>
-    </svg>
-  `);
+  // 4. Composite large unobstructed QR Code directly below header
+  const qrLeft = Math.round((canvasWidth - qrSize) / 2);
+  composites.push({
+    input: qrBuffer,
+    top: 100,
+    left: qrLeft,
+  });
 
   return sharp(cardBackgroundSvg)
-    .composite([
-      {
-        input: qrWithCenterLogo,
-        top: 36,
-        left: Math.round((canvasWidth - qrSize) / 2),
-      },
-    ])
+    .composite(composites)
     .png()
     .toBuffer();
 }
