@@ -271,8 +271,55 @@ export async function notifyTopUpApproved(params: {
 }
 
 /**
- * Sends a wallet top-up rejection notification to the user in Telegram.
+ * Best-effort deletion of a message the bot previously sent (same bot token).
+ * Used to clear the live MMQR invoice photo once payment is confirmed.
  */
+export async function deleteTelegramMessage(chatId: string, messageId: number): Promise<boolean> {
+  if (!config.TELEGRAM_BOT_TOKEN || !chatId || !messageId) return false;
+  try {
+    const url = `https://api.telegram.org/bot${config.TELEGRAM_BOT_TOKEN}/deleteMessage`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
+    });
+    return res.ok;
+  } catch (err: any) {
+    console.warn("[Telegram Notifier] deleteMessage failed:", err.message);
+    return false;
+  }
+}
+
+/**
+ * Customer-facing confirmation for an auto-confirmed MyanMyanPay MMQR top-up.
+ * Removes the live QR invoice photo (so no stale "Refresh/Cancel" lingers) and
+ * posts a single success card. Called fire-and-forget by the webhook so the
+ * gateway ack is never delayed by Telegram latency.
+ */
+export async function notifyMmpayTopUpSuccess(params: {
+  telegramId: string;
+  qrMessageId?: number | null;
+  reference: string;
+  amountMmk: number;
+  newBalanceMmk: number;
+}): Promise<void> {
+  const { telegramId, qrMessageId, reference, amountMmk, newBalanceMmk } = params;
+
+  if (qrMessageId) {
+    await deleteTelegramMessage(telegramId, qrMessageId);
+  }
+
+  const check = tgEmoji(BOT_EMOJIS.CHECK);
+  const sparkles = tgEmoji(BOT_EMOJIS.SPARKLES);
+  const text =
+    `<blockquote>${check} <b>MMQR ငွေပေးချေမှု အောင်မြင်ပါပြီ!</b> ❞\n` +
+    `အော်ဒါ အမှတ်: <b>${escapeHtml(reference)}</b>\n` +
+    `ဖြည့်သွင်းငွေ: <b>+${amountMmk.toLocaleString("en-US")} MMK</b>\n` +
+    `လက်ရှိ Wallet Balance: <b>${newBalanceMmk.toLocaleString("en-US")} MMK</b></blockquote>\n\n` +
+    `ကျေးဇူးတင်ရှိပါသည်ခင်ဗျာ! အခုပဲ ပစ္စည်းများကို ဆက်လက် ဝယ်ယူနိုင်ပါပြီ ${sparkles}`;
+
+  await sendTelegramMessage(telegramId, text);
+}
 export async function notifyTopUpRejected(params: {
   telegramId: string;
   reference: string;

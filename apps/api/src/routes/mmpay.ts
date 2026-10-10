@@ -6,6 +6,7 @@ import { getDb, topUpRequests, users } from "@arena/db";
 import { MMPayWebhookPayloadSchema, TopUpStatus } from "@arena/shared";
 import { mmpayService } from "../services/mmpay.service";
 import { reviewDeposit } from "../services/deposit-review.service";
+import { notifyMmpayTopUpSuccess } from "../services/telegram-notifier";
 import { registerRawJsonBodyParser } from "../plugins/raw-body";
 import { config } from "../config";
 
@@ -141,6 +142,11 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
         depositId: topUp.id,
         action: "APPROVE",
         viaGatewayWebhook: true,
+        // The webhook owns the customer-facing UX (clears the live QR invoice +
+        // posts one MMQR success card) and MMPay auto-payments shouldn't spam
+        // the admin group, so suppress both of reviewDeposit's notifications.
+        notifyCustomer: false,
+        notifyGroup: false,
         actor: {
           kind: "ADMIN",
           adminUserId: null,
@@ -152,7 +158,24 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
         if (outcome.code === "ALREADY_REVIEWED") {
           return reply.send({ ok: true, status: "ALREADY_APPROVED" });
         }
+        // Credit did not happen (e.g. NOT_FOUND/MMPAY_AUTO_ONLY shouldn't occur
+        // here) — report so MyanMyanPay can retry rather than silently drop it.
+        return reply.status(500).send({ ok: false, error: "Deposit credit failed" });
       }
+
+      // Fire-and-forget the customer confirmation so the gateway ack is never
+      // delayed by Telegram latency: remove the live QR invoice photo and post
+      // a single MMQR success card. The wallet is already credited at this point.
+      const newBalanceMmk = outcome.action === "APPROVED" ? outcome.newBalanceMmk : topUp.amountMmk;
+      void notifyMmpayTopUpSuccess({
+        telegramId: outcome.telegramId ?? "",
+        qrMessageId: topUp.mmpayQrMessageId,
+        reference: topUp.reference,
+        amountMmk: topUp.amountMmk,
+        newBalanceMmk,
+      }).catch((err: any) =>
+        request.log.warn({ err: err?.message }, "[MMPay Webhook] MMQR success notification failed")
+      );
 
       return reply.send({ ok: true, status: "APPROVED" });
     }

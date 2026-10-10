@@ -685,6 +685,23 @@ export class BotOrderService {
   }
 
   /**
+   * Persists the Telegram message id of the customer's MMQR invoice photo so
+   * the API webhook can delete it (and post a single success message) the
+   * moment the gateway confirms payment — no manual "Refresh" needed.
+   */
+  async attachMmpayQrMessage(reference: string, messageId: number): Promise<void> {
+    try {
+      const db = getDb();
+      await db
+        .update(topUpRequests)
+        .set({ mmpayQrMessageId: messageId })
+        .where(eq(topUpRequests.reference, reference));
+    } catch (err: any) {
+      console.warn("[BotOrderService] attachMmpayQrMessage error:", err.message);
+    }
+  }
+
+  /**
    * Checks the status of an MMPay payment request.
    */
   async checkMmpayStatus(reference: string): Promise<{

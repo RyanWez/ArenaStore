@@ -39,7 +39,6 @@ import {
   formatMmpayQrInvoiceMessage,
   formatPaymentMethodChoiceMessage,
   formatActiveMmpayExistsMessage,
-  formatMmpaySuccessMessage,
   formatTopUpSlipReceivedMessage,
   formatInsufficientBalanceMessage,
   formatPurchaseConfirmMessage,
@@ -839,7 +838,7 @@ export function createBot(): Bot<BotContext> {
       const qrBuffer = await generateQrImageBuffer(res.qr);
       await ctx.deleteMessage().catch(() => {});
 
-      await ctx.replyWithPhoto(new InputFile(qrBuffer, `mmqr-${res.reference}.png`), {
+      const sentQr = await ctx.replyWithPhoto(new InputFile(qrBuffer, `mmqr-${res.reference}.png`), {
         caption: formatMmpayQrInvoiceMessage({
           amountMmk: res.amountMmk || amount,
           reference: res.reference,
@@ -848,6 +847,8 @@ export function createBot(): Bot<BotContext> {
         parse_mode: "HTML",
         reply_markup: buildMmpayInvoiceKeyboard(res.reference),
       });
+      // Remember this invoice message so the webhook can clear it on payment.
+      await botOrderService.attachMmpayQrMessage(res.reference, sentQr.message_id);
     } catch (err: any) {
       console.error("[Bot] mmpay_pay error:", err.message);
       await ctx.reply("⚠️ MMQR ပြုလုပ်ရာတွင် ချို့ယွင်းချက် ဖြစ်ပေါ်ခဲ့ပါသည်။ ခေတ္တစောင့်ပြီး ပြန်လည် ကြိုးစားပေးပါခင်ဗျာ။");
@@ -914,7 +915,7 @@ export function createBot(): Bot<BotContext> {
     const qrBuffer = await generateQrImageBuffer(active.qr);
     await ctx.deleteMessage().catch(() => {});
 
-    await ctx.replyWithPhoto(new InputFile(qrBuffer, `mmqr-${active.reference}.png`), {
+    const reshownQr = await ctx.replyWithPhoto(new InputFile(qrBuffer, `mmqr-${active.reference}.png`), {
       caption: formatMmpayQrInvoiceMessage({
         amountMmk: active.amountMmk,
         reference: active.reference,
@@ -923,6 +924,8 @@ export function createBot(): Bot<BotContext> {
       parse_mode: "HTML",
       reply_markup: buildMmpayInvoiceKeyboard(active.reference),
     });
+    // Track the re-shown invoice so the webhook clears the latest one.
+    await botOrderService.attachMmpayQrMessage(active.reference, reshownQr.message_id);
   });
 
   // 14D. Cancel Active MMQR Invoice (Compliance Rule 8 & 9: Manual Cancellation)
@@ -955,22 +958,16 @@ export function createBot(): Bot<BotContext> {
     }
 
     // Approved MMPay deposits are stored as "COMPLETED" by the deposit-review
-    // service ("APPROVED" kept for backward compatibility).
+    // service ("APPROVED" kept for backward compatibility). The gateway webhook
+    // already posts the full success message and removes this invoice the moment
+    // it credits, so a manual refresh only needs to acknowledge + clean up its
+    // own view — never send a second success card (that was the duplicate).
     if (statusRes.status === TopUpStatus.COMPLETED || statusRes.status === TopUpStatus.APPROVED) {
-      const stats = await botOrderService.getUserProfile(telegramId);
-      await ctx.answerCallbackQuery({ text: "ငွေပေးချေမှု အောင်မြင်ပြီးဖြစ်ပါသည်!" });
+      await ctx.answerCallbackQuery({
+        text: "✅ ငွေဝင်ပြီးပါပြီ! Wallet Balance ကို စစ်ကြည့်နိုင်ပါပြီခင်ဗျာ။",
+        show_alert: true,
+      });
       await ctx.deleteMessage().catch(() => {});
-      await ctx.reply(
-        formatMmpaySuccessMessage({
-          amountMmk: statusRes.amountMmk,
-          reference,
-          walletBalanceMmk: stats.walletBalanceMmk,
-        }),
-        {
-          parse_mode: "HTML",
-          reply_markup: buildMainMenuKeyboard(),
-        }
-      );
     } else if (statusRes.status === TopUpStatus.EXPIRED) {
       await ctx.answerCallbackQuery({ text: "ဤ QR ကုဒ် သက်တမ်းကုန်ဆုံးသွားပါပြီ။", show_alert: true });
       await ctx.deleteMessage().catch(() => {});

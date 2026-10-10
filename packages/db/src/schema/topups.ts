@@ -25,6 +25,9 @@ export const topUpRequests = pgTable(
     mmpayOrderId: varchar("mmpay_order_id", { length: 64 }),
     mmpayQrString: varchar("mmpay_qr_string", { length: 1024 }),
     mmpayVendorQrRef: varchar("mmpay_vendor_qr_ref", { length: 128 }),
+    // Telegram message id of the customer-facing MMQR invoice photo, so the
+    // webhook can remove it and post a single success message once paid.
+    mmpayQrMessageId: integer("mmpay_qr_message_id"),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
   },
   (table) => [

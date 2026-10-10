@@ -176,8 +176,18 @@ export async function reviewDeposit(params: {
    * PENDING MMPay top-up the customer may not have paid for yet.
    */
   viaGatewayWebhook?: boolean;
+  /**
+   * Customer / admin-group Telegram notifications default on. The MMPay webhook
+   * turns both off and sends its own single MMQR success message (clearing the
+   * live QR invoice), so there is no duplicate notification and the gateway ack
+   * is never blocked on Telegram latency.
+   */
+  notifyCustomer?: boolean;
+  notifyGroup?: boolean;
 }): Promise<DepositReviewOutcome> {
   const { depositId, action, actor } = params;
+  const notifyCustomer = params.notifyCustomer !== false;
+  const notifyGroup = params.notifyGroup !== false;
   const db = getDb();
 
   // 1. Fetch deposit request with user
@@ -325,7 +335,7 @@ export async function reviewDeposit(params: {
     }
 
     // Send celebration Telegram notification to customer
-    if (user.telegramId) {
+    if (notifyCustomer && user.telegramId) {
       await notifyTopUpApproved({
         telegramId: user.telegramId,
         reference: topUp.reference,
@@ -335,19 +345,21 @@ export async function reviewDeposit(params: {
     }
 
     // Sync review outcome to Telegram admin group
-    await syncTelegramDepositReviewOutcome({
-      outcome: "APPROVED",
-      actorLabel,
-      reference: topUp.reference,
-      amountMmk: topUp.amountMmk,
-      customerLabel,
-      telegramId: user.telegramId,
-      postedAt: topUp.createdAt,
-      chatId: topUp.telegramChatId,
-      messageId: topUp.telegramMessageId,
-    }).catch((err: any) => {
-      console.warn("[DepositReview] Failed to sync approval to Telegram group:", err?.message);
-    });
+    if (notifyGroup) {
+      await syncTelegramDepositReviewOutcome({
+        outcome: "APPROVED",
+        actorLabel,
+        reference: topUp.reference,
+        amountMmk: topUp.amountMmk,
+        customerLabel,
+        telegramId: user.telegramId,
+        postedAt: topUp.createdAt,
+        chatId: topUp.telegramChatId,
+        messageId: topUp.telegramMessageId,
+      }).catch((err: any) => {
+        console.warn("[DepositReview] Failed to sync approval to Telegram group:", err?.message);
+      });
+    }
 
     await writeAudit({
       actorId: reviewerId,

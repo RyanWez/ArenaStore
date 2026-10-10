@@ -221,8 +221,40 @@
 
 ## Status: all four phases complete (2026-10-11)
 
-Remaining operational step for the owner: run `pnpm --filter @arena/db db:migrate`
-against production before/with deploy so migration `0011` (single-active-order
-index) is applied. Set `PUBLIC_API_URL=https://arena.ryanwez.com` and ensure
-`MMPAY_SECRET_KEY` is set in production (webhook signature is enforced whenever
-it is present).
+---
+
+## Phase 5 — MMQR order-UX cleanup  ✅ DONE 2026-10-11
+
+Found during live sandbox testing: after a successful MMQR payment the customer
+saw **two** success messages (the generic deposit-approved notice from the
+webhook + the MMQR-specific one shown only after a manual "Refresh"), and the
+live QR invoice (with Refresh/Cancel buttons) lingered until the user refreshed.
+
+Root cause: the bot never persisted the QR photo's Telegram message id, so the
+webhook couldn't touch that message — it only pushed a separate generic text
+notification, and the QR was cleaned up only by the manual Refresh handler.
+
+Fixes:
+- Migration `0012` + schema: new `mmpay_qr_message_id` column.
+- Bot persists the QR photo's message id on send/re-show
+  (`order.service.attachMmpayQrMessage`, wired into `mmpay_pay` / `mmpay_show`).
+- API `telegram-notifier`: new `deleteTelegramMessage` + `notifyMmpayTopUpSuccess`
+  (deletes the live QR invoice, posts one MMQR success card).
+- `reviewDeposit` gained `notifyCustomer` / `notifyGroup` flags.
+- Webhook SUCCESS: credits via `reviewDeposit` with both notifications off, then
+  fire-and-forget `notifyMmpayTopUpSuccess` (fast-ack — the gateway response is
+  no longer blocked on Telegram latency). Returns 500 if the credit genuinely
+  failed so MyanMyanPay retries.
+- Bot `mmpay_check` COMPLETED branch no longer re-sends a full success card
+  (that was the duplicate); it just acknowledges + clears its own view. The
+  webhook owns the single success message.
+
+Result: payment → QR invoice auto-removed + exactly one success card, no manual
+Refresh, no duplicate. Full suite 315/315 green. Migrations `0011`+`0012`
+applied to the Neon dev DB.
+
+### Deploy checklist (production)
+- Run `pnpm --filter @arena/db db:migrate` (applies `0011`+`0012`).
+- Set `PUBLIC_API_URL=https://arena.ryanwez.com`, ensure `MMPAY_SECRET_KEY` set
+  (webhook signature enforced whenever present).
+- Point the MMPay portal webhook at `<PUBLIC_API_URL>/api/webhooks/mmpay`.
