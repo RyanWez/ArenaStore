@@ -397,3 +397,49 @@ describe("MMPay payment endpoint internal-token guard (#1)", () => {
     expect(res.statusCode).toBe(404);
   });
 });
+
+function cancel(telegramId: string, reference: string) {
+  return app.inject({
+    method: "POST",
+    url: "/api/payments/mmpay/cancel",
+    headers: { "content-type": "application/json", "x-internal-token": TEST_INTERNAL_API_TOKEN },
+    payload: { telegramId, reference },
+  });
+}
+
+describe("MMPay cancel never reverts a credited order (#3 status-guarded cancel)", () => {
+  it("cancels a genuinely PENDING order", async () => {
+    const telegramId = syntheticTelegramId();
+    const { user } = await seedCustomer(telegramId, 0);
+    const topUp = await seedPendingMmpay(user.id, 5000);
+
+    const res = await cancel(telegramId, topUp.reference);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().cancelled).toBe(true);
+    expect(res.json().status).toBe("CANCELLED");
+
+    const [row] = await getDb().select().from(topUpRequests).where(eq(topUpRequests.id, topUp.id));
+    expect(row.status).toBe("CANCELLED");
+    const [walletRow] = await getDb().select().from(wallets).where(eq(wallets.userId, user.id));
+    expect(walletRow?.balanceMmk ?? 0).toBe(0);
+  });
+
+  it("a cancel after the order was already paid does NOT revert the credit", async () => {
+    const telegramId = syntheticTelegramId();
+    const amountMmk = 13000;
+    const { user } = await seedCustomer(telegramId, 0);
+    const topUp = await seedPendingMmpay(user.id, amountMmk);
+
+    // Gateway credits the wallet first.
+    const paid = await webhook({ orderId: topUp.reference, amount: amountMmk, currency: "MMK", status: "SUCCESS" });
+    expect(paid.statusCode).toBe(200);
+
+    // A late cancel must not overwrite the COMPLETED row or touch the balance.
+    await cancel(telegramId, topUp.reference);
+
+    const [row] = await getDb().select().from(topUpRequests).where(eq(topUpRequests.id, topUp.id));
+    expect(row.status).toBe("COMPLETED");
+    const [walletRow] = await getDb().select().from(wallets).where(eq(wallets.userId, user.id));
+    expect(walletRow.balanceMmk).toBe(amountMmk);
+  });
+});

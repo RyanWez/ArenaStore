@@ -935,7 +935,44 @@ export function createBot(): Bot<BotContext> {
     const reference = ctx.match[1];
     const telegramId = String(ctx.from?.id || "");
 
-    await botOrderService.cancelMmpayTopUp(reference, telegramId);
+    const result = await botOrderService.cancelMmpayTopUp(reference, telegramId);
+
+    // The customer pressed Cancel in the exact window a SUCCESS webhook credited
+    // this order. The API refused to overwrite the paid row, so DO NOT tell them
+    // it was cancelled — show the real "already paid" outcome and post the single
+    // success card (claimed once, shared with the webhook/Refresh).
+    if (
+      result.ok &&
+      !result.cancelled &&
+      (result.status === TopUpStatus.COMPLETED || result.status === TopUpStatus.APPROVED)
+    ) {
+      const claimed = await botOrderService.claimMmpaySuccessNotification(reference);
+      await ctx.answerCallbackQuery({
+        text: "✅ ဤ QR ကို ပေးချေပြီးဖြစ်၍ ဖျက်၍ မရပါ — ငွေဝင်ပြီးပါပြီ ခင်ဗျာ။",
+        show_alert: true,
+      });
+      await ctx.deleteMessage().catch(() => {});
+      if (claimed) {
+        try {
+          const stats = await botOrderService.getUserProfile(telegramId);
+          await ctx.reply(
+            formatMmpaySuccessMessage({
+              amountMmk: result.amountMmk ?? 0,
+              reference,
+              walletBalanceMmk: stats.walletBalanceMmk,
+            }),
+            {
+              parse_mode: "HTML",
+              reply_markup: buildWalletKeyboard(),
+            }
+          );
+        } catch {
+          await botOrderService.releaseMmpaySuccessNotification(reference);
+        }
+      }
+      return;
+    }
+
     await ctx.answerCallbackQuery({ text: "ငွေပေးချေမှုကို ဖျက်သိမ်းပြီးပါပြီ!" });
     await ctx.deleteMessage().catch(() => {});
 

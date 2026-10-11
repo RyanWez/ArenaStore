@@ -672,7 +672,10 @@ export class BotOrderService {
   /**
    * Cancels an active MyanMyanPay MMQR payment request.
    */
-  async cancelMmpayTopUp(reference: string, telegramId: string): Promise<boolean> {
+  async cancelMmpayTopUp(
+    reference: string,
+    telegramId: string
+  ): Promise<{ ok: boolean; cancelled: boolean; status?: string; amountMmk?: number }> {
     try {
       const res = await fetch(`${botConfig.API_BASE_URL}/api/payments/mmpay/cancel`, {
         method: "POST",
@@ -683,10 +686,21 @@ export class BotOrderService {
         body: JSON.stringify({ reference, telegramId }),
       });
       const data = (await res.json()) as any;
-      return Boolean(res.ok && data?.ok);
+      if (!res.ok || !data?.ok) {
+        return { ok: false, cancelled: false };
+      }
+      // The API only reports cancelled:false when the order settled (e.g. a
+      // SUCCESS webhook credited it) in the race window, so it was NOT
+      // cancelled — the bot must tell the customer the real outcome.
+      return {
+        ok: true,
+        cancelled: data.cancelled !== false,
+        status: data.status,
+        amountMmk: data.amountMmk,
+      };
     } catch (err: any) {
       console.error("[BotOrderService] cancelMmpayTopUp error:", err.message);
-      return false;
+      return { ok: false, cancelled: false };
     }
   }
 

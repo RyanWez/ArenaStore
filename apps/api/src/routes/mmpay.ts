@@ -466,18 +466,42 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
         return reply.status(404).send({ ok: false, error: "Active pending order not found" });
       }
 
-      await db
+      // Status-guarded cancel: a SUCCESS webhook may credit this order in the
+      // window between the SELECT above and this UPDATE. Guarding on
+      // status='PENDING' (with returning) means a just-credited order is NOT
+      // overwritten to CANCELLED — the wallet credit and the row status can
+      // never disagree. If we lose the race, report the real settled status so
+      // the bot tells the customer the truth instead of "cancelled".
+      const cancelled = await db
         .update(topUpRequests)
         .set({
           status: "CANCELLED",
           rejectReason: "Cancelled by customer in Telegram bot",
         })
-        .where(eq(topUpRequests.id, topUp.id));
+        .where(and(eq(topUpRequests.id, topUp.id), eq(topUpRequests.status, "PENDING")))
+        .returning({ id: topUpRequests.id });
+
+      if (cancelled.length === 0) {
+        const [fresh] = await db
+          .select({ status: topUpRequests.status })
+          .from(topUpRequests)
+          .where(eq(topUpRequests.id, topUp.id))
+          .limit(1);
+        return reply.send({
+          ok: true,
+          reference: topUp.reference,
+          amountMmk: topUp.amountMmk,
+          status: fresh?.status ?? topUp.status,
+          cancelled: false,
+        });
+      }
 
       return reply.send({
         ok: true,
         reference: topUp.reference,
+        amountMmk: topUp.amountMmk,
         status: "CANCELLED",
+        cancelled: true,
       });
     }
   );
@@ -551,11 +575,24 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
         new Date(topUp.expiresAt).getTime() < Date.now();
 
       if (isExpired) {
-        await db
+        // Status-guarded expiry: never overwrite a row a webhook just credited
+        // in this same window. If the guarded UPDATE matches no row, the order
+        // settled concurrently — re-read and report the real status.
+        const expired = await db
           .update(topUpRequests)
           .set({ status: "EXPIRED" })
-          .where(eq(topUpRequests.id, topUp.id));
-        topUp.status = "EXPIRED";
+          .where(and(eq(topUpRequests.id, topUp.id), eq(topUpRequests.status, "PENDING")))
+          .returning({ id: topUpRequests.id });
+        if (expired.length > 0) {
+          topUp.status = "EXPIRED";
+        } else {
+          const [fresh] = await db
+            .select({ status: topUpRequests.status })
+            .from(topUpRequests)
+            .where(eq(topUpRequests.id, topUp.id))
+            .limit(1);
+          if (fresh) topUp.status = fresh.status;
+        }
       }
 
       return reply.send({
