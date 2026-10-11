@@ -62,16 +62,24 @@ const envSchema = z.object({
    * alerts are not delayed by catalog syncs.
    */
   BALANCE_CHECK_INTERVAL_MINUTES: z.coerce.number().int().min(0).default(2),
-  MMPAY_APP_ID: z.string().default(""),
-  MMPAY_PUBLISHABLE_KEY: z.string().default(""),
-  MMPAY_SECRET_KEY: z.string().default(""),
-  MMPAY_API_BASE_URL: z.string().default("https://bbapi.myanmyanpay.com"),
+  // Trim the MMPay credentials: a stray space or trailing newline pasted into a
+  // host's env panel (Render, etc.) would silently corrupt every HMAC we compute
+  // with the secret — breaking BOTH our outbound gateway signature (gateway then
+  // falls back to browser-origin mode and rejects with R0004) AND inbound webhook
+  // verification (401). Trimming makes the signing key byte-exact regardless.
+  MMPAY_APP_ID: z.string().default("").transform((v) => v.trim()),
+  MMPAY_PUBLISHABLE_KEY: z.string().default("").transform((v) => v.trim()),
+  MMPAY_SECRET_KEY: z.string().default("").transform((v) => v.trim()),
+  MMPAY_API_BASE_URL: z
+    .string()
+    .default("https://bbapi.myanmyanpay.com")
+    .transform((v) => v.trim()),
   /**
    * Public HTTPS base URL of this API, used to build the MMQR webhook callback
    * URL (`<PUBLIC_API_URL>/api/webhooks/mmpay`). Empty falls back to the
    * webhook URL configured in the MMPay developer portal.
    */
-  PUBLIC_API_URL: z.string().default(""),
+  PUBLIC_API_URL: z.string().default("").transform((v) => v.trim()),
   /**
    * How often (seconds) the API polls MyanMyanPay for still-PENDING MMQR
    * top-ups and credits any the gateway reports as paid — the safety net for a

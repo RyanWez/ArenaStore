@@ -86,6 +86,27 @@ export class MmpayService {
   }
 
   /**
+   * R0004 ("Origin Requires SSL") / R0003 ("Origin Whitelist Not Allowed") mean
+   * the gateway did NOT accept our server signature and fell back to treating the
+   * call as a browser-SDK call gated on the Origin whitelist. With a correct
+   * X-Mmpay-Signature this path is never taken — so in a server integration these
+   * codes almost always mean the SECRET key used to sign does not match the one on
+   * the MMPay application (wrong value, mismatched pk/sk pair, or stray whitespace
+   * in the host env). Surface that instead of a bare HTTP error.
+   */
+  private describeHandshakeFailure(status: number, body: string): string {
+    const base = `MMPay handshake failed (HTTP ${status}): ${body}`;
+    if (/R000[34]/.test(body)) {
+      return (
+        `${base} — the gateway rejected our server signature and fell back to ` +
+        `browser-origin mode. Verify MMPAY_SECRET_KEY (and the pk/sk pair + MMPAY_APP_ID) ` +
+        `on this host exactly matches the live MyanMyanPay application.`
+      );
+    }
+    return base;
+  }
+
+  /**
    * Generates a dynamic MMQR payment request with MyanMyanPay gateway.
    * Performs the required JWT token handshake first, then creates the payment.
    */
@@ -112,7 +133,7 @@ export class MmpayService {
 
     if (!tokenRes.ok) {
       const errText = await tokenRes.text();
-      throw new Error(`MMPay handshake failed (HTTP ${tokenRes.status}): ${errText}`);
+      throw new Error(this.describeHandshakeFailure(tokenRes.status, errText));
     }
 
     const { token } = (await tokenRes.json()) as { token: string };
