@@ -21,7 +21,7 @@ import {
   orderItems,
   orderDeliveries,
 } from "@arena/db";
-import { eq, desc, or, and, sql, gte, ne, isNull } from "drizzle-orm";
+import { eq, desc, or, and, sql, gte, ne, isNull, isNotNull } from "drizzle-orm";
 
 async function sendAdminTelegramAlert(text: string): Promise<boolean> {
   try {
@@ -774,6 +774,33 @@ export class BotOrderService {
         .where(eq(topUpRequests.reference, reference));
     } catch (err: any) {
       console.warn("[BotOrderService] releaseMmpaySuccessNotification error:", err.message);
+    }
+  }
+
+  /**
+   * Atomically claims the one-time cleanup of a live MMQR invoice message by
+   * nulling mmpay_qr_message_id. Shared by the manual Refresh and the background
+   * sweep so an expired/cancelled invoice's terminal notice is sent exactly once
+   * (whoever nulls it first owns the user-facing message). Returns true if this
+   * caller won the claim.
+   */
+  async claimMmpayInvoiceCleanup(reference: string): Promise<boolean> {
+    try {
+      const db = getDb();
+      const claimed = await db
+        .update(topUpRequests)
+        .set({ mmpayQrMessageId: null })
+        .where(
+          and(
+            eq(topUpRequests.reference, reference),
+            isNotNull(topUpRequests.mmpayQrMessageId)
+          )
+        )
+        .returning({ id: topUpRequests.id });
+      return claimed.length > 0;
+    } catch (err: any) {
+      console.warn("[BotOrderService] claimMmpayInvoiceCleanup error:", err.message);
+      return false;
     }
   }
 

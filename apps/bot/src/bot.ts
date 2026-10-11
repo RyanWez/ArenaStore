@@ -995,15 +995,20 @@ export function createBot(): Bot<BotContext> {
         }
       }
     } else if (statusRes.status === TopUpStatus.EXPIRED) {
+      // Claim the one-time cleanup so the background sweep does not also post an
+      // expired notice for the same invoice (dedup via nulling the QR id).
+      const owns = await botOrderService.claimMmpayInvoiceCleanup(reference);
       await ctx.answerCallbackQuery({ text: "ဤ QR ကုဒ် သက်တမ်းကုန်ဆုံးသွားပါပြီ။", show_alert: true });
       await ctx.deleteMessage().catch(() => {});
-      await ctx.reply(
-        "⚠️ <b>MMQR သက်တမ်းကုန်ဆုံးသွားပါပြီ (Expired)</b>\nကျေးဇူးပြု၍ ငွေပမာဏ အသစ် ရွေးချယ်ပေးပါခင်ဗျာ။",
-        {
-          parse_mode: "HTML",
-          reply_markup: buildWalletKeyboard(),
-        }
-      );
+      if (owns) {
+        await ctx.reply(
+          "⚠️ <b>MMQR သက်တမ်းကုန်ဆုံးသွားပါပြီ (Expired)</b>\nကျေးဇူးပြု၍ ငွေပမာဏ အသစ် ရွေးချယ်ပေးပါခင်ဗျာ။",
+          {
+            parse_mode: "HTML",
+            reply_markup: buildWalletKeyboard(),
+          }
+        );
+      }
     } else if (statusRes.status === TopUpStatus.CANCELLED) {
       await ctx.answerCallbackQuery({ text: "ဤအော်ဒါကို ဖျက်သိမ်းထားပြီးဖြစ်ပါသည်။", show_alert: true });
       await ctx.deleteMessage().catch(() => {});
