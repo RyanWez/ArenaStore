@@ -1027,6 +1027,21 @@ export class BotOrderService {
               .where(and(eq(wallets.id, wallet.id), gte(wallets.balanceMmk, totalMmk)))
               .returning();
 
+            // Record the debit in the ledger atomically with the balance
+            // decrement. Pairing them in one transaction keeps the wallet
+            // balance and the ledger sum from ever diverging — even if the
+            // later order-record transaction (step 5) fails after upstream
+            // delivery, the money leaving the wallet is always accounted for.
+            if (updated) {
+              await tx.insert(walletLedger).values({
+                walletId: updated.id,
+                amountMmk: -totalMmk,
+                type: "ORDER_DEBIT",
+                referenceId: publicOrderNo,
+                notes: `Purchase: ${product.cleanName} x ${params.quantity}`,
+              });
+            }
+
             return { updated } as const;
           });
 
@@ -1086,16 +1101,28 @@ export class BotOrderService {
         if (!apiKey) {
           // FOOTGUN PREVENTED: Never fake deliveries in production when API key is missing!
           if (debitedWalletId !== null) {
+            const refundWalletId = debitedWalletId;
             try {
               const db = getDb();
-              await db
-                .update(wallets)
-                .set({
-                  balanceMmk: sql`${wallets.balanceMmk} + ${totalMmk}`,
-                  totalSpentMmk: sql`GREATEST(0, ${wallets.totalSpentMmk} - ${totalMmk})`,
-                  updatedAt: new Date(),
-                })
-                .where(eq(wallets.id, debitedWalletId));
+              await db.transaction(async (tx) => {
+                await tx
+                  .update(wallets)
+                  .set({
+                    balanceMmk: sql`${wallets.balanceMmk} + ${totalMmk}`,
+                    totalSpentMmk: sql`GREATEST(0, ${wallets.totalSpentMmk} - ${totalMmk})`,
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(wallets.id, refundWalletId));
+                // Mirror the refund in the ledger so it nets off the ORDER_DEBIT
+                // written at debit time; balance and ledger sum stay in step.
+                await tx.insert(walletLedger).values({
+                  walletId: refundWalletId,
+                  amountMmk: totalMmk,
+                  type: "REFUND_CREDIT",
+                  referenceId: publicOrderNo,
+                  notes: `Auto-refund: supplier ${supplierId} API key not configured`,
+                });
+              });
             } catch (refundErr: any) {
               console.error("[BotOrderService] Critical: Wallet refund failed on unconfigured supplier:", refundErr.message);
             }
@@ -1146,16 +1173,28 @@ export class BotOrderService {
 
           // ATOMIC REFUND: Rollback the debited balance immediately on upstream failure!
           if (debitedWalletId !== null) {
+            const refundWalletId = debitedWalletId;
             try {
               const db = getDb();
-              await db
-                .update(wallets)
-                .set({
-                  balanceMmk: sql`${wallets.balanceMmk} + ${totalMmk}`,
-                  totalSpentMmk: sql`GREATEST(0, ${wallets.totalSpentMmk} - ${totalMmk})`,
-                  updatedAt: new Date(),
-                })
-                .where(eq(wallets.id, debitedWalletId));
+              await db.transaction(async (tx) => {
+                await tx
+                  .update(wallets)
+                  .set({
+                    balanceMmk: sql`${wallets.balanceMmk} + ${totalMmk}`,
+                    totalSpentMmk: sql`GREATEST(0, ${wallets.totalSpentMmk} - ${totalMmk})`,
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(wallets.id, refundWalletId));
+                // Mirror the refund in the ledger so it nets off the ORDER_DEBIT
+                // written at debit time; balance and ledger sum stay in step.
+                await tx.insert(walletLedger).values({
+                  walletId: refundWalletId,
+                  amountMmk: totalMmk,
+                  type: "REFUND_CREDIT",
+                  referenceId: publicOrderNo,
+                  notes: `Auto-refund: upstream ${supplierId} order failed`,
+                });
+              });
             } catch (refundErr: any) {
               console.error("[BotOrderService] Critical: Wallet refund failed after upstream error:", refundErr.message);
             }
@@ -1271,35 +1310,34 @@ export class BotOrderService {
       };
       const encryptedPayload = encryptPayload(deliveryPayloadV2);
 
-      // 5. Commit Order & Ledger in Atomic PostgreSQL Transaction
+      // 5. Record the order, item and encrypted delivery in an atomic
+      // transaction. The ORDER_DEBIT ledger entry was already written with the
+      // wallet debit (step 2), so a failure here can no longer desync the
+      // balance from the ledger — it can only lose the order *metadata*. We
+      // retry once for a transient blip, then alert an admin for manual
+      // backfill. We never swallow silently: the customer has been charged and
+      // the product was already delivered upstream, so they keep the
+      // credentials shown in chat while an admin recreates the order record.
       if (user && debitedWalletId !== null) {
-        try {
+        const orderUserId = user.id;
+        const persistOrderRecord = async () => {
           const db = getDb();
           await db.transaction(async (tx) => {
-            // A. Insert wallet ledger
-            await tx.insert(walletLedger).values({
-              walletId: debitedWalletId,
-              amountMmk: -totalMmk,
-              type: "ORDER_DEBIT",
-              referenceId: publicOrderNo,
-              notes: `Purchase: ${product.cleanName} x ${params.quantity} (${supplierId} #${upstreamOrderId || "direct"})`,
-            });
-
-            // B. Insert order
+            // A. Insert order
             const [insertedOrder] = await tx
               .insert(orders)
               .values({
                 publicOrderNo,
                 externalOrderId: upstreamOrderId ? `${supplierId}-${upstreamOrderId}` : publicOrderNo,
                 supplier: supplierId,
-                customerId: user.id,
+                customerId: orderUserId,
                 status: "DELIVERED",
                 totalAmountMmk: totalMmk,
                 notes: `Telegram purchase by @${params.telegramUsername || params.customerName}`,
               })
               .returning();
 
-            // C. Insert order item
+            // B. Insert order item
             await tx.insert(orderItems).values({
               orderId: insertedOrder.id,
               productId: product.id,
@@ -1310,7 +1348,7 @@ export class BotOrderService {
               subtotalMmk: totalMmk,
             });
 
-            // D. Insert encrypted delivery payload
+            // C. Insert encrypted delivery payload
             await tx.insert(orderDeliveries).values({
               orderId: insertedOrder.id,
               upstreamOrderId: upstreamOrderId || null,
@@ -1319,8 +1357,39 @@ export class BotOrderService {
               deliveredAt: new Date(),
             });
           });
-        } catch (dbErr: any) {
-          console.error("[BotOrderService] DB transaction failed recording order details:", dbErr.message);
+        };
+
+        try {
+          await persistOrderRecord();
+        } catch (firstErr: any) {
+          console.error(
+            "[BotOrderService] Order-record transaction failed; retrying once:",
+            firstErr?.message
+          );
+          try {
+            await persistOrderRecord();
+          } catch (dbErr: any) {
+            console.error(
+              "[BotOrderService] CRITICAL: order record persist failed after retry:",
+              dbErr?.message
+            );
+            void sendAdminTelegramAlert(
+              `🚨 <b>ORDER RECORD PERSIST FAILED (Manual Backfill Needed)</b>\n\n` +
+                `• <b>Order No:</b> <code>${publicOrderNo}</code>\n` +
+                `• <b>Customer:</b> @${params.telegramUsername || params.customerName} (TG: <code>${params.telegramId}</code>)\n` +
+                `• <b>Product:</b> ${escapeHtml(product.cleanName)} x ${params.quantity}\n` +
+                `• <b>Amount:</b> ${totalMmk.toLocaleString()} MMK (already debited)\n` +
+                `• <b>Supplier:</b> <code>${supplierId}</code> #${upstreamOrderId || "direct"}\n` +
+                `• <b>Status:</b> Customer WAS charged and the product WAS delivered. The ORDER_DEBIT ledger entry exists, but the order/delivery row failed to save. Recreate the order + delivery record manually.`
+            );
+            void emitAdminEvent("ORDER_CREATED", {
+              orderId: publicOrderNo,
+              publicOrderNo,
+              productId: params.productId,
+              totalMmk,
+              status: "RECORD_FAILED",
+            });
+          }
         }
       }
 

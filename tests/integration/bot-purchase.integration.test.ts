@@ -132,6 +132,40 @@ describe("Bot instant wallet purchase (Recommendation D money path)", () => {
     );
   });
 
+  it("keeps the wallet balance equal to the sum of its ledger entries (debit written atomically with the balance)", async () => {
+    const telegramId = syntheticTelegramId();
+    await botOrderService.creditWallet(telegramId, 10000);
+
+    const res = await botOrderService.purchaseWithWallet({
+      telegramId,
+      customerName: "Ledger Invariant Customer",
+      productId: FALLBACK_PRODUCT_ID,
+      quantity: 1,
+    });
+    expect(res.success).toBe(true);
+
+    const userId = await getUserIdByTelegramId(telegramId);
+    const db = getDb();
+    const [walletRow] = await db.select().from(wallets).where(eq(wallets.userId, userId));
+    const ledgerRows = await db
+      .select()
+      .from(walletLedger)
+      .where(eq(walletLedger.walletId, walletRow.id));
+
+    // The ledger is a true mirror of the balance: TOPUP_CREDIT +10000 and
+    // ORDER_DEBIT -3900 sum to the live balance.
+    const ledgerSum = ledgerRows.reduce((acc, row) => acc + row.amountMmk, 0);
+    expect(ledgerSum).toBe(walletRow.balanceMmk);
+
+    // Exactly one ORDER_DEBIT for this order, written with the debit (step 2) —
+    // not a second copy from the order-record transaction (step 5).
+    const orderDebits = ledgerRows.filter(
+      (row) => row.type === "ORDER_DEBIT" && row.referenceId === res.publicOrderNo
+    );
+    expect(orderDebits).toHaveLength(1);
+    expect(orderDebits[0].amountMmk).toBe(-FALLBACK_PRICE_MMk);
+  });
+
   it("never returns another customer's order to the order viewer", async () => {
     const telegramId = syntheticTelegramId();
     await botOrderService.creditWallet(telegramId, 10000);
