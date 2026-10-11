@@ -177,6 +177,13 @@ export async function reviewDeposit(params: {
    */
   viaGatewayWebhook?: boolean;
   /**
+   * Gateway-only: also allow crediting an EXPIRED MMPay row. The MMQR webhook
+   * sets this when a SUCCESS callback lands after our local 15-min timer flipped
+   * the row to EXPIRED (within its grace window). The gateway is authoritative
+   * about money received, so an in-grace late SUCCESS is still honored.
+   */
+  gatewayGraceExpired?: boolean;
+  /**
    * Customer / admin-group Telegram notifications default on. The MMPay webhook
    * turns both off and sends its own single MMQR success message (clearing the
    * live QR invoice), so there is no duplicate notification and the gateway ack
@@ -207,6 +214,13 @@ export async function reviewDeposit(params: {
   const reviewerId = actor.kind === "ADMIN" ? (actor.adminUserId ?? null) : null;
   const actorLabel = await resolveActorLabel(actor, db);
 
+  // Statuses this review may still claim. The gateway webhook additionally
+  // allows EXPIRED (bounded grace enforced by the caller) so a late but genuine
+  // SUCCESS still credits the customer.
+  const reviewableStatuses: string[] = params.gatewayGraceExpired
+    ? [...REVIEWABLE_DEPOSIT_STATUSES, "EXPIRED"]
+    : [...REVIEWABLE_DEPOSIT_STATUSES];
+
   // MMPay top-ups are auto-confirmed by the payment gateway webhook. A human
   // (panel or Telegram group) must never manually approve/reject one while it
   // is still PENDING — the customer may not have paid the MMQR yet, so a manual
@@ -226,7 +240,7 @@ export async function reviewDeposit(params: {
     };
   }
 
-  if (topUp.status !== "SUBMITTED" && topUp.status !== "PENDING") {
+  if (!reviewableStatuses.includes(topUp.status)) {
     const reviewedByLabel = await resolvePastReviewerLabel(topUp.reviewedBy, db);
     return {
       ok: false,
@@ -260,7 +274,7 @@ export async function reviewDeposit(params: {
           .where(
             and(
               eq(topUpRequests.id, depositId),
-              inArray(topUpRequests.status, [...REVIEWABLE_DEPOSIT_STATUSES])
+              inArray(topUpRequests.status, reviewableStatuses)
             )
           )
           .returning({ id: topUpRequests.id });

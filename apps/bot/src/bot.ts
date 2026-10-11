@@ -39,6 +39,7 @@ import {
   formatMmpayQrInvoiceMessage,
   formatPaymentMethodChoiceMessage,
   formatActiveMmpayExistsMessage,
+  formatMmpaySuccessMessage,
   formatTopUpSlipReceivedMessage,
   formatInsufficientBalanceMessage,
   formatPurchaseConfirmMessage,
@@ -959,15 +960,39 @@ export function createBot(): Bot<BotContext> {
 
     // Approved MMPay deposits are stored as "COMPLETED" by the deposit-review
     // service ("APPROVED" kept for backward compatibility). The gateway webhook
-    // already posts the full success message and removes this invoice the moment
-    // it credits, so a manual refresh only needs to acknowledge + clean up its
-    // own view — never send a second success card (that was the duplicate).
+    // normally posts the success card and removes this invoice the moment it
+    // credits — but that push is best-effort and can be dropped (Telegram blip,
+    // API restart mid-flight). So Refresh is a real recovery path: it atomically
+    // claims the one-time notification and, if it wins the claim (the webhook
+    // did not deliver), posts the single success card itself. The shared claim
+    // guarantees the customer never sees two cards.
     if (statusRes.status === TopUpStatus.COMPLETED || statusRes.status === TopUpStatus.APPROVED) {
+      const claimed = await botOrderService.claimMmpaySuccessNotification(reference);
       await ctx.answerCallbackQuery({
         text: "✅ ငွေဝင်ပြီးပါပြီ! Wallet Balance ကို စစ်ကြည့်နိုင်ပါပြီခင်ဗျာ။",
         show_alert: true,
       });
       await ctx.deleteMessage().catch(() => {});
+      if (claimed) {
+        try {
+          const stats = await botOrderService.getUserProfile(telegramId);
+          await ctx.reply(
+            formatMmpaySuccessMessage({
+              amountMmk: statusRes.amountMmk,
+              reference,
+              walletBalanceMmk: stats.walletBalanceMmk,
+            }),
+            {
+              parse_mode: "HTML",
+              reply_markup: buildWalletKeyboard(),
+            }
+          );
+        } catch {
+          // Posting the card failed — release the claim so a later retry (or a
+          // delayed webhook push) can still deliver the confirmation.
+          await botOrderService.releaseMmpaySuccessNotification(reference);
+        }
+      }
     } else if (statusRes.status === TopUpStatus.EXPIRED) {
       await ctx.answerCallbackQuery({ text: "ဤ QR ကုဒ် သက်တမ်းကုန်ဆုံးသွားပါပြီ။", show_alert: true });
       await ctx.deleteMessage().catch(() => {});

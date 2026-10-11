@@ -28,6 +28,12 @@ export const topUpRequests = pgTable(
     // Telegram message id of the customer-facing MMQR invoice photo, so the
     // webhook can remove it and post a single success message once paid.
     mmpayQrMessageId: integer("mmpay_qr_message_id"),
+    // One-time claim timestamp for the MMQR success card. The gateway webhook
+    // and the bot's manual "Refresh" both try to announce a paid top-up; the
+    // caller whose guarded UPDATE sets this (from NULL) owns the single card, so
+    // the customer never sees a duplicate. Cleared back to NULL only to release
+    // a failed send for retry.
+    mmpaySuccessNotifiedAt: timestamp("mmpay_success_notified_at", { withTimezone: true }),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
   },
   (table) => [

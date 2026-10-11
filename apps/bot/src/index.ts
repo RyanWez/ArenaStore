@@ -4,6 +4,7 @@ import "./instrument";
 import * as Sentry from "@sentry/node";
 import { closeSentry } from "./instrument";
 import { createBot } from "./bot";
+import { startMmpayInvoiceScheduler } from "./services/mmpay-invoice-scheduler";
 
 // Last-resort fault handlers, mirroring the API: an uncaught exception means
 // unknown process state (log, flush, exit — Render restarts), while a stray
@@ -33,6 +34,10 @@ async function main() {
     console.error(e);
   });
 
+  // Background sweep: live MMQR countdown refresh + auto-expiry (no customer
+  // Refresh needed). Runs independently of polling/webhook mode.
+  const invoiceScheduler = startMmpayInvoiceScheduler(bot);
+
   let isShuttingDown = false;
   let isPolling = false;
 
@@ -41,6 +46,7 @@ async function main() {
     process.on(signal, async () => {
       console.log(`\nReceived ${signal}, stopping bot...`);
       isShuttingDown = true;
+      invoiceScheduler.stop();
       if (isPolling) {
         await Promise.race([
           bot.stop().catch(() => {}),

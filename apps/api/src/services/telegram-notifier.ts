@@ -302,8 +302,10 @@ export async function notifyMmpayTopUpSuccess(params: {
   reference: string;
   amountMmk: number;
   newBalanceMmk: number;
-}): Promise<void> {
+}): Promise<boolean> {
   const { telegramId, qrMessageId, reference, amountMmk, newBalanceMmk } = params;
+
+  if (!telegramId) return false;
 
   if (qrMessageId) {
     await deleteTelegramMessage(telegramId, qrMessageId);
@@ -318,7 +320,10 @@ export async function notifyMmpayTopUpSuccess(params: {
     `လက်ရှိ Wallet Balance: <b>${newBalanceMmk.toLocaleString("en-US")} MMK</b></blockquote>\n\n` +
     `ကျေးဇူးတင်ရှိပါသည်ခင်ဗျာ! အခုပဲ ပစ္စည်းများကို ဆက်လက် ဝယ်ယူနိုင်ပါပြီ ${sparkles}`;
 
-  await sendTelegramMessage(telegramId, text);
+  // Returns whether the success card actually reached Telegram, so the caller
+  // can release the one-time notification claim and let the bot's "Refresh"
+  // button retry when this fire-and-forget push fails.
+  return sendTelegramMessage(telegramId, text);
 }
 export async function notifyTopUpRejected(params: {
   telegramId: string;

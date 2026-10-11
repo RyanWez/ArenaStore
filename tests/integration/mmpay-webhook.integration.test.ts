@@ -69,6 +69,29 @@ async function seedPendingMmpay(userId: number, amountMmk: number) {
   return { id: row.id, reference: row.reference };
 }
 
+/**
+ * Seeds an already-EXPIRED MMPay top-up. `expiredMinutesAgo` places `expiresAt`
+ * in the past so the webhook's late-SUCCESS grace window can be exercised. The
+ * partial unique index only covers PENDING rows, so EXPIRED rows never collide.
+ */
+async function seedExpiredMmpay(userId: number, amountMmk: number, expiredMinutesAgo: number) {
+  const reference = `MMQR-TEST-EXP-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  const [row] = await getDb()
+    .insert(topUpRequests)
+    .values({
+      reference,
+      userId,
+      amountMmk,
+      paymentMethod: "MMPAY",
+      status: "EXPIRED",
+      mmpayOrderId: reference,
+      mmpayQrString: "00020101021153031045802MM6304ABCD",
+      expiresAt: new Date(Date.now() - expiredMinutesAgo * 60 * 1000),
+    })
+    .returning();
+  return { id: row.id, reference: row.reference };
+}
+
 function webhook(body: Record<string, unknown>) {
   return app.inject({
     method: "POST",
@@ -200,6 +223,52 @@ describe("MMPay webhook (POST /api/webhooks/mmpay)", () => {
       payload: { orderId: "x", amount: 1, status: "SUCCESS" },
     });
     expect(root.statusCode).toBe(404);
+  });
+});
+
+describe("MMPay late-SUCCESS grace window (expiry-after-payment race)", () => {
+  it("credits an EXPIRED top-up when SUCCESS arrives within the grace window", async () => {
+    const telegramId = syntheticTelegramId();
+    const amountMmk = 7000;
+    const { user } = await seedCustomer(telegramId, 0);
+    // Expired 5 minutes ago — well inside the 30-minute grace window.
+    const topUp = await seedExpiredMmpay(user.id, amountMmk, 5);
+
+    const res = await webhook({
+      orderId: topUp.reference,
+      amount: amountMmk,
+      currency: "MMK",
+      status: "SUCCESS",
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("APPROVED");
+
+    const [row] = await getDb().select().from(topUpRequests).where(eq(topUpRequests.id, topUp.id));
+    expect(row.status).toBe("COMPLETED");
+    const [walletRow] = await getDb().select().from(wallets).where(eq(wallets.userId, user.id));
+    expect(walletRow.balanceMmk).toBe(amountMmk);
+  });
+
+  it("refuses to credit a long-expired top-up (beyond grace) and leaves it for manual reconcile", async () => {
+    const telegramId = syntheticTelegramId();
+    const amountMmk = 8000;
+    const { user } = await seedCustomer(telegramId, 0);
+    // Expired 40 minutes ago — beyond the 30-minute grace window.
+    const topUp = await seedExpiredMmpay(user.id, amountMmk, 40);
+
+    const res = await webhook({
+      orderId: topUp.reference,
+      amount: amountMmk,
+      currency: "MMK",
+      status: "SUCCESS",
+    });
+
+    expect(res.statusCode).toBe(409);
+    const [row] = await getDb().select().from(topUpRequests).where(eq(topUpRequests.id, topUp.id));
+    expect(row.status).toBe("EXPIRED");
+    const [walletRow] = await getDb().select().from(wallets).where(eq(wallets.userId, user.id));
+    expect(walletRow?.balanceMmk ?? 0).toBe(0);
   });
 });
 

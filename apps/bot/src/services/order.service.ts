@@ -21,7 +21,7 @@ import {
   orderItems,
   orderDeliveries,
 } from "@arena/db";
-import { eq, desc, or, and, sql, gte, ne } from "drizzle-orm";
+import { eq, desc, or, and, sql, gte, ne, isNull } from "drizzle-orm";
 
 async function sendAdminTelegramAlert(text: string): Promise<boolean> {
   try {
@@ -734,6 +734,47 @@ export class BotOrderService {
       console.error("[BotOrderService] checkMmpayStatus error:", err.message);
     }
     return null;
+  }
+
+  /**
+   * Atomically claims the one-time MMQR success notification for a top-up.
+   *
+   * The webhook and this bot's manual "Refresh" button both race to announce a
+   * completed MMQR payment. mmpay_success_notified_at is the dedup token: only
+   * the caller whose guarded UPDATE flips it from NULL owns the single success
+   * card; everyone else backs off. Returns true if this caller won the claim.
+   */
+  async claimMmpaySuccessNotification(reference: string): Promise<boolean> {
+    try {
+      const db = getDb();
+      const claimed = await db
+        .update(topUpRequests)
+        .set({ mmpaySuccessNotifiedAt: new Date() })
+        .where(
+          and(
+            eq(topUpRequests.reference, reference),
+            isNull(topUpRequests.mmpaySuccessNotifiedAt)
+          )
+        )
+        .returning({ id: topUpRequests.id });
+      return claimed.length > 0;
+    } catch (err: any) {
+      console.warn("[BotOrderService] claimMmpaySuccessNotification error:", err.message);
+      return false;
+    }
+  }
+
+  /** Releases a claimed success notification so a later retry can re-announce. */
+  async releaseMmpaySuccessNotification(reference: string): Promise<void> {
+    try {
+      const db = getDb();
+      await db
+        .update(topUpRequests)
+        .set({ mmpaySuccessNotifiedAt: null })
+        .where(eq(topUpRequests.reference, reference));
+    } catch (err: any) {
+      console.warn("[BotOrderService] releaseMmpaySuccessNotification error:", err.message);
+    }
   }
 
 

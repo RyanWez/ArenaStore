@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from "fastify";
 import crypto from "node:crypto";
 import { z } from "zod";
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { getDb, topUpRequests, users } from "@arena/db";
 import { MMPayWebhookPayloadSchema, TopUpStatus } from "@arena/shared";
 import { mmpayService } from "../services/mmpay.service";
@@ -21,6 +21,12 @@ const CancelMmpayPaymentBodySchema = z.object({
   telegramId: z.string().min(1),
   reference: z.string().min(1),
 });
+
+// A SUCCESS callback may land after our local 15-min timer already flipped the
+// order to EXPIRED. The gateway is authoritative about money received, so we
+// still honor a late SUCCESS within this grace window; beyond it the row is too
+// stale to auto-credit and goes to manual reconciliation.
+const MMPAY_LATE_SUCCESS_GRACE_MS = 30 * 60 * 1000;
 
 export const mmpayRoutes: FastifyPluginAsync = async (server) => {
   // Capture the exact raw request body (scoped to this plugin) so webhook HMAC
@@ -106,6 +112,23 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
         return reply.send({ ok: true, status: "ALREADY_APPROVED" });
       }
 
+      // A top-up may have been flipped to EXPIRED (our 15-min timer lapsed, or a
+      // prior EXPIRED callback) before this SUCCESS callback arrives. The gateway
+      // is authoritative about money actually received, so credit a late SUCCESS
+      // on an EXPIRED row within a bounded grace window; beyond that leave it for
+      // manual reconciliation rather than crediting a stale row.
+      const isLateExpired = topUp.status === TopUpStatus.EXPIRED;
+      if (isLateExpired) {
+        const expiredAtMs = topUp.expiresAt ? new Date(topUp.expiresAt).getTime() : 0;
+        if (expiredAtMs && Date.now() - expiredAtMs > MMPAY_LATE_SUCCESS_GRACE_MS) {
+          request.log.warn(
+            { topUpId: topUp.id, reference: topUp.reference },
+            "[MMPay Webhook] SUCCESS for long-expired order — needs manual reconcile"
+          );
+          return reply.status(409).send({ ok: false, error: "Order expired beyond grace window" });
+        }
+      }
+
       // Defense-in-depth: a dynamic MMQR is a fixed-amount, MMK request, so the
       // callback must report the exact amount and currency we created it with.
       // A mismatch means tampering or a gateway anomaly — never auto-credit;
@@ -143,6 +166,11 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
         depositId: topUp.id,
         action: "APPROVE",
         viaGatewayWebhook: true,
+        // Always allow an in-grace EXPIRED row to credit. Long-expired rows are
+        // already rejected above; passing this unconditionally also closes the
+        // race where our scheduler flips PENDING→EXPIRED while this very SUCCESS
+        // callback is being processed (the customer paid, so honor it).
+        gatewayGraceExpired: true,
         // The webhook owns the customer-facing UX (clears the live QR invoice +
         // posts one MMQR success card) and MMPay auto-payments shouldn't spam
         // the admin group, so suppress both of reviewDeposit's notifications.
@@ -167,14 +195,44 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
       // Fire-and-forget the customer confirmation so the gateway ack is never
       // delayed by Telegram latency: remove the live QR invoice photo and post
       // a single MMQR success card. The wallet is already credited at this point.
+      //
+      // mmpay_success_notified_at is the atomic one-time claim that dedupes this
+      // push against the customer's manual "Refresh" button — only the caller
+      // whose guarded UPDATE flips it from NULL owns the single success card. If
+      // the push fails to reach Telegram we release the claim (back to NULL) so
+      // Refresh can retry; without that a dropped push left the customer with a
+      // stuck QR and no confirmation.
       const newBalanceMmk = outcome.action === "APPROVED" ? outcome.newBalanceMmk : topUp.amountMmk;
-      void notifyMmpayTopUpSuccess({
-        telegramId: outcome.telegramId ?? "",
-        qrMessageId: topUp.mmpayQrMessageId,
-        reference: topUp.reference,
-        amountMmk: topUp.amountMmk,
-        newBalanceMmk,
-      }).catch((err: any) =>
+      const qrMessageId = topUp.mmpayQrMessageId;
+      void (async () => {
+        const claimed = await db
+          .update(topUpRequests)
+          .set({ mmpaySuccessNotifiedAt: new Date() })
+          .where(and(eq(topUpRequests.id, topUp.id), isNull(topUpRequests.mmpaySuccessNotifiedAt)))
+          .returning({ id: topUpRequests.id });
+
+        // Claim lost — the bot's Refresh already announced this top-up.
+        if (claimed.length === 0) return;
+
+        const delivered = await notifyMmpayTopUpSuccess({
+          telegramId: outcome.telegramId ?? "",
+          qrMessageId,
+          reference: topUp.reference,
+          amountMmk: topUp.amountMmk,
+          newBalanceMmk,
+        });
+
+        if (!delivered) {
+          await db
+            .update(topUpRequests)
+            .set({ mmpaySuccessNotifiedAt: null })
+            .where(eq(topUpRequests.id, topUp.id));
+          request.log.warn(
+            { reference: topUp.reference },
+            "[MMPay Webhook] success card not delivered — released for customer Refresh retry"
+          );
+        }
+      })().catch((err: any) =>
         request.log.warn({ err: err?.message }, "[MMPay Webhook] MMQR success notification failed")
       );
 
