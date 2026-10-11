@@ -11,6 +11,7 @@ import {
   orders,
   orderItems,
   orderDeliveries,
+  topUpRequests,
 } from "@arena/db";
 import {
   seedCatalog,
@@ -308,5 +309,38 @@ describe("Bot instant wallet purchase (Recommendation D money path)", () => {
 
     const orderRows = await db.select().from(orders).where(eq(orders.customerId, userId));
     expect(orderRows).toHaveLength(0);
+  });
+});
+
+describe("MMQR invoice message tracking (#4 orphan-photo cleanup)", () => {
+  it("attachMmpayQrMessage returns the previous message id so the stale QR can be removed", async () => {
+    const telegramId = syntheticTelegramId();
+    const { user } = await seedCustomer(telegramId, 0);
+    const db = getDb();
+    const reference = `MMQR-ATTACH-${Date.now()}`;
+    await db.insert(topUpRequests).values({
+      reference,
+      userId: user.id,
+      amountMmk: 5000,
+      paymentMethod: "MMPAY",
+      status: "PENDING",
+      mmpayOrderId: reference,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+    });
+
+    // First attach: nothing was tracked before → no stale photo to delete.
+    const firstPrev = await botOrderService.attachMmpayQrMessage(reference, 111);
+    expect(firstPrev).toBeNull();
+
+    // Re-show overwrites the id → the previous (111) is returned for deletion.
+    const secondPrev = await botOrderService.attachMmpayQrMessage(reference, 222);
+    expect(secondPrev).toBe(111);
+
+    const [row] = await db.select().from(topUpRequests).where(eq(topUpRequests.reference, reference));
+    expect(row.mmpayQrMessageId).toBe(222);
+
+    // Re-attaching the SAME id must not report a (non-existent) stale photo.
+    const samePrev = await botOrderService.attachMmpayQrMessage(reference, 222);
+    expect(samePrev).toBeNull();
   });
 });

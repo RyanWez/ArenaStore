@@ -849,8 +849,13 @@ export function createBot(): Bot<BotContext> {
         parse_mode: "HTML",
         reply_markup: buildMmpayInvoiceKeyboard(res.reference),
       });
-      // Remember this invoice message so the webhook can clear it on payment.
-      await botOrderService.attachMmpayQrMessage(res.reference, sentQr.message_id);
+      // Remember this invoice message so the webhook can clear it on payment,
+      // and delete any previously tracked QR photo so a re-issue never leaves a
+      // stale card lingering in the chat.
+      const prevQrId = await botOrderService.attachMmpayQrMessage(res.reference, sentQr.message_id);
+      if (prevQrId && ctx.chat?.id) {
+        await ctx.api.deleteMessage(ctx.chat.id, prevQrId).catch(() => {});
+      }
     } catch (err: any) {
       console.error("[Bot] mmpay_pay error:", err.message);
       await ctx.reply("⚠️ MMQR ပြုလုပ်ရာတွင် ချို့ယွင်းချက် ဖြစ်ပေါ်ခဲ့ပါသည်။ ခေတ္တစောင့်ပြီး ပြန်လည် ကြိုးစားပေးပါခင်ဗျာ။");
@@ -926,8 +931,12 @@ export function createBot(): Bot<BotContext> {
       parse_mode: "HTML",
       reply_markup: buildMmpayInvoiceKeyboard(active.reference),
     });
-    // Track the re-shown invoice so the webhook clears the latest one.
-    await botOrderService.attachMmpayQrMessage(active.reference, reshownQr.message_id);
+    // Track the re-shown invoice so the webhook clears the latest one, and
+    // remove the previously shown QR photo so only one live card remains.
+    const prevShownId = await botOrderService.attachMmpayQrMessage(active.reference, reshownQr.message_id);
+    if (prevShownId && ctx.chat?.id) {
+      await ctx.api.deleteMessage(ctx.chat.id, prevShownId).catch(() => {});
+    }
   });
 
   // 14D. Cancel Active MMQR Invoice (Compliance Rule 8 & 9: Manual Cancellation)

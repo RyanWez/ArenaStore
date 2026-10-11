@@ -708,16 +708,28 @@ export class BotOrderService {
    * Persists the Telegram message id of the customer's MMQR invoice photo so
    * the API webhook can delete it (and post a single success message) the
    * moment the gateway confirms payment — no manual "Refresh" needed.
+   *
+   * Returns the PREVIOUS message id (if any) so the caller can delete the now
+   * untracked older QR photo — otherwise re-showing an invoice would leave a
+   * stale QR card in the chat that nothing cleans up.
    */
-  async attachMmpayQrMessage(reference: string, messageId: number): Promise<void> {
+  async attachMmpayQrMessage(reference: string, messageId: number): Promise<number | null> {
     try {
       const db = getDb();
+      const [prev] = await db
+        .select({ old: topUpRequests.mmpayQrMessageId })
+        .from(topUpRequests)
+        .where(eq(topUpRequests.reference, reference))
+        .limit(1);
       await db
         .update(topUpRequests)
         .set({ mmpayQrMessageId: messageId })
         .where(eq(topUpRequests.reference, reference));
+      const oldId = prev?.old ?? null;
+      return oldId && oldId !== messageId ? oldId : null;
     } catch (err: any) {
       console.warn("[BotOrderService] attachMmpayQrMessage error:", err.message);
+      return null;
     }
   }
 

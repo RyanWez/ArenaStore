@@ -1,5 +1,5 @@
 import type { Bot } from "grammy";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, lte } from "drizzle-orm";
 import { getDb, topUpRequests, users } from "@arena/db";
 import {
   formatMmpayQrInvoiceMessage,
@@ -155,6 +155,25 @@ export function startMmpayInvoiceScheduler(bot: Bot<BotContext>): { stop: () => 
           console.warn("[MmpayInvoiceScheduler] row error:", row.reference, err?.message || err)
         );
       }
+
+      // Orphan guard: a PENDING invoice whose message id was never stored (the
+      // photo send succeeded but the follow-up attach write didn't, or the bot
+      // crashed in between) is invisible to the sweep above (it filters on a
+      // non-null id). Auto-expire those once past expiry so the single-active
+      // lock frees itself instead of waiting for the customer's next action.
+      // There is no tracked Telegram message to delete here.
+      await getDb()
+        .update(topUpRequests)
+        .set({ status: "EXPIRED" })
+        .where(
+          and(
+            eq(topUpRequests.paymentMethod, "MMPAY"),
+            eq(topUpRequests.status, "PENDING"),
+            isNull(topUpRequests.mmpayQrMessageId),
+            isNotNull(topUpRequests.expiresAt),
+            lte(topUpRequests.expiresAt, new Date())
+          )
+        );
     } catch (err: any) {
       console.warn("[MmpayInvoiceScheduler] tick error:", err?.message || err);
     } finally {
