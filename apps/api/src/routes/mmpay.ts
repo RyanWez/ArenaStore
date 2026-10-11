@@ -8,6 +8,7 @@ import { mmpayService } from "../services/mmpay.service";
 import { reviewDeposit } from "../services/deposit-review.service";
 import { notifyMmpayTopUpSuccess } from "../services/telegram-notifier";
 import { registerRawJsonBodyParser } from "../plugins/raw-body";
+import { enforceInternalToken } from "../lib/internal-auth";
 import { config } from "../config";
 
 const CreateMmpayPaymentBodySchema = z.object({
@@ -217,6 +218,11 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
   server.post(
     "/api/payments/mmpay/create",
     async (request: FastifyRequest, reply: FastifyReply) => {
+      // Internal, bot-only route: guarded by the shared internal-service token
+      // (the Telegram bot sends `x-internal-token`). Without this, anyone able
+      // to reach the public API could spawn MMQR orders for any telegramId.
+      if (!enforceInternalToken(request, reply)) return;
+
       const parsed = CreateMmpayPaymentBodySchema.safeParse(request.body);
       if (!parsed.success) {
         return reply.status(400).send({ ok: false, error: "Invalid request parameters" });
@@ -398,6 +404,10 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
   server.post(
     "/api/payments/mmpay/cancel",
     async (request: FastifyRequest, reply: FastifyReply) => {
+      // Internal, bot-only route — see create handler. Prevents a stranger from
+      // cancelling another customer's pending order by guessing its reference.
+      if (!enforceInternalToken(request, reply)) return;
+
       const parsed = CancelMmpayPaymentBodySchema.safeParse(request.body);
       if (!parsed.success) {
         return reply.status(400).send({ ok: false, error: "Invalid cancel request parameters" });
@@ -457,6 +467,10 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
   server.get(
     "/api/payments/mmpay/status/:reference",
     async (request: FastifyRequest<{ Params: { reference: string } }>, reply: FastifyReply) => {
+      // Internal, bot-only route — see create handler. Prevents enumeration of
+      // top-up references/amounts by an unauthenticated caller.
+      if (!enforceInternalToken(request, reply)) return;
+
       const { reference } = request.params;
       const db = getDb();
 

@@ -643,7 +643,10 @@ export class BotOrderService {
     try {
       const res = await fetch(`${botConfig.API_BASE_URL}/api/payments/mmpay/create`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-internal-token": botConfig.INTERNAL_API_TOKEN,
+        },
         body: JSON.stringify(params),
       });
 
@@ -673,7 +676,10 @@ export class BotOrderService {
     try {
       const res = await fetch(`${botConfig.API_BASE_URL}/api/payments/mmpay/cancel`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-internal-token": botConfig.INTERNAL_API_TOKEN,
+        },
         body: JSON.stringify({ reference, telegramId }),
       });
       const data = (await res.json()) as any;
@@ -711,7 +717,10 @@ export class BotOrderService {
   } | null> {
     try {
       const res = await fetch(
-        `${botConfig.API_BASE_URL}/api/payments/mmpay/status/${encodeURIComponent(reference)}`
+        `${botConfig.API_BASE_URL}/api/payments/mmpay/status/${encodeURIComponent(reference)}`,
+        {
+          headers: { "x-internal-token": botConfig.INTERNAL_API_TOKEN },
+        }
       );
       const data = (await res.json()) as any;
       if (res.ok && data?.ok) {

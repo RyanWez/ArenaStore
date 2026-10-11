@@ -245,3 +245,64 @@ describe("MMPay single-active-order invariant (#7)", () => {
     expect(second.id).toBeTruthy();
   });
 });
+
+describe("MMPay payment endpoint internal-token guard (#1)", () => {
+  it("rejects create without the internal token", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/payments/mmpay/create",
+      headers: { "content-type": "application/json" },
+      payload: { telegramId: "123", amountMmk: 5000 },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("rejects create with a wrong internal token", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/payments/mmpay/create",
+      headers: { "content-type": "application/json", "x-internal-token": "not-the-real-token" },
+      payload: { telegramId: "123", amountMmk: 5000 },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("passes the guard with the correct token (reaches body validation)", async () => {
+    // A valid token lets the request through to handler logic; an invalid body
+    // then yields 400 — proving the 401 came from the guard, not the schema.
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/payments/mmpay/create",
+      headers: { "content-type": "application/json", "x-internal-token": TEST_INTERNAL_API_TOKEN },
+      payload: { telegramId: "" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("rejects cancel without the internal token", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/payments/mmpay/cancel",
+      headers: { "content-type": "application/json" },
+      payload: { telegramId: "123", reference: "MMQR-X" },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("rejects status without the internal token", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/payments/mmpay/status/MMQR-WHATEVER",
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("passes the status guard with the correct token (unknown reference -> 404)", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/payments/mmpay/status/MMQR-DOES-NOT-EXIST",
+      headers: { "x-internal-token": TEST_INTERNAL_API_TOKEN },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+});
