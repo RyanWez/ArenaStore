@@ -242,8 +242,37 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
         return reply.status(404).send({ ok: false, error: "User not found" });
       }
 
-      // 1. MyanMyanPay Compliance Rule 8 (Single Active Order & Anti-Spam):
-      // Check if user already has an active, unexpired PENDING MMPay order
+      // 1. Reclaim unusable slots BEFORE the single-active-order check. Expire
+      // two kinds of PENDING MMPay rows that must not hold the slot:
+      //   a) time-expired rows (past their 15-min window), and
+      //   b) *orphaned* rows left without a QR string by a process crash
+      //      mid-create — the insert (below) committed but the gateway update
+      //      that writes mmpayQrString never ran. Such a row has no QR to show,
+      //      so without this it would hold the single-active-order slot for the
+      //      full 15 minutes, blocking the user from both creating a new order
+      //      and reusing the broken one. A short grace window (2 min) spares a
+      //      genuinely in-flight concurrent create whose gateway call is still
+      //      running.
+      await db
+        .update(topUpRequests)
+        .set({ status: "EXPIRED" })
+        .where(
+          and(
+            eq(topUpRequests.userId, user.id),
+            eq(topUpRequests.paymentMethod, "MMPAY"),
+            eq(topUpRequests.status, "PENDING"),
+            or(
+              sql`${topUpRequests.expiresAt} <= NOW()`,
+              sql`(${topUpRequests.mmpayQrString} IS NULL AND ${topUpRequests.createdAt} <= NOW() - INTERVAL '2 minutes')`
+            )
+          )
+        );
+
+      // 2. MyanMyanPay Compliance Rule 8 (Single Active Order & Anti-Spam):
+      // reuse a still-active order that already has a QR instead of creating a
+      // duplicate. A no-QR row surviving the reclaim above is an in-flight
+      // concurrent create; it falls through to the insert, which loses the
+      // unique-index race and returns 409 "being prepared" (transient).
       const [existingActive] = await db
         .select()
         .from(topUpRequests)
@@ -268,19 +297,6 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
           expiresAt: existingActive.expiresAt?.toISOString(),
         });
       }
-
-      // Auto-expire any previous stale pending MMPay requests
-      await db
-        .update(topUpRequests)
-        .set({ status: "EXPIRED" })
-        .where(
-          and(
-            eq(topUpRequests.userId, user.id),
-            eq(topUpRequests.paymentMethod, "MMPAY"),
-            eq(topUpRequests.status, "PENDING"),
-            sql`${topUpRequests.expiresAt} <= NOW()`
-          )
-        );
 
       // Collision-resistant reference: base36 timestamp + 32 bits of CSPRNG
       // entropy (same scheme as the bot's TOP-/ARN- generators). The old

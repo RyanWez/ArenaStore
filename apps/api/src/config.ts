@@ -10,7 +10,11 @@ dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 dotenv.config();
 
 const envSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  // Accept any environment name (production, staging, preview, …) rather than a
+  // fixed enum: insecure-default guards below fire for every env except an
+  // explicit "development"/"test", so a non-production deployment is protected
+  // too and cannot silently run on the public default secrets.
+  NODE_ENV: z.string().default("development"),
   PORT: z.coerce.number().default(4000),
   HOST: z.string().default("0.0.0.0"),
   DATABASE_URL: z.string().default("postgres://postgres:postgres@localhost:5432/arena_store"),
@@ -153,21 +157,26 @@ export function loadConfig(): AppConfig {
 
   const data = parsed.data;
 
-  // Strict production security guards
-  if (data.NODE_ENV === "production") {
+  // Strict security guards: the public default secret/password/key may only be
+  // used in explicit development or test. Any other environment (production,
+  // staging, preview, or an unrecognised NODE_ENV) must supply real values or
+  // the process refuses to boot — fail closed instead of silently serving on a
+  // secret that is published in this repository.
+  const isDevOrTest = data.NODE_ENV === "development" || data.NODE_ENV === "test";
+  if (!isDevOrTest) {
     if (data.DELIVERY_ENCRYPTION_KEY === "arena-store-default-dev-encryption-key-32bytes!") {
       throw new Error(
-        "CRITICAL SECURITY ERROR: DELIVERY_ENCRYPTION_KEY is using the insecure default key in production! Set a custom key in .env."
+        `CRITICAL SECURITY ERROR: DELIVERY_ENCRYPTION_KEY is using the insecure default key in a non-dev environment (NODE_ENV=${data.NODE_ENV})! Set a custom key in .env.`
       );
     }
     if (data.ADMIN_SESSION_SECRET === "VxyyoXyS9@Mg1c4POHuXjoUVrhhP") {
       throw new Error(
-        "CRITICAL SECURITY ERROR: ADMIN_SESSION_SECRET is using the insecure default secret in production! Set a custom secret in .env."
+        `CRITICAL SECURITY ERROR: ADMIN_SESSION_SECRET is using the insecure default secret in a non-dev environment (NODE_ENV=${data.NODE_ENV})! Set a custom secret in .env.`
       );
     }
     if (data.ADMIN_INITIAL_PASSWORD === "ArenaAdmin2026!") {
       throw new Error(
-        "CRITICAL SECURITY ERROR: ADMIN_INITIAL_PASSWORD is using the insecure default password in production! Set a custom password in .env."
+        `CRITICAL SECURITY ERROR: ADMIN_INITIAL_PASSWORD is using the insecure default password in a non-dev environment (NODE_ENV=${data.NODE_ENV})! Set a custom password in .env.`
       );
     }
   }

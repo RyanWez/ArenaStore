@@ -382,6 +382,7 @@ export async function adminUsersRoutes(server: FastifyInstance) {
         }
       }
 
+      const passwordHash = await authService.hashPassword(password);
       const [created] = await db
         .insert(users)
         .values({
@@ -393,7 +394,7 @@ export async function adminUsersRoutes(server: FastifyInstance) {
           roleId,
           status: "ACTIVE",
           mustChangePassword: true,
-          passwordHash: authService.hashPassword(password),
+          passwordHash,
         })
         .returning();
 

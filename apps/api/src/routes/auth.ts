@@ -70,7 +70,7 @@ export async function authRoutes(server: FastifyInstance) {
       });
     }
 
-    const isValid = authService.verifyPassword(password, user.passwordHash);
+    const isValid = await authService.verifyPassword(password, user.passwordHash);
     if (!isValid) {
       return reply.status(401).send({
         ok: false,
