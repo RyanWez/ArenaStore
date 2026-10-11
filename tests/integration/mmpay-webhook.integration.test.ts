@@ -215,6 +215,28 @@ describe("MMPay webhook (POST /api/webhooks/mmpay)", () => {
     expect(row.status).toBe("PENDING");
   });
 
+  it("marks a PENDING top-up FAILED on a FAILED callback and never credits", async () => {
+    const telegramId = syntheticTelegramId();
+    const amountMmk = 6000;
+    const { user } = await seedCustomer(telegramId, 0);
+    const topUp = await seedPendingMmpay(user.id, amountMmk);
+
+    const res = await webhook({
+      orderId: topUp.reference,
+      amount: amountMmk,
+      currency: "MMK",
+      status: "FAILED",
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("FAILED");
+
+    const [row] = await getDb().select().from(topUpRequests).where(eq(topUpRequests.id, topUp.id));
+    expect(row.status).toBe("FAILED");
+    const [walletRow] = await getDb().select().from(wallets).where(eq(wallets.userId, user.id));
+    expect(walletRow.balanceMmk).toBe(0);
+  });
+
   it("no longer exposes a root/bare catch-all webhook route", async () => {
     const root = await app.inject({
       method: "POST",

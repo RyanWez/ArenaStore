@@ -40,6 +40,7 @@ import {
   formatPaymentMethodChoiceMessage,
   formatActiveMmpayExistsMessage,
   formatMmpaySuccessMessage,
+  formatMmpayFailedMessage,
   formatTopUpSlipReceivedMessage,
   formatInsufficientBalanceMessage,
   formatPurchaseConfirmMessage,
@@ -1010,6 +1011,27 @@ export function createBot(): Bot<BotContext> {
         parse_mode: "HTML",
         reply_markup: buildWalletKeyboard(),
       });
+    } else if (statusRes.status === TopUpStatus.FAILED) {
+      // The gateway reported the payment as failed. Like the success path, the
+      // webhook normally posts this card and clears the QR, but Refresh is the
+      // recovery when that push was dropped — the shared one-time claim keeps
+      // the customer from seeing two cards.
+      const claimed = await botOrderService.claimMmpaySuccessNotification(reference);
+      await ctx.answerCallbackQuery({
+        text: "❌ ဤ MMQR ငွေပေးချေမှု မအောင်မြင်ပါ။ သင့် Wallet မှ ငွေ နုတ်ယူခြင်း မရှိပါ။",
+        show_alert: true,
+      });
+      await ctx.deleteMessage().catch(() => {});
+      if (claimed) {
+        try {
+          await ctx.reply(formatMmpayFailedMessage({ reference, kind: "FAILED" }), {
+            parse_mode: "HTML",
+            reply_markup: buildWalletKeyboard(),
+          });
+        } catch {
+          await botOrderService.releaseMmpaySuccessNotification(reference);
+        }
+      }
     } else {
       await ctx.answerCallbackQuery({
         text: "⏳ ငွေပေးချေမှုကို စောင့်ဆိုင်းနေဆဲဖြစ်ပါသည်။ Mobile Banking App (KPay / WavePay) တွင် Scan ဖတ်၍ ပေးချေပေးပါခင်ဗျာ။",

@@ -507,6 +507,27 @@ export function formatMmpayExpiredMessage(): string {
 }
 
 /**
+ * Formats the notice shown when the gateway reports an MMQR payment as
+ * terminally unsuccessful (FAILED) or cancelled (CANCELLED) — used by the
+ * manual "Refresh" button so the customer sees the final outcome instead of a
+ * stale "still waiting" state.
+ */
+export function formatMmpayFailedMessage(params: {
+  reference: string;
+  kind?: "FAILED" | "CANCELLED";
+}): string {
+  const cancel = tgEmoji(BOT_EMOJIS.CANCEL, "❌");
+  const headline =
+    params.kind === "CANCELLED"
+      ? "MMQR ငွေပေးချေမှုကို ဖျက်သိမ်းလိုက်ပါပြီ"
+      : "MMQR ငွေပေးချေမှု မအောင်မြင်ပါ";
+  return `<blockquote>${cancel} <b>${headline}</b>
+အော်ဒါ အမှတ်: <code>${escapeHtml(params.reference)}</code></blockquote>
+
+သင့် Wallet မှ ငွေ နုတ်ယူခြင်း မရှိပါ။ ဆက်လက် ငွေဖြည့်လိုပါက ငွေပမာဏ အသစ် ရွေးချယ်ပေးပါခင်ဗျာ။`;
+}
+
+/**
  * Formats the Payment Method Choice prompt (Instant MMQR vs Manual Slip).
  */
 export function formatPaymentMethodChoiceMessage(params: {

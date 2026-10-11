@@ -325,6 +325,40 @@ export async function notifyMmpayTopUpSuccess(params: {
   // button retry when this fire-and-forget push fails.
   return sendTelegramMessage(telegramId, text);
 }
+
+/**
+ * Customer-facing notice for a MyanMyanPay MMQR top-up the gateway reported as
+ * terminally unsuccessful (FAILED or CANCELLED). Mirrors the success path:
+ * removes the live QR invoice photo so no stale "Refresh/Cancel" lingers and
+ * posts a single card. Returns whether the card reached Telegram so the caller
+ * can release its one-time notification claim and let "Refresh" retry.
+ */
+export async function notifyMmpayTopUpFailed(params: {
+  telegramId: string;
+  qrMessageId?: number | null;
+  reference: string;
+  kind: "FAILED" | "CANCELLED";
+}): Promise<boolean> {
+  const { telegramId, qrMessageId, reference, kind } = params;
+
+  if (!telegramId) return false;
+
+  if (qrMessageId) {
+    await deleteTelegramMessage(telegramId, qrMessageId);
+  }
+
+  const cancel = tgEmoji(BOT_EMOJIS.CANCEL);
+  const headline =
+    kind === "CANCELLED"
+      ? "MMQR ငွေပေးချေမှုကို ဖျက်သိမ်းလိုက်ပါပြီ"
+      : "MMQR ငွေပေးချေမှု မအောင်မြင်ပါ";
+  const text =
+    `<blockquote>${cancel} <b>${headline}</b>\n` +
+    `အော်ဒါ အမှတ်: <b>${escapeHtml(reference)}</b></blockquote>\n\n` +
+    `သင့် Wallet မှ ငွေ နုတ်ယူခြင်း မရှိပါ။ ဆက်လက် ငွေဖြည့်လိုပါက ငွေပမာဏ အသစ် ရွေးချယ်ပေးပါခင်ဗျာ။`;
+
+  return sendTelegramMessage(telegramId, text);
+}
 export async function notifyTopUpRejected(params: {
   telegramId: string;
   reference: string;

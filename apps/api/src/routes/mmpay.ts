@@ -1,12 +1,12 @@
 import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from "fastify";
 import crypto from "node:crypto";
 import { z } from "zod";
-import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb, topUpRequests, users } from "@arena/db";
 import { MMPayWebhookPayloadSchema, TopUpStatus } from "@arena/shared";
 import { mmpayService } from "../services/mmpay.service";
 import { reviewDeposit } from "../services/deposit-review.service";
-import { notifyMmpayTopUpSuccess } from "../services/telegram-notifier";
+import { notifyMmpayTopUpSuccess, notifyMmpayTopUpFailed } from "../services/telegram-notifier";
 import { registerRawJsonBodyParser } from "../plugins/raw-body";
 import { enforceInternalToken } from "../lib/internal-auth";
 import { config } from "../config";
@@ -241,15 +241,71 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
 
     // Handle terminal failure statuses (FAILED, EXPIRED, CANCELLED)
     if (["FAILED", "EXPIRED", "CANCELLED"].includes(payload.status)) {
-      if (topUp.status === "SUBMITTED" || topUp.status === "PENDING") {
-        await db
-          .update(topUpRequests)
-          .set({
-            status: payload.status,
-            rejectReason: `Payment ${payload.status.toLowerCase()} on MyanMyanPay gateway`,
-          })
-          .where(eq(topUpRequests.id, topUp.id));
+      // Only transition a still-live request. The guarded, returning UPDATE
+      // doubles as a dedup claim: a duplicate terminal callback matches no row
+      // and does nothing.
+      const transitioned =
+        topUp.status === "SUBMITTED" || topUp.status === "PENDING"
+          ? await db
+              .update(topUpRequests)
+              .set({
+                status: payload.status,
+                rejectReason: `Payment ${payload.status.toLowerCase()} on MyanMyanPay gateway`,
+              })
+              .where(
+                and(
+                  eq(topUpRequests.id, topUp.id),
+                  inArray(topUpRequests.status, ["SUBMITTED", "PENDING"])
+                )
+              )
+              .returning({ id: topUpRequests.id })
+          : [];
+
+      // FAILED / CANCELLED get a customer-facing card (EXPIRED UX is owned by
+      // the bot's invoice scheduler). Fire-and-forget with the same one-time
+      // claim the success path uses, so the gateway ack isn't delayed and the
+      // bot's manual Refresh never posts a duplicate. Release the claim if the
+      // push is dropped so Refresh can retry.
+      if (transitioned.length > 0 && (payload.status === "FAILED" || payload.status === "CANCELLED")) {
+        const qrMessageId = topUp.mmpayQrMessageId;
+        const failKind = payload.status;
+        const userId = topUp.userId;
+        void (async () => {
+          const claimed = await db
+            .update(topUpRequests)
+            .set({ mmpaySuccessNotifiedAt: new Date() })
+            .where(and(eq(topUpRequests.id, topUp.id), isNull(topUpRequests.mmpaySuccessNotifiedAt)))
+            .returning({ id: topUpRequests.id });
+          if (claimed.length === 0) return;
+
+          const [customer] = await db
+            .select({ telegramId: users.telegramId })
+            .from(users)
+            .where(eq(users.id, userId))
+            .limit(1);
+
+          const delivered = await notifyMmpayTopUpFailed({
+            telegramId: customer?.telegramId ?? "",
+            qrMessageId,
+            reference: topUp.reference,
+            kind: failKind,
+          });
+
+          if (!delivered) {
+            await db
+              .update(topUpRequests)
+              .set({ mmpaySuccessNotifiedAt: null })
+              .where(eq(topUpRequests.id, topUp.id));
+            request.log.warn(
+              { reference: topUp.reference },
+              "[MMPay Webhook] terminal card not delivered — released for customer Refresh retry"
+            );
+          }
+        })().catch((err: any) =>
+          request.log.warn({ err: err?.message }, "[MMPay Webhook] MMQR terminal notification failed")
+        );
       }
+
       return reply.send({ ok: true, status: payload.status });
     }
 
