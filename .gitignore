@@ -51,3 +51,7 @@ scripts/totp-qr.png
 
 # IDE assistant artifacts
 .zcode/
+tmp/
+
+# Runtime cache of Telegram deposit-slip images (customer PII; never commit)
+apps/api/.cache/
