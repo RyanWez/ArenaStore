@@ -77,7 +77,7 @@ export type CreateBroadcastInput = z.infer<typeof CreateBroadcastSchema>;
 // MyanMyanPay Webhook Payload
 export const MMPayWebhookPayloadSchema = z.object({
   orderId: z.string(),
-  amount: z.number(),
+  amount: z.number().int(),
   currency: z.string().default("MMK"),
   vendor: z.string().optional(),
   method: z.string().optional(),

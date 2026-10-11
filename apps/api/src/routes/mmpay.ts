@@ -41,11 +41,21 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
       (request.headers["x_mmpay_nonce"] as string) ||
       "";
 
-    // Use the exact raw bytes captured by the raw-body parser; fall back to a
-    // re-serialized body only if the raw copy is somehow unavailable.
+    const rawBody = (request as unknown as { rawBody?: string }).rawBody;
+    const signatureRequired = Boolean(config.MMPAY_SECRET_KEY);
+
+    // The HMAC is computed over the exact raw bytes MyanMyanPay sent. A
+    // re-serialized body is NOT byte-identical, so when a secret is configured
+    // and the raw copy is somehow missing we fail closed rather than verify
+    // against a reconstructed string. (Fastify v5's raw parser reliably
+    // populates request.rawBody — this is defense-in-depth.)
+    if (signatureRequired && typeof rawBody !== "string") {
+      request.log.error("[MMPay Webhook] raw request body unavailable — cannot verify signature");
+      return reply.status(400).send({ ok: false, error: "Raw body required for signature verification" });
+    }
+
     const payloadString =
-      (request as unknown as { rawBody?: string }).rawBody ??
-      (typeof request.body === "string" ? request.body : JSON.stringify(request.body));
+      rawBody ?? (typeof request.body === "string" ? request.body : JSON.stringify(request.body));
 
     // Verify HMAC-SHA256 signature
     const isValidSignature = mmpayService.verifyWebhookSignature(
@@ -59,7 +69,6 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
     // credentials (staging or prod) therefore always rejects unsigned/forged
     // callbacks. Only a local/dev/test instance with no secret configured
     // skips the check (there is nothing to verify against).
-    const signatureRequired = Boolean(config.MMPAY_SECRET_KEY);
     if (!isValidSignature && signatureRequired) {
       request.log.warn({ nonce }, "[MMPay Webhook] Signature verification failed");
       return reply.status(401).send({ ok: false, error: "Invalid MMPay webhook signature" });
