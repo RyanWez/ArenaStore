@@ -457,3 +457,129 @@ System Maintenance</blockquote>
 
 လုပ်ဆောင်ချက်များ မကြာမီ ပြီးစီးတော့မှာဖြစ်ပြီး ပြန်ဖွင့်ချိန်တွင် ပုံမှန်အတိုင်း ပြန်လည် ဝယ်ယူနိုင်ပါမည်။${contactText}`;
 }
+
+/**
+ * Formats the MyanMyanPay dynamic MMQR invoice message.
+ * Strictly complies with MyanMyanPay guidelines:
+ * 1. MMK currency only
+ * 2. 15-minute countdown and expiration time
+ * 3. "Powered by MyanMyanPay" attribution is rendered on the QR card image
+ *    (see qr.service.ts); the caption text is kept concise and omits it.
+ */
+export function formatMmpayQrInvoiceMessage(params: {
+  amountMmk: number;
+  reference: string;
+  expiresAt: Date;
+}): string {
+  const expiresTimeStr = params.expiresAt.toLocaleTimeString("en-GB", {
+    timeZone: "Asia/Yangon",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  // Live countdown: recomputed on every render (initial send + scheduler
+  // caption refreshes) so the customer sees the remaining minutes tick down.
+  const remainingMs = params.expiresAt.getTime() - Date.now();
+  const remainingMin = Math.max(0, Math.ceil(remainingMs / 60000));
+  const countdownStr =
+    remainingMin > 0
+      ? `⏳ <b>ကျန်ချိန်:</b> ~${remainingMin} မိနစ်`
+      : `⏳ <b>ကျန်ချိန်:</b> သက်တမ်းကုန်လုနီးပါပြီ`;
+
+  return `<blockquote>${tgEmoji(BOT_EMOJIS.LIGHTNING, "⚡")} <b>MMQR အလိုအလျောက် ငွေပေးချေလွှာ</b>
+ငွေပမာဏ: <b>${params.amountMmk.toLocaleString("en-US")} MMK</b> (၁၅ မိနစ်အတွင်း ပေးချေပါ)</blockquote>
+
+${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>အော်ဒါ:</b> <code>${escapeHtml(params.reference)}</code>
+🕒 <b>နောက်ဆုံးအချိန်:</b> <b>${expiresTimeStr} MMT</b>
+${countdownStr}
+
+💡 <i>KPay / WavePay စသည့် (MMQR ဖြင့် လက်ခံနိုင်သည့်) မည်သည့် E-Wallet ဖြင့်မဆို Scan ဖတ်ပြီးသည်နှင့် စက္ကန့်ပိုင်းအတွင်း အလိုအလျောက် ငွေဝင်ပါမည်။ (ပြေစာ စလစ် တင်ရန် မလိုပါ)</i>`;
+}
+
+/**
+ * Formats the notice shown when an MMQR invoice reaches its expiry — used by
+ * both the manual "Refresh" button and the background auto-expiry scheduler so
+ * the customer sees the same message whether or not they tapped Refresh.
+ */
+export function formatMmpayExpiredMessage(): string {
+  return `${tgEmoji(BOT_EMOJIS.WARNING, "⚠️")} <b>MMQR သက်တမ်းကုန်ဆုံးသွားပါပြီ (Expired)</b>
+ဤ QR ကုဒ်ဖြင့် ငွေပေးချေ၍ မရတော့ပါ။ ဆက်လက် ငွေဖြည့်လိုပါက ငွေပမာဏ အသစ် ရွေးချယ်ပေးပါခင်ဗျာ။`;
+}
+
+/**
+ * Formats the notice shown when the gateway reports an MMQR payment as
+ * terminally unsuccessful (FAILED) or cancelled (CANCELLED) — used by the
+ * manual "Refresh" button so the customer sees the final outcome instead of a
+ * stale "still waiting" state.
+ */
+export function formatMmpayFailedMessage(params: {
+  reference: string;
+  kind?: "FAILED" | "CANCELLED";
+}): string {
+  const cancel = tgEmoji(BOT_EMOJIS.CANCEL, "❌");
+  const headline =
+    params.kind === "CANCELLED"
+      ? "MMQR ငွေပေးချေမှုကို ဖျက်သိမ်းလိုက်ပါပြီ"
+      : "MMQR ငွေပေးချေမှု မအောင်မြင်ပါ";
+  return `<blockquote>${cancel} <b>${headline}</b>
+အော်ဒါ အမှတ်: <code>${escapeHtml(params.reference)}</code></blockquote>
+
+သင့် Wallet မှ ငွေ နုတ်ယူခြင်း မရှိပါ။ ဆက်လက် ငွေဖြည့်လိုပါက ငွေပမာဏ အသစ် ရွေးချယ်ပေးပါခင်ဗျာ။`;
+}
+
+/**
+ * Formats the Payment Method Choice prompt (Instant MMQR vs Manual Slip).
+ */
+export function formatPaymentMethodChoiceMessage(params: {
+  amountMmk: number;
+}): string {
+  return `<blockquote>${tgEmoji(BOT_EMOJIS.MONEY, "💰")} <b>ငွေပေးချေမှု နည်းလမ်း ရွေးချယ်ပါ</b> ❞
+ငွေပမာဏ: <b>${params.amountMmk.toLocaleString("en-US")} MMK</b></blockquote>
+
+${tgEmoji(BOT_EMOJIS.LIGHTNING, "⚡")} <b>MMQR:</b> စလစ်တင်ရန် မလိုဘဲ စက္ကန့်ပိုင်းအတွင်း အလိုအလျောက် ငွေဝင်မည်။
+${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>Manual Slip:</b> ပုံမှန် KPay/WavePay သို့ လွှဲပြီး ပြေစာ ပုံ တင်ပေးရမည်။
+
+အဆင်ပြေရာ နည်းလမ်းကို အောက်တွင် ရွေးချယ်ပေးပါ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}`;
+}
+
+/**
+ * Formats notice when user attempts to create a new top-up while an unexpired
+ * MMQR order is already active (Strict MyanMyanPay compliance rule).
+ */
+export function formatActiveMmpayExistsMessage(params: {
+  reference: string;
+  amountMmk: number;
+  expiresAt: Date;
+}): string {
+  const expiresTimeStr = params.expiresAt.toLocaleTimeString("en-GB", {
+    timeZone: "Asia/Yangon",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return `<blockquote>${tgEmoji(BOT_EMOJIS.WARNING, "⚠️")} <b>မပြီးပြတ်သေးသော MMQR အော်ဒါ ရှိနေပါသည်</b> ❞
+အော်ဒါ အမှတ်: <b>${escapeHtml(params.reference)}</b>
+ငွေပမာဏ: <b>${params.amountMmk.toLocaleString("en-US")} MMK</b>
+သက်တမ်းကုန်ဆုံးချိန်: <b>${expiresTimeStr} MMT</b></blockquote>
+
+MyanMyanPay စည်းကမ်းချက်အရ လက်ရှိ အော်ဒါကို ပြီးဆုံးအောင် ပေးချေခြင်း သို့မဟုတ် Cancel လုပ်ခြင်း မပြုမချင်း နောက်ထပ် ငွေပေးချေမှု အသစ် ထပ်မံ တောင်းခံခွင့် မရှိပါခင်ဗျာ။
+
+လက်ရှိ QR ကုဒ်ကို ပြန်လည်ကြည့်ရှုလိုပါက သို့မဟုတ် အော်ဒါ ဖျက်သိမ်းလိုပါက အောက်ပါ ခလုတ်ကို ရွေးချယ်ပါ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}`;
+}
+
+/**
+ * Formats notice after a successful MMQR top-up confirmation.
+ */
+export function formatMmpaySuccessMessage(params: {
+  amountMmk: number;
+  reference: string;
+  walletBalanceMmk: number;
+}): string {
+  return `<blockquote>${tgEmoji(BOT_EMOJIS.CHECK, "✅")} <b>MMQR ငွေပေးချေမှု အောင်မြင်ပါပြီ!</b> ❞
+အော်ဒါ အမှတ်: <b>${escapeHtml(params.reference)}</b>
+ဖြည့်သွင်းငွေ: <b>+${params.amountMmk.toLocaleString("en-US")} MMK</b>
+လက်ရှိ Wallet Balance: <b>${params.walletBalanceMmk.toLocaleString("en-US")} MMK</b></blockquote>
+
+ကျေးဇူးတင်ရှိပါသည်ခင်ဗျာ! အခုပဲ ပစ္စည်းများကို ဆက်လက် ဝယ်ယူနိုင်ပါပြီ ${tgEmoji(BOT_EMOJIS.SPARKLES, "✨")}`;
+}
+

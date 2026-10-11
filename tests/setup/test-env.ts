@@ -50,6 +50,13 @@ export const TEST_ENV: Record<string, string> = {
   // Keep the catalog sync scheduler off in every test environment.
   CATALOG_SYNC_INTERVAL_MINUTES: "0",
   TELEGRAM_BOT_TOKEN: "",
+  // MyanMyanPay credentials are cleared so the developer's real .env values can
+  // never bleed into tests (dotenv does not override already-set vars). With no
+  // secret configured the webhook signature check is intentionally skipped, so
+  // the DB credit path can be asserted directly.
+  MMPAY_APP_ID: "",
+  MMPAY_PUBLISHABLE_KEY: "",
+  MMPAY_SECRET_KEY: "",
   DELIVERY_ENCRYPTION_KEY: TEST_DELIVERY_ENCRYPTION_KEY,
   ADMIN_SESSION_SECRET: TEST_ADMIN_SESSION_SECRET,
   ADMIN_API_KEY: TEST_ADMIN_API_KEY,

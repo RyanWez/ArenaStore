@@ -79,8 +79,7 @@ tests) to assert the audit row exists after each money action, with the acting a
 - Bot middleware runs 3-5 DB roundtrips per message (user upsert + suspension guard): could be merged (`apps/bot/src/bot.ts:58-100`).
 - Unbounded growth: `wallet_ledger` / `audit_logs` have no retention pruning (fine for now; revisit if storage becomes a concern on Neon free tier).
 - E2E suite has only one spec (`tests/e2e/deposits-review.spec.ts`); login-2FA flow has no e2e coverage.
-- Infra is configured only in dashboards (no `render.yaml` / `vercel.json`) — not reproducible from the repo.
-
+- Automated MMQR payment gateway integration (MyanMyanPay): ✅ Implemented on branch `feat/mmpay-integration` with strict compliance alignment (15m timer, MMK currency, attribution caption, single active order lock, caching & cancelation), all 6 new unit tests passing, full monorepo build passing. Ready for live testing. See `Memory/2026-10-10.md` and `walkthrough.md`.
 ---
 
 ## Done & verified on 2026-10-04: deposit review from the admin Telegram group

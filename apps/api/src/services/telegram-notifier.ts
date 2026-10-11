@@ -204,9 +204,9 @@ export async function sendTelegramBroadcastItem(
 }
 
 /**
- * Builds the customer-facing "Restocked!" broadcast message. Product display
- * mirrors the bot's product cards: custom emoji id from the name's {pe:<id>}
- * placeholder or the brand map, with the clean name escaped for HTML mode.
+ * Builds the customer-facing "Restocked!" broadcast message in Burmese.
+ * Product display mirrors the bot's product cards: custom brand emoji,
+ * clear MMK pricing, in-stock status, and an engaging Burmese CTA with deep link.
  */
 export function buildRestockedMessage(params: {
   productName: string;
@@ -218,24 +218,28 @@ export function buildRestockedMessage(params: {
   const displayName = parsed.cleanText || params.productName;
   const emojiId = parsed.emojiId || findBrandEmojiId(displayName);
   const productEmoji = emojiId ? tgEmoji(emojiId, "🎁") : "🎁";
-  const gift = tgEmoji(BOT_EMOJIS.GIFT, "🎁");
+  const party = tgEmoji(BOT_EMOJIS.PARTY, "🎉");
+  const sparkles = tgEmoji(BOT_EMOJIS.SPARKLES, "✨");
   const price = tgEmoji(BOT_EMOJIS.PRICE, "💵");
   const bags = tgEmoji(BOT_EMOJIS.BAGS, "🛍");
-  const check = tgEmoji(BOT_EMOJIS.CHECK, "✔");
+  const check = tgEmoji(BOT_EMOJIS.CHECK, "✅");
+  const downArrow = tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇");
 
-  let cta = `👉 Open the bot and tap ${bags} <b>Products</b> to buy!`;
+  let cta = `👉 Bot ထဲသို့ ဝင်ရောက်ပြီး ${bags} <b>[ ပစ္စည်း ဝယ်ယူရန် ]</b> ကို နှိပ်၍ အမြန်ဆုံး ဝယ်ယူလိုက်ပါခင်ဗျာ ${downArrow}`;
   const botUsername = (params.botUsername || "").replace(/^@/, "");
   if (botUsername && params.productId) {
     cta =
-      `👉 Open the bot and tap ${bags} ` +
-      `<b><a href="https://t.me/${botUsername}?start=restock_${params.productId}">Products</a></b> to buy!`;
+      `👉 အောက်ပါ ${bags} ` +
+      `<b><a href="https://t.me/${botUsername}?start=restock_${params.productId}">[ ပစ္စည်း ဝယ်ယူရန် ]</a></b> ကို နှိပ်ပြီး အမြန်ဆုံး ဝယ်ယူလိုက်ပါခင်ဗျာ ${downArrow}`;
   }
 
   return (
-    `${gift} <b>Restocked!</b>\n\n` +
+    `<blockquote>${party} <b>Restocked!</b> <b>စတော့ ပြန်လည်ရရှိပါပြီ</b> ❞\n` +
+    `ပစ္စည်း စတော့အသစ် ထပ်မံဖြည့်တင်းထားပါသည်ခင်ဗျာ ${sparkles}</blockquote>\n\n` +
     `${productEmoji} <b>${escapeHtml(displayName)}</b>\n` +
-    `${price} Price: <b>${params.priceMmk.toLocaleString("en-US")} Ks</b>\n` +
-    `${gift} Status: ${check} <b>In Stock</b>\n\n` +
+    `${price} <b>စျေးနှုန်း:</b> <b>${params.priceMmk.toLocaleString("en-US")} Ks</b>\n` +
+    `${check} <b>အခြေအနေ:</b> <b>In Stock</b> (အသင့်ဝယ်ယူနိုင်ပါသည်)\n\n` +
+    `💡 <i>စတော့အရေအတွက် ကန့်သတ်ချက်လေး ရှိတာကြောင့် စတော့ရှိတုန်းလေး ဆွဲထားလိုက်ဗျာ!</i>\n\n` +
     cta
   );
 }
@@ -267,8 +271,94 @@ export async function notifyTopUpApproved(params: {
 }
 
 /**
- * Sends a wallet top-up rejection notification to the user in Telegram.
+ * Best-effort deletion of a message the bot previously sent (same bot token).
+ * Used to clear the live MMQR invoice photo once payment is confirmed.
  */
+export async function deleteTelegramMessage(chatId: string, messageId: number): Promise<boolean> {
+  if (!config.TELEGRAM_BOT_TOKEN || !chatId || !messageId) return false;
+  try {
+    const url = `https://api.telegram.org/bot${config.TELEGRAM_BOT_TOKEN}/deleteMessage`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
+    });
+    return res.ok;
+  } catch (err: any) {
+    console.warn("[Telegram Notifier] deleteMessage failed:", err.message);
+    return false;
+  }
+}
+
+/**
+ * Customer-facing confirmation for an auto-confirmed MyanMyanPay MMQR top-up.
+ * Removes the live QR invoice photo (so no stale "Refresh/Cancel" lingers) and
+ * posts a single success card. Called fire-and-forget by the webhook so the
+ * gateway ack is never delayed by Telegram latency.
+ */
+export async function notifyMmpayTopUpSuccess(params: {
+  telegramId: string;
+  qrMessageId?: number | null;
+  reference: string;
+  amountMmk: number;
+  newBalanceMmk: number;
+}): Promise<boolean> {
+  const { telegramId, qrMessageId, reference, amountMmk, newBalanceMmk } = params;
+
+  if (!telegramId) return false;
+
+  if (qrMessageId) {
+    await deleteTelegramMessage(telegramId, qrMessageId);
+  }
+
+  const check = tgEmoji(BOT_EMOJIS.CHECK);
+  const sparkles = tgEmoji(BOT_EMOJIS.SPARKLES);
+  const text =
+    `<blockquote>${check} <b>MMQR ငွေပေးချေမှု အောင်မြင်ပါပြီ!</b> ❞\n` +
+    `အော်ဒါ အမှတ်: <b>${escapeHtml(reference)}</b>\n` +
+    `ဖြည့်သွင်းငွေ: <b>+${amountMmk.toLocaleString("en-US")} MMK</b>\n` +
+    `လက်ရှိ Wallet Balance: <b>${newBalanceMmk.toLocaleString("en-US")} MMK</b></blockquote>\n\n` +
+    `ကျေးဇူးတင်ရှိပါသည်ခင်ဗျာ! အခုပဲ ပစ္စည်းများကို ဆက်လက် ဝယ်ယူနိုင်ပါပြီ ${sparkles}`;
+
+  // Returns whether the success card actually reached Telegram, so the caller
+  // can release the one-time notification claim and let the bot's "Refresh"
+  // button retry when this fire-and-forget push fails.
+  return sendTelegramMessage(telegramId, text);
+}
+
+/**
+ * Customer-facing notice for a MyanMyanPay MMQR top-up the gateway reported as
+ * terminally unsuccessful (FAILED or CANCELLED). Mirrors the success path:
+ * removes the live QR invoice photo so no stale "Refresh/Cancel" lingers and
+ * posts a single card. Returns whether the card reached Telegram so the caller
+ * can release its one-time notification claim and let "Refresh" retry.
+ */
+export async function notifyMmpayTopUpFailed(params: {
+  telegramId: string;
+  qrMessageId?: number | null;
+  reference: string;
+  kind: "FAILED" | "CANCELLED";
+}): Promise<boolean> {
+  const { telegramId, qrMessageId, reference, kind } = params;
+
+  if (!telegramId) return false;
+
+  if (qrMessageId) {
+    await deleteTelegramMessage(telegramId, qrMessageId);
+  }
+
+  const cancel = tgEmoji(BOT_EMOJIS.CANCEL);
+  const headline =
+    kind === "CANCELLED"
+      ? "MMQR ငွေပေးချေမှုကို ဖျက်သိမ်းလိုက်ပါပြီ"
+      : "MMQR ငွေပေးချေမှု မအောင်မြင်ပါ";
+  const text =
+    `<blockquote>${cancel} <b>${headline}</b>\n` +
+    `အော်ဒါ အမှတ်: <b>${escapeHtml(reference)}</b></blockquote>\n\n` +
+    `သင့် Wallet မှ ငွေ နုတ်ယူခြင်း မရှိပါ။ ဆက်လက် ငွေဖြည့်လိုပါက ငွေပမာဏ အသစ် ရွေးချယ်ပေးပါခင်ဗျာ။`;
+
+  return sendTelegramMessage(telegramId, text);
+}
 export async function notifyTopUpRejected(params: {
   telegramId: string;
   reference: string;
@@ -552,6 +642,71 @@ export async function notifyLowSupplierBalance(params: {
     `• <b>Current Balance:</b> <b>$${escapeHtml(balanceUsd)} USD</b>\n` +
     `• <b>Threshold:</b> $${thresholdUsd.toFixed(2)} USD</blockquote>\n\n` +
     `${money} ကျေးဇူးပြု၍ ${escapeHtml(supplier)} အကောင့်သို့ ငွေကြိုတင်ဖြည့်သွင်းပေးပါရန် အသိပေးအပ်ပါသည်။`;
+
+  return sendTelegramMessage(chatId, text, Number.isFinite(topicId) && topicId > 0 ? topicId : undefined);
+}
+
+/**
+ * Alerts the admin Telegram group that an MMQR top-up the gateway reported as
+ * paid could NOT be auto-credited and needs a human to reconcile (amount or
+ * currency mismatch, or a SUCCESS that arrived beyond the late-success grace
+ * window). Routed into the "Bot Alert" topic like the low-balance alert.
+ * Best-effort: never throws, so it can never disrupt the payment path.
+ */
+export async function notifyMmpayReconcileAlert(params: {
+  reference: string;
+  reason: string;
+  expectedAmountMmk: number;
+  gatewayAmount?: number | null;
+  gatewayCurrency?: string | null;
+  telegramId?: string | null;
+}): Promise<boolean> {
+  const { reference, reason, expectedAmountMmk, gatewayAmount, gatewayCurrency, telegramId } = params;
+
+  let chatId = config.TELEGRAM_GROUP_CHAT_ID;
+  let topicRaw = "";
+  try {
+    const db = getDb();
+    if (!chatId) {
+      const [setting] = await db
+        .select()
+        .from(appSettings)
+        .where(eq(appSettings.key, "telegramGroupChatId"));
+      if (setting?.value) chatId = setting.value;
+    }
+    const [topicSetting] = await db
+      .select()
+      .from(appSettings)
+      .where(eq(appSettings.key, "telegramBotAlertTopicId"));
+    if (topicSetting?.value) topicRaw = topicSetting.value;
+  } catch {
+    // ignore — fall back to env/general topic below
+  }
+
+  if (!chatId) {
+    console.warn("[Telegram Notifier] No admin group chatId configured for MMQR reconcile alert.");
+    return false;
+  }
+
+  if (!topicRaw) topicRaw = config.TELEGRAM_BOT_ALERT_TOPIC_ID || "";
+  const topicId = parseInt(topicRaw, 10);
+
+  const warning = tgEmoji(BOT_EMOJIS.WARNING, "⚠️");
+  const money = tgEmoji(BOT_EMOJIS.MONEY, "💰");
+  const gatewayAmountLine =
+    typeof gatewayAmount === "number"
+      ? `• <b>Gateway amount:</b> <b>${gatewayAmount.toLocaleString("en-US")} ${escapeHtml(gatewayCurrency || "")}</b>\n`
+      : "";
+
+  const text =
+    `<blockquote>${warning} <b>MMQR — MANUAL RECONCILE NEEDED</b> ❞\n` +
+    `ဤ MMQR ကို gateway က ပေးချေပြီးဟု ပြသော်လည်း အလိုအလျောက် မသွင်းနိုင်ပါ။</blockquote>\n\n` +
+    `${money} <b>Reference:</b> <code>${escapeHtml(reference)}</code>\n` +
+    `• <b>Expected:</b> <b>${expectedAmountMmk.toLocaleString("en-US")} MMK</b>\n` +
+    gatewayAmountLine +
+    (telegramId ? `• <b>Customer TG:</b> <code>${escapeHtml(telegramId)}</code>\n` : "") +
+    `• <b>Reason:</b> <i>${escapeHtml(reason)}</i>\n\n` +
+    `ကျေးဇူးပြု၍ လက်ဖြင့် စစ်ဆေးပြီး လိုအပ်ပါက ကိုယ်တိုင် ဖြည့်သွင်းပေးပါ။`;
 
   return sendTelegramMessage(chatId, text, Number.isFinite(topicId) && topicId > 0 ? topicId : undefined);
 }

@@ -3,7 +3,7 @@ import { botConfig } from "../config";
 import { botCatalog } from "./catalog.service";
 import { botSettingsService } from "./settings.service";
 import { createSupplierClient, SupplierError, type SupplierId } from "@arena/suppliers";
-import { escapeHtml } from "@arena/shared";
+import { escapeHtml, type TopUpStatus } from "@arena/shared";
 import {
   encryptPayload,
   decryptPayload,
@@ -21,7 +21,7 @@ import {
   orderItems,
   orderDeliveries,
 } from "@arena/db";
-import { eq, desc, or, and, sql, gte } from "drizzle-orm";
+import { eq, desc, or, and, sql, gte, ne, isNull, isNotNull } from "drizzle-orm";
 
 async function sendAdminTelegramAlert(text: string): Promise<boolean> {
   try {
@@ -79,9 +79,9 @@ export interface TopUpRecord {
   telegramId: string;
   amountMmk: number;
   reference: string;
-  paymentMethod?: "KPAY" | "WAVEPAY";
+  paymentMethod?: "KPAY" | "WAVEPAY" | "MMPAY";
   slipFileId?: string;
-  status: "PENDING" | "SUBMITTED" | "APPROVED" | "REJECTED" | "CANCELLED";
+  status: TopUpStatus;
   createdAt: string;
 }
 
@@ -458,8 +458,11 @@ export class BotOrderService {
       if (userRecord?.user) {
         const db = getDb();
 
-        // Auto-cancel any previous unsubmitted PENDING top-up for this user
-        // so abandoned invoices do not accumulate in the admin panel as "Awaiting Slip"
+        // Auto-cancel any previous unsubmitted PENDING *manual* top-up for this
+        // user so abandoned "Awaiting Slip" invoices do not accumulate. Scoped
+        // to non-MMPAY: an active MMQR (also PENDING) is a separate, gateway-
+        // driven payment attempt and must not be cancelled by starting a manual
+        // top-up — it has its own cancel/expire path.
         try {
           await db
             .update(topUpRequests)
@@ -467,7 +470,8 @@ export class BotOrderService {
             .where(
               and(
                 eq(topUpRequests.userId, userRecord.user.id),
-                eq(topUpRequests.status, "PENDING")
+                eq(topUpRequests.status, "PENDING"),
+                ne(topUpRequests.paymentMethod, "MMPAY")
               )
             );
         } catch (cleanupErr: any) {
@@ -575,6 +579,257 @@ export class BotOrderService {
 
     return cancelled;
   }
+
+  /**
+   * Retrieves an active, unexpired MyanMyanPay top-up order for a given customer if one exists.
+   * Complies with Single Active Order & Caching guidelines.
+   */
+  async getActiveMmpayTopUp(telegramId: string): Promise<{
+    id: number;
+    reference: string;
+    amountMmk: number;
+    qr: string;
+    expiresAt: Date;
+  } | null> {
+    try {
+      const userRecord = await this.getOrCreateUser({ telegramId });
+      if (!userRecord?.user) return null;
+
+      const db = getDb();
+      const [active] = await db
+        .select()
+        .from(topUpRequests)
+        .where(
+          and(
+            eq(topUpRequests.userId, userRecord.user.id),
+            eq(topUpRequests.paymentMethod, "MMPAY"),
+            eq(topUpRequests.status, "PENDING"),
+            sql`${topUpRequests.expiresAt} > NOW()`
+          )
+        )
+        .limit(1);
+
+      if (active && active.mmpayQrString && active.expiresAt) {
+        return {
+          id: active.id,
+          reference: active.reference,
+          amountMmk: active.amountMmk,
+          qr: active.mmpayQrString,
+          expiresAt: new Date(active.expiresAt),
+        };
+      }
+    } catch (err: any) {
+      console.warn("[BotOrderService] Error fetching active MMPay topup:", err.message);
+    }
+    return null;
+  }
+
+  /**
+   * Creates or returns an active MyanMyanPay MMQR instance by delegating to API service.
+   */
+  async createMmpayTopUp(params: {
+    telegramId: string;
+    amountMmk: number;
+    intendedProduct?: string;
+  }): Promise<{
+    ok: boolean;
+    isExisting?: boolean;
+    reference?: string;
+    amountMmk?: number;
+    qr?: string;
+    expiresAt?: Date;
+    error?: string;
+  }> {
+    try {
+      const res = await fetch(`${botConfig.API_BASE_URL}/api/payments/mmpay/create`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-internal-token": botConfig.INTERNAL_API_TOKEN,
+        },
+        body: JSON.stringify(params),
+      });
+
+      const data = (await res.json()) as any;
+      if (!res.ok || !data.ok) {
+        return { ok: false, error: data?.error || `HTTP ${res.status}` };
+      }
+
+      return {
+        ok: true,
+        isExisting: Boolean(data.isExisting),
+        reference: data.reference,
+        amountMmk: data.amountMmk,
+        qr: data.qr,
+        expiresAt: new Date(data.expiresAt),
+      };
+    } catch (err: any) {
+      console.error("[BotOrderService] createMmpayTopUp error:", err.message);
+      return { ok: false, error: err.message };
+    }
+  }
+
+  /**
+   * Cancels an active MyanMyanPay MMQR payment request.
+   */
+  async cancelMmpayTopUp(
+    reference: string,
+    telegramId: string
+  ): Promise<{ ok: boolean; cancelled: boolean; status?: string; amountMmk?: number }> {
+    try {
+      const res = await fetch(`${botConfig.API_BASE_URL}/api/payments/mmpay/cancel`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-internal-token": botConfig.INTERNAL_API_TOKEN,
+        },
+        body: JSON.stringify({ reference, telegramId }),
+      });
+      const data = (await res.json()) as any;
+      if (!res.ok || !data?.ok) {
+        return { ok: false, cancelled: false };
+      }
+      // The API only reports cancelled:false when the order settled (e.g. a
+      // SUCCESS webhook credited it) in the race window, so it was NOT
+      // cancelled — the bot must tell the customer the real outcome.
+      return {
+        ok: true,
+        cancelled: data.cancelled !== false,
+        status: data.status,
+        amountMmk: data.amountMmk,
+      };
+    } catch (err: any) {
+      console.error("[BotOrderService] cancelMmpayTopUp error:", err.message);
+      return { ok: false, cancelled: false };
+    }
+  }
+
+  /**
+   * Persists the Telegram message id of the customer's MMQR invoice photo so
+   * the API webhook can delete it (and post a single success message) the
+   * moment the gateway confirms payment — no manual "Refresh" needed.
+   *
+   * Returns the PREVIOUS message id (if any) so the caller can delete the now
+   * untracked older QR photo — otherwise re-showing an invoice would leave a
+   * stale QR card in the chat that nothing cleans up.
+   */
+  async attachMmpayQrMessage(reference: string, messageId: number): Promise<number | null> {
+    try {
+      const db = getDb();
+      const [prev] = await db
+        .select({ old: topUpRequests.mmpayQrMessageId })
+        .from(topUpRequests)
+        .where(eq(topUpRequests.reference, reference))
+        .limit(1);
+      await db
+        .update(topUpRequests)
+        .set({ mmpayQrMessageId: messageId })
+        .where(eq(topUpRequests.reference, reference));
+      const oldId = prev?.old ?? null;
+      return oldId && oldId !== messageId ? oldId : null;
+    } catch (err: any) {
+      console.warn("[BotOrderService] attachMmpayQrMessage error:", err.message);
+      return null;
+    }
+  }
+
+  /**
+   * Checks the status of an MMPay payment request.
+   */
+  async checkMmpayStatus(reference: string): Promise<{
+    status: string;
+    amountMmk: number;
+    expiresAt?: Date;
+  } | null> {
+    try {
+      const res = await fetch(
+        `${botConfig.API_BASE_URL}/api/payments/mmpay/status/${encodeURIComponent(reference)}`,
+        {
+          headers: { "x-internal-token": botConfig.INTERNAL_API_TOKEN },
+        }
+      );
+      const data = (await res.json()) as any;
+      if (res.ok && data?.ok) {
+        return {
+          status: data.status,
+          amountMmk: data.amountMmk,
+          expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
+        };
+      }
+    } catch (err: any) {
+      console.error("[BotOrderService] checkMmpayStatus error:", err.message);
+    }
+    return null;
+  }
+
+  /**
+   * Atomically claims the one-time MMQR success notification for a top-up.
+   *
+   * The webhook and this bot's manual "Refresh" button both race to announce a
+   * completed MMQR payment. mmpay_success_notified_at is the dedup token: only
+   * the caller whose guarded UPDATE flips it from NULL owns the single success
+   * card; everyone else backs off. Returns true if this caller won the claim.
+   */
+  async claimMmpaySuccessNotification(reference: string): Promise<boolean> {
+    try {
+      const db = getDb();
+      const claimed = await db
+        .update(topUpRequests)
+        .set({ mmpaySuccessNotifiedAt: new Date() })
+        .where(
+          and(
+            eq(topUpRequests.reference, reference),
+            isNull(topUpRequests.mmpaySuccessNotifiedAt)
+          )
+        )
+        .returning({ id: topUpRequests.id });
+      return claimed.length > 0;
+    } catch (err: any) {
+      console.warn("[BotOrderService] claimMmpaySuccessNotification error:", err.message);
+      return false;
+    }
+  }
+
+  /** Releases a claimed success notification so a later retry can re-announce. */
+  async releaseMmpaySuccessNotification(reference: string): Promise<void> {
+    try {
+      const db = getDb();
+      await db
+        .update(topUpRequests)
+        .set({ mmpaySuccessNotifiedAt: null })
+        .where(eq(topUpRequests.reference, reference));
+    } catch (err: any) {
+      console.warn("[BotOrderService] releaseMmpaySuccessNotification error:", err.message);
+    }
+  }
+
+  /**
+   * Atomically claims the one-time cleanup of a live MMQR invoice message by
+   * nulling mmpay_qr_message_id. Shared by the manual Refresh and the background
+   * sweep so an expired/cancelled invoice's terminal notice is sent exactly once
+   * (whoever nulls it first owns the user-facing message). Returns true if this
+   * caller won the claim.
+   */
+  async claimMmpayInvoiceCleanup(reference: string): Promise<boolean> {
+    try {
+      const db = getDb();
+      const claimed = await db
+        .update(topUpRequests)
+        .set({ mmpayQrMessageId: null })
+        .where(
+          and(
+            eq(topUpRequests.reference, reference),
+            isNotNull(topUpRequests.mmpayQrMessageId)
+          )
+        )
+        .returning({ id: topUpRequests.id });
+      return claimed.length > 0;
+    } catch (err: any) {
+      console.warn("[BotOrderService] claimMmpayInvoiceCleanup error:", err.message);
+      return false;
+    }
+  }
+
 
   /**
    * Submits a top-up payment slip screenshot proof to Neon DB.
@@ -866,6 +1121,21 @@ export class BotOrderService {
               .where(and(eq(wallets.id, wallet.id), gte(wallets.balanceMmk, totalMmk)))
               .returning();
 
+            // Record the debit in the ledger atomically with the balance
+            // decrement. Pairing them in one transaction keeps the wallet
+            // balance and the ledger sum from ever diverging — even if the
+            // later order-record transaction (step 5) fails after upstream
+            // delivery, the money leaving the wallet is always accounted for.
+            if (updated) {
+              await tx.insert(walletLedger).values({
+                walletId: updated.id,
+                amountMmk: -totalMmk,
+                type: "ORDER_DEBIT",
+                referenceId: publicOrderNo,
+                notes: `Purchase: ${product.cleanName} x ${params.quantity}`,
+              });
+            }
+
             return { updated } as const;
           });
 
@@ -925,16 +1195,28 @@ export class BotOrderService {
         if (!apiKey) {
           // FOOTGUN PREVENTED: Never fake deliveries in production when API key is missing!
           if (debitedWalletId !== null) {
+            const refundWalletId = debitedWalletId;
             try {
               const db = getDb();
-              await db
-                .update(wallets)
-                .set({
-                  balanceMmk: sql`${wallets.balanceMmk} + ${totalMmk}`,
-                  totalSpentMmk: sql`GREATEST(0, ${wallets.totalSpentMmk} - ${totalMmk})`,
-                  updatedAt: new Date(),
-                })
-                .where(eq(wallets.id, debitedWalletId));
+              await db.transaction(async (tx) => {
+                await tx
+                  .update(wallets)
+                  .set({
+                    balanceMmk: sql`${wallets.balanceMmk} + ${totalMmk}`,
+                    totalSpentMmk: sql`GREATEST(0, ${wallets.totalSpentMmk} - ${totalMmk})`,
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(wallets.id, refundWalletId));
+                // Mirror the refund in the ledger so it nets off the ORDER_DEBIT
+                // written at debit time; balance and ledger sum stay in step.
+                await tx.insert(walletLedger).values({
+                  walletId: refundWalletId,
+                  amountMmk: totalMmk,
+                  type: "REFUND_CREDIT",
+                  referenceId: publicOrderNo,
+                  notes: `Auto-refund: supplier ${supplierId} API key not configured`,
+                });
+              });
             } catch (refundErr: any) {
               console.error("[BotOrderService] Critical: Wallet refund failed on unconfigured supplier:", refundErr.message);
             }
@@ -985,16 +1267,28 @@ export class BotOrderService {
 
           // ATOMIC REFUND: Rollback the debited balance immediately on upstream failure!
           if (debitedWalletId !== null) {
+            const refundWalletId = debitedWalletId;
             try {
               const db = getDb();
-              await db
-                .update(wallets)
-                .set({
-                  balanceMmk: sql`${wallets.balanceMmk} + ${totalMmk}`,
-                  totalSpentMmk: sql`GREATEST(0, ${wallets.totalSpentMmk} - ${totalMmk})`,
-                  updatedAt: new Date(),
-                })
-                .where(eq(wallets.id, debitedWalletId));
+              await db.transaction(async (tx) => {
+                await tx
+                  .update(wallets)
+                  .set({
+                    balanceMmk: sql`${wallets.balanceMmk} + ${totalMmk}`,
+                    totalSpentMmk: sql`GREATEST(0, ${wallets.totalSpentMmk} - ${totalMmk})`,
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(wallets.id, refundWalletId));
+                // Mirror the refund in the ledger so it nets off the ORDER_DEBIT
+                // written at debit time; balance and ledger sum stay in step.
+                await tx.insert(walletLedger).values({
+                  walletId: refundWalletId,
+                  amountMmk: totalMmk,
+                  type: "REFUND_CREDIT",
+                  referenceId: publicOrderNo,
+                  notes: `Auto-refund: upstream ${supplierId} order failed`,
+                });
+              });
             } catch (refundErr: any) {
               console.error("[BotOrderService] Critical: Wallet refund failed after upstream error:", refundErr.message);
             }
@@ -1110,35 +1404,34 @@ export class BotOrderService {
       };
       const encryptedPayload = encryptPayload(deliveryPayloadV2);
 
-      // 5. Commit Order & Ledger in Atomic PostgreSQL Transaction
+      // 5. Record the order, item and encrypted delivery in an atomic
+      // transaction. The ORDER_DEBIT ledger entry was already written with the
+      // wallet debit (step 2), so a failure here can no longer desync the
+      // balance from the ledger — it can only lose the order *metadata*. We
+      // retry once for a transient blip, then alert an admin for manual
+      // backfill. We never swallow silently: the customer has been charged and
+      // the product was already delivered upstream, so they keep the
+      // credentials shown in chat while an admin recreates the order record.
       if (user && debitedWalletId !== null) {
-        try {
+        const orderUserId = user.id;
+        const persistOrderRecord = async () => {
           const db = getDb();
           await db.transaction(async (tx) => {
-            // A. Insert wallet ledger
-            await tx.insert(walletLedger).values({
-              walletId: debitedWalletId,
-              amountMmk: -totalMmk,
-              type: "ORDER_DEBIT",
-              referenceId: publicOrderNo,
-              notes: `Purchase: ${product.cleanName} x ${params.quantity} (${supplierId} #${upstreamOrderId || "direct"})`,
-            });
-
-            // B. Insert order
+            // A. Insert order
             const [insertedOrder] = await tx
               .insert(orders)
               .values({
                 publicOrderNo,
                 externalOrderId: upstreamOrderId ? `${supplierId}-${upstreamOrderId}` : publicOrderNo,
                 supplier: supplierId,
-                customerId: user.id,
+                customerId: orderUserId,
                 status: "DELIVERED",
                 totalAmountMmk: totalMmk,
                 notes: `Telegram purchase by @${params.telegramUsername || params.customerName}`,
               })
               .returning();
 
-            // C. Insert order item
+            // B. Insert order item
             await tx.insert(orderItems).values({
               orderId: insertedOrder.id,
               productId: product.id,
@@ -1149,7 +1442,7 @@ export class BotOrderService {
               subtotalMmk: totalMmk,
             });
 
-            // D. Insert encrypted delivery payload
+            // C. Insert encrypted delivery payload
             await tx.insert(orderDeliveries).values({
               orderId: insertedOrder.id,
               upstreamOrderId: upstreamOrderId || null,
@@ -1158,8 +1451,39 @@ export class BotOrderService {
               deliveredAt: new Date(),
             });
           });
-        } catch (dbErr: any) {
-          console.error("[BotOrderService] DB transaction failed recording order details:", dbErr.message);
+        };
+
+        try {
+          await persistOrderRecord();
+        } catch (firstErr: any) {
+          console.error(
+            "[BotOrderService] Order-record transaction failed; retrying once:",
+            firstErr?.message
+          );
+          try {
+            await persistOrderRecord();
+          } catch (dbErr: any) {
+            console.error(
+              "[BotOrderService] CRITICAL: order record persist failed after retry:",
+              dbErr?.message
+            );
+            void sendAdminTelegramAlert(
+              `🚨 <b>ORDER RECORD PERSIST FAILED (Manual Backfill Needed)</b>\n\n` +
+                `• <b>Order No:</b> <code>${publicOrderNo}</code>\n` +
+                `• <b>Customer:</b> @${params.telegramUsername || params.customerName} (TG: <code>${params.telegramId}</code>)\n` +
+                `• <b>Product:</b> ${escapeHtml(product.cleanName)} x ${params.quantity}\n` +
+                `• <b>Amount:</b> ${totalMmk.toLocaleString()} MMK (already debited)\n` +
+                `• <b>Supplier:</b> <code>${supplierId}</code> #${upstreamOrderId || "direct"}\n` +
+                `• <b>Status:</b> Customer WAS charged and the product WAS delivered. The ORDER_DEBIT ledger entry exists, but the order/delivery row failed to save. Recreate the order + delivery record manually.`
+            );
+            void emitAdminEvent("ORDER_CREATED", {
+              orderId: publicOrderNo,
+              publicOrderNo,
+              productId: params.productId,
+              totalMmk,
+              status: "RECORD_FAILED",
+            });
+          }
         }
       }
 

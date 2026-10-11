@@ -10,7 +10,11 @@ dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 dotenv.config();
 
 const envSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  // Accept any environment name (production, staging, preview, …) rather than a
+  // fixed enum: insecure-default guards below fire for every env except an
+  // explicit "development"/"test", so a non-production deployment is protected
+  // too and cannot silently run on the public default secrets.
+  NODE_ENV: z.string().default("development"),
   PORT: z.coerce.number().default(4000),
   HOST: z.string().default("0.0.0.0"),
   DATABASE_URL: z.string().default("postgres://postgres:postgres@localhost:5432/arena_store"),
@@ -58,6 +62,23 @@ const envSchema = z.object({
    * alerts are not delayed by catalog syncs.
    */
   BALANCE_CHECK_INTERVAL_MINUTES: z.coerce.number().int().min(0).default(2),
+  MMPAY_APP_ID: z.string().default(""),
+  MMPAY_PUBLISHABLE_KEY: z.string().default(""),
+  MMPAY_SECRET_KEY: z.string().default(""),
+  MMPAY_API_BASE_URL: z.string().default("https://bbapi.myanmyanpay.com"),
+  /**
+   * Public HTTPS base URL of this API, used to build the MMQR webhook callback
+   * URL (`<PUBLIC_API_URL>/api/webhooks/mmpay`). Empty falls back to the
+   * webhook URL configured in the MMPay developer portal.
+   */
+  PUBLIC_API_URL: z.string().default(""),
+  /**
+   * How often (seconds) the API polls MyanMyanPay for still-PENDING MMQR
+   * top-ups and credits any the gateway reports as paid — the safety net for a
+   * webhook that was never delivered. 0 disables the reconciliation sweep.
+   * Only runs when MMPay credentials are configured.
+   */
+  MMPAY_RECONCILE_INTERVAL_SECONDS: z.coerce.number().int().min(0).default(45),
   /**
    * Whether Fastify should trust reverse proxy headers like X-Forwarded-For.
    * - "loopback, uniquelocal" (or 1): trusts local & private reverse proxies (e.g. Render,
@@ -149,21 +170,45 @@ export function loadConfig(): AppConfig {
 
   const data = parsed.data;
 
-  // Strict production security guards
-  if (data.NODE_ENV === "production") {
+  // Strict security guards: the public default secret/password/key may only be
+  // used in explicit development or test. Any other environment (production,
+  // staging, preview, or an unrecognised NODE_ENV) must supply real values or
+  // the process refuses to boot — fail closed instead of silently serving on a
+  // secret that is published in this repository.
+  const isDevOrTest = data.NODE_ENV === "development" || data.NODE_ENV === "test";
+  if (!isDevOrTest) {
     if (data.DELIVERY_ENCRYPTION_KEY === "arena-store-default-dev-encryption-key-32bytes!") {
       throw new Error(
-        "CRITICAL SECURITY ERROR: DELIVERY_ENCRYPTION_KEY is using the insecure default key in production! Set a custom key in .env."
+        `CRITICAL SECURITY ERROR: DELIVERY_ENCRYPTION_KEY is using the insecure default key in a non-dev environment (NODE_ENV=${data.NODE_ENV})! Set a custom key in .env.`
       );
     }
     if (data.ADMIN_SESSION_SECRET === "VxyyoXyS9@Mg1c4POHuXjoUVrhhP") {
       throw new Error(
-        "CRITICAL SECURITY ERROR: ADMIN_SESSION_SECRET is using the insecure default secret in production! Set a custom secret in .env."
+        `CRITICAL SECURITY ERROR: ADMIN_SESSION_SECRET is using the insecure default secret in a non-dev environment (NODE_ENV=${data.NODE_ENV})! Set a custom secret in .env.`
       );
     }
     if (data.ADMIN_INITIAL_PASSWORD === "ArenaAdmin2026!") {
       throw new Error(
-        "CRITICAL SECURITY ERROR: ADMIN_INITIAL_PASSWORD is using the insecure default password in production! Set a custom password in .env."
+        `CRITICAL SECURITY ERROR: ADMIN_INITIAL_PASSWORD is using the insecure default password in a non-dev environment (NODE_ENV=${data.NODE_ENV})! Set a custom password in .env.`
+      );
+    }
+
+    // MMPay fail-closed guard. The gateway is optional (both keys empty = off),
+    // but a HALF-configured gateway in production is dangerous: with only the
+    // publishable key the gateway handshake is half-wired, and with no secret
+    // key the webhook signature check is silently skipped — a forged SUCCESS
+    // callback could credit a wallet. Require both keys together, or neither.
+    const hasMmpayPublishable = Boolean(data.MMPAY_PUBLISHABLE_KEY);
+    const hasMmpaySecret = Boolean(data.MMPAY_SECRET_KEY);
+    if (hasMmpayPublishable !== hasMmpaySecret) {
+      throw new Error(
+        `CRITICAL CONFIG ERROR: MyanMyanPay is half-configured in a non-dev environment (NODE_ENV=${data.NODE_ENV}). ` +
+          `Set BOTH MMPAY_PUBLISHABLE_KEY and MMPAY_SECRET_KEY (the webhook signature is only enforced when the secret is present), or leave both empty to disable MMPay.`
+      );
+    }
+    if (hasMmpayPublishable && hasMmpaySecret && !data.PUBLIC_API_URL) {
+      console.warn(
+        "[config] MMPay keys are set but PUBLIC_API_URL is empty — the webhook callback URL cannot be built; falling back to the portal-configured webhook. Set PUBLIC_API_URL to the public HTTPS origin (e.g. https://arena.ryanwez.com)."
       );
     }
   }

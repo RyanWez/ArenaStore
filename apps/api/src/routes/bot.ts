@@ -1,27 +1,15 @@
-import crypto from "node:crypto";
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { config } from "../config";
 import { reviewDeposit } from "../services/deposit-review.service";
 import { broadcastAdminEvent } from "../services/admin-event.service";
+import { internalTokenMatches } from "../lib/internal-auth";
 
 const BotDepositReviewSchema = z.object({
   action: z.enum(["APPROVE", "REJECT"]),
   actorTelegramId: z.string().min(1).max(64),
   actorUsername: z.string().max(64).optional(),
 });
-
-/**
- * Timing-safe comparison of the bot's internal token: raw secrets of equal
- * length could leak position-wise through timingSafeEqual, so both sides are
- * hashed to fixed-length digests first.
- */
-function internalTokenMatches(supplied: string | undefined): boolean {
-  if (!config.INTERNAL_API_TOKEN || !supplied) return false;
-  const suppliedHash = crypto.createHash("sha256").update(supplied).digest();
-  const expectedHash = crypto.createHash("sha256").update(config.INTERNAL_API_TOKEN).digest();
-  return crypto.timingSafeEqual(suppliedHash, expectedHash);
-}
 
 /**
  * Internal endpoints called by the bot process only (x-internal-token shared
@@ -78,6 +66,13 @@ export async function botRoutes(server: FastifyInstance) {
     }
     if (result.code === "NOT_FOUND") {
       return reply.status(404).send({ ok: false, error: "Deposit request not found" });
+    }
+    if (result.code === "MMPAY_AUTO_ONLY") {
+      return reply.status(409).send({
+        ok: false,
+        error:
+          "This MyanMyanPay deposit is confirmed automatically by the payment gateway and cannot be reviewed manually.",
+      });
     }
     // ALREADY_REVIEWED — 409 carries the current state so the bot can render
     // "another admin already reviewed this" on the stale group message.

@@ -330,8 +330,21 @@ export function buildOrderListKeyboard(
 /**
  * Builds Wallet Dashboard Top-Up Presets Keyboard.
  */
-export function buildWalletKeyboard(): InlineKeyboard {
-  return new InlineKeyboard()
+export function buildWalletKeyboard(activeMmpayRef?: string): InlineKeyboard {
+  const keyboard = new InlineKeyboard();
+
+  if (activeMmpayRef) {
+    keyboard
+      .add({
+        text: "လက်ရှိ MMQR ငွေပေးချေလွှာ ပြန်ကြည့်မည်",
+        callback_data: `mmpay_show_${activeMmpayRef}`,
+        icon_custom_emoji_id: BOT_EMOJIS.LIGHTNING,
+        style: "success",
+      } as any)
+      .row();
+  }
+
+  return keyboard
     .add({
       text: "5,000 Ks",
       callback_data: "topup_amount_5000",
@@ -401,7 +414,7 @@ export function buildUnmatchedPhotoKeyboard(): InlineKeyboard {
     })
     .row()
     .add({
-      text: "🏠 Main Menu",
+      text: "Main Menu",
       callback_data: "menu_start",
       icon_custom_emoji_id: BOT_EMOJIS.BACK,
     });
@@ -418,6 +431,78 @@ export function buildTopUpInvoiceKeyboard(): InlineKeyboard {
     style: "danger",
   } as any);
 }
+
+/**
+ * Builds Payment Method Selection Keyboard (MMQR Auto-Pay vs Manual Bank Slip).
+ */
+export function buildPaymentMethodChoiceKeyboard(amountMmk: number, contextData?: string): InlineKeyboard {
+  const ctxSuffix = contextData ? `_${contextData}` : "";
+  return new InlineKeyboard()
+    .add({
+      text: "MMQR ဖြင့် အလိုအလျောက် ပေးချေမည်",
+      callback_data: `mmpay_pay_${amountMmk}${ctxSuffix}`,
+      icon_custom_emoji_id: BOT_EMOJIS.LIGHTNING,
+      style: "success",
+    } as any)
+    .row()
+    .add({
+      text: "ငွေလွှဲပြေစာ ပို့မည် (Manual Slip)",
+      callback_data: `manual_slip_${amountMmk}${ctxSuffix}`,
+      icon_custom_emoji_id: BOT_EMOJIS.RECEIPT,
+    })
+    .row()
+    .add({
+      text: "နောက်သို့ ပြန်သွားမည်",
+      callback_data: "menu_wallet",
+      icon_custom_emoji_id: BOT_EMOJIS.BACK,
+    });
+}
+
+/**
+ * Builds MyanMyanPay MMQR invoice actions keyboard.
+ */
+export function buildMmpayInvoiceKeyboard(reference: string): InlineKeyboard {
+  return new InlineKeyboard()
+    .add({
+      text: "အခြေအနေ ပြန်စစ်မည် (Refresh)",
+      callback_data: `mmpay_check_${reference}`,
+      icon_custom_emoji_id: BOT_EMOJIS.COUNTER,
+    })
+    .row()
+    .add({
+      text: "ငွေပေးချေမှု ဖျက်သိမ်းမည် (Cancel)",
+      callback_data: `mmpay_cancel_${reference}`,
+      icon_custom_emoji_id: BOT_EMOJIS.CANCEL,
+      style: "danger",
+    } as any);
+}
+
+/**
+ * Builds prompt keyboard when an unexpired active MMQR order is blocking a new request.
+ */
+export function buildActiveMmpayPromptKeyboard(reference: string): InlineKeyboard {
+  return new InlineKeyboard()
+    .add({
+      text: "လက်ရှိ QR ပြန်ကြည့်မည်",
+      callback_data: `mmpay_show_${reference}`,
+      icon_custom_emoji_id: BOT_EMOJIS.BOX,
+      style: "success",
+    } as any)
+    .row()
+    .add({
+      text: "လက်ရှိ အော်ဒါ ဖျက်သိမ်းမည် (Cancel)",
+      callback_data: `mmpay_cancel_${reference}`,
+      icon_custom_emoji_id: BOT_EMOJIS.CANCEL,
+      style: "danger",
+    } as any)
+    .row()
+    .add({
+      text: "Wallet သို့ ပြန်သွားမည်",
+      callback_data: "menu_wallet",
+      icon_custom_emoji_id: BOT_EMOJIS.BACK,
+    });
+}
+
 
 /**
  * Builds Insufficient Balance Keyboard with direct Top-up shortcut.

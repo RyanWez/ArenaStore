@@ -1,4 +1,5 @@
-import { pgTable, serial, integer, varchar, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, varchar, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { users } from "./users";
 
 export const topUpRequests = pgTable(
@@ -21,11 +22,35 @@ export const topUpRequests = pgTable(
     rejectReason: varchar("reject_reason", { length: 255 }),
     intendedProduct: varchar("intended_product", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    mmpayOrderId: varchar("mmpay_order_id", { length: 64 }),
+    mmpayQrString: varchar("mmpay_qr_string", { length: 1024 }),
+    mmpayVendorQrRef: varchar("mmpay_vendor_qr_ref", { length: 128 }),
+    // Telegram message id of the customer-facing MMQR invoice photo, so the
+    // webhook can remove it and post a single success message once paid.
+    mmpayQrMessageId: integer("mmpay_qr_message_id"),
+    // One-time claim timestamp for the MMQR success card. The gateway webhook
+    // and the bot's manual "Refresh" both try to announce a paid top-up; the
+    // caller whose guarded UPDATE sets this (from NULL) owns the single card, so
+    // the customer never sees a duplicate. Cleared back to NULL only to release
+    // a failed send for retry.
+    mmpaySuccessNotifiedAt: timestamp("mmpay_success_notified_at", { withTimezone: true }),
+    // One-time claim timestamp for the admin "needs manual reconcile" alert on
+    // an MMQR top-up the gateway reported as paid but we refused to auto-credit
+    // (amount/currency mismatch, or SUCCESS beyond the late-success grace). Set
+    // once so the webhook and the reconciliation sweep never spam the alert.
+    mmpayReconcileAlertedAt: timestamp("mmpay_reconcile_alerted_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
   },
   (table) => [
     index("idx_topups_user_id").on(table.userId),
     index("idx_topups_reference").on(table.reference),
     index("idx_topups_status").on(table.status),
+    index("idx_topups_mmpay_order_id").on(table.mmpayOrderId),
+    // At most one active (PENDING) MMPay top-up per user — enforces the
+    // single-active-order rule at the DB level (migration 0011).
+    uniqueIndex("uq_topups_user_active_mmpay")
+      .on(table.userId)
+      .where(sql`${table.paymentMethod} = 'MMPAY' AND ${table.status} = 'PENDING'`),
   ]
 );
 

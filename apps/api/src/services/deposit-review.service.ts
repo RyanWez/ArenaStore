@@ -46,6 +46,14 @@ export type DepositReviewOutcome =
   | { ok: false; code: "NOT_FOUND" }
   | {
       ok: false;
+      code: "MMPAY_AUTO_ONLY";
+      reference: string;
+      amountMmk: number;
+      customerLabel: string;
+      telegramId: string | null;
+    }
+  | {
+      ok: false;
       code: "ALREADY_REVIEWED";
       status: string;
       reference: string;
@@ -161,8 +169,32 @@ export async function reviewDeposit(params: {
   action: DepositReviewAction;
   rejectReason?: string;
   actor: DepositReviewActor;
+  /**
+   * True only for the MyanMyanPay gateway webhook. It allows crediting a
+   * PENDING MMPay request (the gateway callback is the sole legitimate
+   * approver). Human reviews leave this unset, so they can never approve a
+   * PENDING MMPay top-up the customer may not have paid for yet.
+   */
+  viaGatewayWebhook?: boolean;
+  /**
+   * Gateway-only: also allow crediting an EXPIRED MMPay row. The MMQR webhook
+   * sets this when a SUCCESS callback lands after our local 15-min timer flipped
+   * the row to EXPIRED (within its grace window). The gateway is authoritative
+   * about money received, so an in-grace late SUCCESS is still honored.
+   */
+  gatewayGraceExpired?: boolean;
+  /**
+   * Customer / admin-group Telegram notifications default on. The MMPay webhook
+   * turns both off and sends its own single MMQR success message (clearing the
+   * live QR invoice), so there is no duplicate notification and the gateway ack
+   * is never blocked on Telegram latency.
+   */
+  notifyCustomer?: boolean;
+  notifyGroup?: boolean;
 }): Promise<DepositReviewOutcome> {
   const { depositId, action, actor } = params;
+  const notifyCustomer = params.notifyCustomer !== false;
+  const notifyGroup = params.notifyGroup !== false;
   const db = getDb();
 
   // 1. Fetch deposit request with user
@@ -182,7 +214,33 @@ export async function reviewDeposit(params: {
   const reviewerId = actor.kind === "ADMIN" ? (actor.adminUserId ?? null) : null;
   const actorLabel = await resolveActorLabel(actor, db);
 
-  if (topUp.status !== "SUBMITTED" && topUp.status !== "PENDING") {
+  // Statuses this review may still claim. The gateway webhook additionally
+  // allows EXPIRED (bounded grace enforced by the caller) so a late but genuine
+  // SUCCESS still credits the customer.
+  const reviewableStatuses: string[] = params.gatewayGraceExpired
+    ? [...REVIEWABLE_DEPOSIT_STATUSES, "EXPIRED"]
+    : [...REVIEWABLE_DEPOSIT_STATUSES];
+
+  // MMPay top-ups are auto-confirmed by the payment gateway webhook. A human
+  // (panel or Telegram group) must never manually approve/reject one while it
+  // is still PENDING — the customer may not have paid the MMQR yet, so a manual
+  // approval would credit money that never arrived.
+  if (
+    !params.viaGatewayWebhook &&
+    topUp.paymentMethod === "MMPAY" &&
+    topUp.status === "PENDING"
+  ) {
+    return {
+      ok: false,
+      code: "MMPAY_AUTO_ONLY",
+      reference: topUp.reference,
+      amountMmk: topUp.amountMmk,
+      customerLabel,
+      telegramId: user.telegramId,
+    };
+  }
+
+  if (!reviewableStatuses.includes(topUp.status)) {
     const reviewedByLabel = await resolvePastReviewerLabel(topUp.reviewedBy, db);
     return {
       ok: false,
@@ -216,7 +274,7 @@ export async function reviewDeposit(params: {
           .where(
             and(
               eq(topUpRequests.id, depositId),
-              inArray(topUpRequests.status, [...REVIEWABLE_DEPOSIT_STATUSES])
+              inArray(topUpRequests.status, reviewableStatuses)
             )
           )
           .returning({ id: topUpRequests.id });
@@ -291,7 +349,7 @@ export async function reviewDeposit(params: {
     }
 
     // Send celebration Telegram notification to customer
-    if (user.telegramId) {
+    if (notifyCustomer && user.telegramId) {
       await notifyTopUpApproved({
         telegramId: user.telegramId,
         reference: topUp.reference,
@@ -301,19 +359,21 @@ export async function reviewDeposit(params: {
     }
 
     // Sync review outcome to Telegram admin group
-    await syncTelegramDepositReviewOutcome({
-      outcome: "APPROVED",
-      actorLabel,
-      reference: topUp.reference,
-      amountMmk: topUp.amountMmk,
-      customerLabel,
-      telegramId: user.telegramId,
-      postedAt: topUp.createdAt,
-      chatId: topUp.telegramChatId,
-      messageId: topUp.telegramMessageId,
-    }).catch((err: any) => {
-      console.warn("[DepositReview] Failed to sync approval to Telegram group:", err?.message);
-    });
+    if (notifyGroup) {
+      await syncTelegramDepositReviewOutcome({
+        outcome: "APPROVED",
+        actorLabel,
+        reference: topUp.reference,
+        amountMmk: topUp.amountMmk,
+        customerLabel,
+        telegramId: user.telegramId,
+        postedAt: topUp.createdAt,
+        chatId: topUp.telegramChatId,
+        messageId: topUp.telegramMessageId,
+      }).catch((err: any) => {
+        console.warn("[DepositReview] Failed to sync approval to Telegram group:", err?.message);
+      });
+    }
 
     await writeAudit({
       actorId: reviewerId,

@@ -1,10 +1,20 @@
 import crypto from "node:crypto";
+import { promisify } from "node:util";
 import { eq, or } from "drizzle-orm";
 import { getDb, users, User } from "@arena/db";
 import { getRedis } from "./redis";
 import { config } from "../config";
 
 const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
+
+// Async scrypt so password hashing/verification runs on libuv's threadpool
+// instead of blocking the event loop (scryptSync stalls every other request
+// for the duration of each login/password change).
+const scryptAsync = promisify(crypto.scrypt) as (
+  password: crypto.BinaryLike,
+  salt: crypto.BinaryLike,
+  keylen: number
+) => Promise<Buffer>;
 
 export interface AdminSession {
   userId: number;
@@ -20,24 +30,24 @@ export class AuthService {
    * Hashes a plain password using scrypt with a unique random salt.
    * Format: `saltHex:derivedKeyHex`
    */
-  hashPassword(password: string): string {
+  async hashPassword(password: string): Promise<string> {
     const salt = crypto.randomBytes(16).toString("hex");
-    const derivedKey = crypto.scryptSync(password, salt, 64).toString("hex");
+    const derivedKey = (await scryptAsync(password, salt, 64)).toString("hex");
     return `${salt}:${derivedKey}`;
   }
 
   /**
    * Verifies a plain password against the stored salt:derivedKey hash.
    */
-  verifyPassword(password: string, storedHash: string): boolean {
+  async verifyPassword(password: string, storedHash: string): Promise<boolean> {
     const parts = storedHash.split(":");
     if (parts.length !== 2) return false;
 
     const [salt, keyHex] = parts;
     const key = Buffer.from(keyHex, "hex");
-    const derived = crypto.scryptSync(password, salt, 64);
+    const derived = await scryptAsync(password, salt, 64);
 
-    return crypto.timingSafeEqual(key, derived);
+    return key.length === derived.length && crypto.timingSafeEqual(key, derived);
   }
 
   /**
@@ -140,7 +150,7 @@ export class AuthService {
       return { success: false, error: "User not found or has no password set." };
     }
 
-    const isValid = this.verifyPassword(currentPassword, user.passwordHash);
+    const isValid = await this.verifyPassword(currentPassword, user.passwordHash);
     if (!isValid) {
       return { success: false, error: "Current password is incorrect." };
     }
@@ -149,7 +159,7 @@ export class AuthService {
       return { success: false, error: "New password must be at least 8 characters long." };
     }
 
-    const newHash = this.hashPassword(newPassword);
+    const newHash = await this.hashPassword(newPassword);
     await db
       .update(users)
       .set({
@@ -210,7 +220,7 @@ export class AuthService {
       }
 
       if (!target) {
-        const passwordHash = this.hashPassword(config.ADMIN_INITIAL_PASSWORD);
+        const passwordHash = await this.hashPassword(config.ADMIN_INITIAL_PASSWORD);
         await db.insert(users).values({
           email: config.ADMIN_EMAIL,
           username: "admin",
@@ -233,7 +243,7 @@ export class AuthService {
       }
 
       if (process.env.ADMIN_FORCE_RESET_PASSWORD === "true") {
-        const passwordHash = this.hashPassword(config.ADMIN_INITIAL_PASSWORD);
+        const passwordHash = await this.hashPassword(config.ADMIN_INITIAL_PASSWORD);
         await db
           .update(users)
           .set({ passwordHash, updatedAt: new Date() })

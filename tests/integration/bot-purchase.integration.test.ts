@@ -11,6 +11,7 @@ import {
   orders,
   orderItems,
   orderDeliveries,
+  topUpRequests,
 } from "@arena/db";
 import {
   seedCatalog,
@@ -130,6 +131,40 @@ describe("Bot instant wallet purchase (Recommendation D money path)", () => {
     expect(await botOrderService.getWalletBalance(telegramId)).toBe(
       10000 - FALLBACK_PRICE_MMk
     );
+  });
+
+  it("keeps the wallet balance equal to the sum of its ledger entries (debit written atomically with the balance)", async () => {
+    const telegramId = syntheticTelegramId();
+    await botOrderService.creditWallet(telegramId, 10000);
+
+    const res = await botOrderService.purchaseWithWallet({
+      telegramId,
+      customerName: "Ledger Invariant Customer",
+      productId: FALLBACK_PRODUCT_ID,
+      quantity: 1,
+    });
+    expect(res.success).toBe(true);
+
+    const userId = await getUserIdByTelegramId(telegramId);
+    const db = getDb();
+    const [walletRow] = await db.select().from(wallets).where(eq(wallets.userId, userId));
+    const ledgerRows = await db
+      .select()
+      .from(walletLedger)
+      .where(eq(walletLedger.walletId, walletRow.id));
+
+    // The ledger is a true mirror of the balance: TOPUP_CREDIT +10000 and
+    // ORDER_DEBIT -3900 sum to the live balance.
+    const ledgerSum = ledgerRows.reduce((acc, row) => acc + row.amountMmk, 0);
+    expect(ledgerSum).toBe(walletRow.balanceMmk);
+
+    // Exactly one ORDER_DEBIT for this order, written with the debit (step 2) —
+    // not a second copy from the order-record transaction (step 5).
+    const orderDebits = ledgerRows.filter(
+      (row) => row.type === "ORDER_DEBIT" && row.referenceId === res.publicOrderNo
+    );
+    expect(orderDebits).toHaveLength(1);
+    expect(orderDebits[0].amountMmk).toBe(-FALLBACK_PRICE_MMk);
   });
 
   it("never returns another customer's order to the order viewer", async () => {
@@ -274,5 +309,38 @@ describe("Bot instant wallet purchase (Recommendation D money path)", () => {
 
     const orderRows = await db.select().from(orders).where(eq(orders.customerId, userId));
     expect(orderRows).toHaveLength(0);
+  });
+});
+
+describe("MMQR invoice message tracking (#4 orphan-photo cleanup)", () => {
+  it("attachMmpayQrMessage returns the previous message id so the stale QR can be removed", async () => {
+    const telegramId = syntheticTelegramId();
+    const { user } = await seedCustomer(telegramId, 0);
+    const db = getDb();
+    const reference = `MMQR-ATTACH-${Date.now()}`;
+    await db.insert(topUpRequests).values({
+      reference,
+      userId: user.id,
+      amountMmk: 5000,
+      paymentMethod: "MMPAY",
+      status: "PENDING",
+      mmpayOrderId: reference,
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+    });
+
+    // First attach: nothing was tracked before → no stale photo to delete.
+    const firstPrev = await botOrderService.attachMmpayQrMessage(reference, 111);
+    expect(firstPrev).toBeNull();
+
+    // Re-show overwrites the id → the previous (111) is returned for deletion.
+    const secondPrev = await botOrderService.attachMmpayQrMessage(reference, 222);
+    expect(secondPrev).toBe(111);
+
+    const [row] = await db.select().from(topUpRequests).where(eq(topUpRequests.reference, reference));
+    expect(row.mmpayQrMessageId).toBe(222);
+
+    // Re-attaching the SAME id must not report a (non-existent) stale photo.
+    const samePrev = await botOrderService.attachMmpayQrMessage(reference, 222);
+    expect(samePrev).toBeNull();
   });
 });

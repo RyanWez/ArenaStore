@@ -266,14 +266,24 @@ export async function adminRoutes(server: FastifyInstance) {
       })
       .from(orders);
 
-    // 2. Pending deposit slips count — both reviewable statuses, matching
-    // the review flow's SUBMITTED|PENDING claim guard.
+    // 2. Pending deposit slips count — deposits actually awaiting a human
+    // review: all SUBMITTED, plus non-MMPay PENDING (awaiting-slip manual
+    // top-ups). Unpaid PENDING MMPay QR requests are excluded — they are
+    // confirmed automatically by the gateway webhook, never by an admin.
     const [depositsResult] = await db
       .select({
         pendingDepositsCount: sql<number>`count(${topUpRequests.id})`,
       })
       .from(topUpRequests)
-      .where(inArray(topUpRequests.status, ["SUBMITTED", "PENDING"]));
+      .where(
+        or(
+          eq(topUpRequests.status, "SUBMITTED"),
+          and(
+            eq(topUpRequests.status, "PENDING"),
+            ne(topUpRequests.paymentMethod, "MMPAY")
+          )
+        )
+      );
 
     // 3. Active products count
     const [productsResult] = await db
@@ -1067,6 +1077,13 @@ export async function adminRoutes(server: FastifyInstance) {
         if (result.code === "NOT_FOUND") {
           return reply.status(404).send({ ok: false, error: "Deposit request not found" });
         }
+        if (result.code === "MMPAY_AUTO_ONLY") {
+          return reply.status(409).send({
+            ok: false,
+            error:
+              "This MyanMyanPay deposit is confirmed automatically by the payment gateway and cannot be approved or rejected manually.",
+          });
+        }
         return reply.status(400).send({
           ok: false,
           error: `Deposit request is already ${result.status}.`,
@@ -1373,8 +1390,10 @@ export async function adminRoutes(server: FastifyInstance) {
       wallet = newWallet;
     }
 
-    // 3. Atomically update wallet balance, write ledger entry, and update order status in a single transaction
+    // 3. Atomically claim the refund, credit the wallet and write the ledger
+    //    entry in a single transaction.
     let newBalance = wallet.balanceMmk + order.totalAmountMmk;
+    let alreadyRefunded = false;
 
     const runTransaction =
       typeof (db as any).transaction === "function"
@@ -1382,6 +1401,25 @@ export async function adminRoutes(server: FastifyInstance) {
         : async (cb: any) => cb(db);
 
     await runTransaction(async (tx: any) => {
+      // Claim the refund atomically: the guarded UPDATE flips the order to
+      // REFUNDED only if it is not already, and returns the row only to the
+      // winner. The pre-check above is a fast path; THIS is the race-safe
+      // guarantee — a concurrent double-submit finds 0 rows here and aborts
+      // before crediting the wallet, so a customer can never be refunded twice.
+      const claimed = await tx
+        .update(orders)
+        .set({
+          status: "REFUNDED",
+          updatedAt: new Date(),
+        })
+        .where(and(eq(orders.id, order.id), ne(orders.status, "REFUNDED")))
+        .returning();
+
+      if (!claimed || claimed.length === 0) {
+        alreadyRefunded = true;
+        return;
+      }
+
       const [updatedWallet] = await tx
         .update(wallets)
         .set({
@@ -1403,15 +1441,11 @@ export async function adminRoutes(server: FastifyInstance) {
         referenceId: order.publicOrderNo,
         notes: `Refund for ${order.publicOrderNo}: ${reason}`,
       });
-
-      await tx
-        .update(orders)
-        .set({
-          status: "REFUNDED",
-          updatedAt: new Date(),
-        })
-        .where(eq(orders.id, order.id));
     });
+
+    if (alreadyRefunded) {
+      return reply.code(400).send({ ok: false, error: "This order has already been refunded" });
+    }
 
     // 4. Send Telegram instant notification to customer
     if (order.customerTelegramId) {
