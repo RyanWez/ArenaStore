@@ -3,10 +3,10 @@ import crypto from "node:crypto";
 import { z } from "zod";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb, topUpRequests, users } from "@arena/db";
-import { MMPayWebhookPayloadSchema, TopUpStatus } from "@arena/shared";
+import { MMPayWebhookPayloadSchema } from "@arena/shared";
 import { mmpayService } from "../services/mmpay.service";
-import { reviewDeposit } from "../services/deposit-review.service";
-import { notifyMmpayTopUpSuccess, notifyMmpayTopUpFailed } from "../services/telegram-notifier";
+import { settleMmpaySuccess } from "../services/mmpay-settlement.service";
+import { notifyMmpayTopUpFailed } from "../services/telegram-notifier";
 import { registerRawJsonBodyParser } from "../plugins/raw-body";
 import { enforceInternalToken } from "../lib/internal-auth";
 import { config } from "../config";
@@ -21,12 +21,6 @@ const CancelMmpayPaymentBodySchema = z.object({
   telegramId: z.string().min(1),
   reference: z.string().min(1),
 });
-
-// A SUCCESS callback may land after our local 15-min timer already flipped the
-// order to EXPIRED. The gateway is authoritative about money received, so we
-// still honor a late SUCCESS within this grace window; beyond it the row is too
-// stale to auto-credit and goes to manual reconciliation.
-const MMPAY_LATE_SUCCESS_GRACE_MS = 30 * 60 * 1000;
 
 export const mmpayRoutes: FastifyPluginAsync = async (server) => {
   // Capture the exact raw request body (scoped to this plugin) so webhook HMAC
@@ -103,140 +97,37 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
       "[MMPay Webhook] Processing event"
     );
 
-    // Handle SUCCESS event
+    // Handle SUCCESS event — credit via the shared settlement path (identical
+    // to the reconciliation sweep), then map its result to the HTTP status the
+    // gateway expects (200 settles/dedupes, 4xx rejects, 500 asks for retry).
     if (payload.status === "SUCCESS") {
-      // Already-credited guard. Approved MMPay deposits are flipped to
-      // "COMPLETED" by reviewDeposit, so that is the status a duplicate SUCCESS
-      // callback will see ("APPROVED" kept for backward compatibility).
-      if (topUp.status === TopUpStatus.COMPLETED || topUp.status === TopUpStatus.APPROVED) {
-        return reply.send({ ok: true, status: "ALREADY_APPROVED" });
-      }
-
-      // A top-up may have been flipped to EXPIRED (our 15-min timer lapsed, or a
-      // prior EXPIRED callback) before this SUCCESS callback arrives. The gateway
-      // is authoritative about money actually received, so credit a late SUCCESS
-      // on an EXPIRED row within a bounded grace window; beyond that leave it for
-      // manual reconciliation rather than crediting a stale row.
-      const isLateExpired = topUp.status === TopUpStatus.EXPIRED;
-      if (isLateExpired) {
-        const expiredAtMs = topUp.expiresAt ? new Date(topUp.expiresAt).getTime() : 0;
-        if (expiredAtMs && Date.now() - expiredAtMs > MMPAY_LATE_SUCCESS_GRACE_MS) {
-          request.log.warn(
-            { topUpId: topUp.id, reference: topUp.reference },
-            "[MMPay Webhook] SUCCESS for long-expired order — needs manual reconcile"
-          );
-          return reply.status(409).send({ ok: false, error: "Order expired beyond grace window" });
-        }
-      }
-
-      // Defense-in-depth: a dynamic MMQR is a fixed-amount, MMK request, so the
-      // callback must report the exact amount and currency we created it with.
-      // A mismatch means tampering or a gateway anomaly — never auto-credit;
-      // leave the request PENDING for manual handling and surface it loudly.
-      if (payload.currency && payload.currency !== "MMK") {
-        request.log.error(
-          { topUpId: topUp.id, reference: topUp.reference, currency: payload.currency },
-          "[MMPay Webhook] Rejecting SUCCESS with unexpected currency"
-        );
-        return reply.status(400).send({ ok: false, error: "Unexpected payment currency" });
-      }
-      if (payload.amount !== topUp.amountMmk) {
-        request.log.error(
-          { topUpId: topUp.id, reference: topUp.reference, expected: topUp.amountMmk, received: payload.amount },
-          "[MMPay Webhook] Rejecting SUCCESS with amount mismatch"
-        );
-        return reply.status(400).send({ ok: false, error: "Payment amount mismatch" });
-      }
-
-      // Store transaction references
-      await db
-        .update(topUpRequests)
-        .set({
-          transactionRef: payload.transactionRefId || payload.vendorQrRefId || topUp.transactionRef,
-          mmpayVendorQrRef: payload.vendorQrRefId || topUp.mmpayVendorQrRef,
-        })
-        .where(eq(topUpRequests.id, topUp.id));
-
-      // Use atomic deposit approval service to credit wallet, log audit, and
-      // notify user. `viaGatewayWebhook` lets reviewDeposit credit a PENDING
-      // MMPay request — the gateway callback is the only legitimate approver of
-      // an MMPay top-up (manual panel/group approval of PENDING MMPay is
-      // blocked precisely because the customer may not have paid yet).
-      const outcome = await reviewDeposit({
-        depositId: topUp.id,
-        action: "APPROVE",
-        viaGatewayWebhook: true,
-        // Always allow an in-grace EXPIRED row to credit. Long-expired rows are
-        // already rejected above; passing this unconditionally also closes the
-        // race where our scheduler flips PENDING→EXPIRED while this very SUCCESS
-        // callback is being processed (the customer paid, so honor it).
-        gatewayGraceExpired: true,
-        // The webhook owns the customer-facing UX (clears the live QR invoice +
-        // posts one MMQR success card) and MMPay auto-payments shouldn't spam
-        // the admin group, so suppress both of reviewDeposit's notifications.
-        notifyCustomer: false,
-        notifyGroup: false,
-        actor: {
-          kind: "ADMIN",
-          adminUserId: null,
-        },
+      const result = await settleMmpaySuccess({
+        topUp,
+        amount: payload.amount,
+        currency: payload.currency,
+        transactionRefId: payload.transactionRefId,
+        vendorQrRefId: payload.vendorQrRefId,
+        source: "webhook",
+        log: request.log,
       });
 
-      if (!outcome.ok) {
-        request.log.warn({ outcome }, "[MMPay Webhook] Deposit review outcome not ok");
-        if (outcome.code === "ALREADY_REVIEWED") {
+      switch (result.code) {
+        case "CREDITED":
+          return reply.send({ ok: true, status: "APPROVED" });
+        case "ALREADY_CREDITED":
           return reply.send({ ok: true, status: "ALREADY_APPROVED" });
-        }
-        // Credit did not happen (e.g. NOT_FOUND/MMPAY_AUTO_ONLY shouldn't occur
-        // here) — report so MyanMyanPay can retry rather than silently drop it.
-        return reply.status(500).send({ ok: false, error: "Deposit credit failed" });
+        case "EXPIRED_BEYOND_GRACE":
+          return reply.status(409).send({ ok: false, error: "Order expired beyond grace window" });
+        case "CURRENCY_MISMATCH":
+          return reply.status(400).send({ ok: false, error: "Unexpected payment currency" });
+        case "AMOUNT_MISMATCH":
+          return reply.status(400).send({ ok: false, error: "Payment amount mismatch" });
+        case "CREDIT_FAILED":
+        default:
+          // Credit did not happen — report so MyanMyanPay retries rather than
+          // silently dropping a paid order.
+          return reply.status(500).send({ ok: false, error: "Deposit credit failed" });
       }
-
-      // Fire-and-forget the customer confirmation so the gateway ack is never
-      // delayed by Telegram latency: remove the live QR invoice photo and post
-      // a single MMQR success card. The wallet is already credited at this point.
-      //
-      // mmpay_success_notified_at is the atomic one-time claim that dedupes this
-      // push against the customer's manual "Refresh" button — only the caller
-      // whose guarded UPDATE flips it from NULL owns the single success card. If
-      // the push fails to reach Telegram we release the claim (back to NULL) so
-      // Refresh can retry; without that a dropped push left the customer with a
-      // stuck QR and no confirmation.
-      const newBalanceMmk = outcome.action === "APPROVED" ? outcome.newBalanceMmk : topUp.amountMmk;
-      const qrMessageId = topUp.mmpayQrMessageId;
-      void (async () => {
-        const claimed = await db
-          .update(topUpRequests)
-          .set({ mmpaySuccessNotifiedAt: new Date() })
-          .where(and(eq(topUpRequests.id, topUp.id), isNull(topUpRequests.mmpaySuccessNotifiedAt)))
-          .returning({ id: topUpRequests.id });
-
-        // Claim lost — the bot's Refresh already announced this top-up.
-        if (claimed.length === 0) return;
-
-        const delivered = await notifyMmpayTopUpSuccess({
-          telegramId: outcome.telegramId ?? "",
-          qrMessageId,
-          reference: topUp.reference,
-          amountMmk: topUp.amountMmk,
-          newBalanceMmk,
-        });
-
-        if (!delivered) {
-          await db
-            .update(topUpRequests)
-            .set({ mmpaySuccessNotifiedAt: null })
-            .where(eq(topUpRequests.id, topUp.id));
-          request.log.warn(
-            { reference: topUp.reference },
-            "[MMPay Webhook] success card not delivered — released for customer Refresh retry"
-          );
-        }
-      })().catch((err: any) =>
-        request.log.warn({ err: err?.message }, "[MMPay Webhook] MMQR success notification failed")
-      );
-
-      return reply.send({ ok: true, status: "APPROVED" });
     }
 
     // Handle terminal failure statuses (FAILED, EXPIRED, CANCELLED)
@@ -479,7 +370,7 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
 
       try {
         // 3. Call MyanMyanPay Gateway
-        const publicBaseUrl = process.env.PUBLIC_API_URL;
+        const publicBaseUrl = config.PUBLIC_API_URL;
         const callbackUrl = publicBaseUrl ? `${publicBaseUrl.replace(/\/+$/, "")}/api/webhooks/mmpay` : undefined;
 
         const mmpayRes = await mmpayService.createPayment({
@@ -619,7 +510,41 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
         return reply.status(404).send({ ok: false, error: "Top-up request not found" });
       }
 
-      // Check if expired
+      // Refresh self-recovery: if the order is still PENDING and the gateway is
+      // configured, pull its real status now so a webhook that was never
+      // delivered is reconciled the moment the customer presses "Refresh". The
+      // periodic sweep is the no-user-action safety net; this makes recovery
+      // instant on demand. Best-effort — a gateway error just falls through to
+      // the local status.
+      if (topUp.status === "PENDING" && mmpayService.ready) {
+        try {
+          const gw = await mmpayService.getPaymentStatus(topUp.mmpayOrderId ?? topUp.reference);
+          if (gw.status === "SUCCESS") {
+            await settleMmpaySuccess({
+              topUp,
+              amount: gw.amount ?? topUp.amountMmk,
+              currency: gw.currency,
+              transactionRefId: gw.transactionRefId,
+              vendorQrRefId: gw.vendorQrRefId,
+              source: "reconcile",
+              log: request.log,
+            });
+            const [fresh] = await db
+              .select({ status: topUpRequests.status })
+              .from(topUpRequests)
+              .where(eq(topUpRequests.id, topUp.id))
+              .limit(1);
+            if (fresh) topUp.status = fresh.status;
+          }
+        } catch (err: any) {
+          request.log.warn(
+            { err: err?.message, reference: topUp.reference },
+            "[MMPay] on-demand status reconcile failed"
+          );
+        }
+      }
+
+      // Check if expired (only if the on-demand reconcile above didn't settle it)
       const isExpired =
         topUp.status === "PENDING" &&
         topUp.expiresAt &&

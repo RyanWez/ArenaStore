@@ -67,6 +67,19 @@ const envSchema = z.object({
   MMPAY_SECRET_KEY: z.string().default(""),
   MMPAY_API_BASE_URL: z.string().default("https://bbapi.myanmyanpay.com"),
   /**
+   * Public HTTPS base URL of this API, used to build the MMQR webhook callback
+   * URL (`<PUBLIC_API_URL>/api/webhooks/mmpay`). Empty falls back to the
+   * webhook URL configured in the MMPay developer portal.
+   */
+  PUBLIC_API_URL: z.string().default(""),
+  /**
+   * How often (seconds) the API polls MyanMyanPay for still-PENDING MMQR
+   * top-ups and credits any the gateway reports as paid — the safety net for a
+   * webhook that was never delivered. 0 disables the reconciliation sweep.
+   * Only runs when MMPay credentials are configured.
+   */
+  MMPAY_RECONCILE_INTERVAL_SECONDS: z.coerce.number().int().min(0).default(45),
+  /**
    * Whether Fastify should trust reverse proxy headers like X-Forwarded-For.
    * - "loopback, uniquelocal" (or 1): trusts local & private reverse proxies (e.g. Render,
    *   Docker, Cloudflare, Nginx, AWS VPC) while rejecting spoofed IP headers from public clients. (Default)

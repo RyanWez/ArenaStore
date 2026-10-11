@@ -20,6 +20,8 @@ import {
   startCatalogSyncScheduler,
   startBalanceCheckScheduler,
 } from "./services/catalog-scheduler";
+import { startMmpayReconcileScheduler } from "./services/mmpay-reconcile-scheduler";
+import { mmpayService } from "./services/mmpay.service";
 import { supplierBalanceMonitor } from "./services/supplier-balance-monitor";
 import { config } from "./config";
 
@@ -166,6 +168,23 @@ export async function buildServer(): Promise<FastifyInstance> {
     });
     server.addHook("onClose", async () => {
       balanceScheduler.stop();
+    });
+  }
+
+  // MMQR reconciliation sweep: the safety net for a webhook that was never
+  // delivered. Pulls still-PENDING MMQR orders from the gateway and credits any
+  // it reports as paid. Only runs with real MMPay credentials; the interval
+  // (seconds) is configurable and 0 disables it. Off in tests.
+  if (
+    config.NODE_ENV !== "test" &&
+    config.MMPAY_RECONCILE_INTERVAL_SECONDS > 0 &&
+    mmpayService.ready
+  ) {
+    const reconcileScheduler = startMmpayReconcileScheduler({
+      intervalSeconds: config.MMPAY_RECONCILE_INTERVAL_SECONDS,
+    });
+    server.addHook("onClose", async () => {
+      reconcileScheduler.stop();
     });
   }
 

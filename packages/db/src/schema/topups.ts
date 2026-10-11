@@ -34,6 +34,11 @@ export const topUpRequests = pgTable(
     // the customer never sees a duplicate. Cleared back to NULL only to release
     // a failed send for retry.
     mmpaySuccessNotifiedAt: timestamp("mmpay_success_notified_at", { withTimezone: true }),
+    // One-time claim timestamp for the admin "needs manual reconcile" alert on
+    // an MMQR top-up the gateway reported as paid but we refused to auto-credit
+    // (amount/currency mismatch, or SUCCESS beyond the late-success grace). Set
+    // once so the webhook and the reconciliation sweep never spam the alert.
+    mmpayReconcileAlertedAt: timestamp("mmpay_reconcile_alerted_at", { withTimezone: true }),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
   },
   (table) => [

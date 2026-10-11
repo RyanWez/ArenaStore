@@ -646,3 +646,68 @@ export async function notifyLowSupplierBalance(params: {
   return sendTelegramMessage(chatId, text, Number.isFinite(topicId) && topicId > 0 ? topicId : undefined);
 }
 
+/**
+ * Alerts the admin Telegram group that an MMQR top-up the gateway reported as
+ * paid could NOT be auto-credited and needs a human to reconcile (amount or
+ * currency mismatch, or a SUCCESS that arrived beyond the late-success grace
+ * window). Routed into the "Bot Alert" topic like the low-balance alert.
+ * Best-effort: never throws, so it can never disrupt the payment path.
+ */
+export async function notifyMmpayReconcileAlert(params: {
+  reference: string;
+  reason: string;
+  expectedAmountMmk: number;
+  gatewayAmount?: number | null;
+  gatewayCurrency?: string | null;
+  telegramId?: string | null;
+}): Promise<boolean> {
+  const { reference, reason, expectedAmountMmk, gatewayAmount, gatewayCurrency, telegramId } = params;
+
+  let chatId = config.TELEGRAM_GROUP_CHAT_ID;
+  let topicRaw = "";
+  try {
+    const db = getDb();
+    if (!chatId) {
+      const [setting] = await db
+        .select()
+        .from(appSettings)
+        .where(eq(appSettings.key, "telegramGroupChatId"));
+      if (setting?.value) chatId = setting.value;
+    }
+    const [topicSetting] = await db
+      .select()
+      .from(appSettings)
+      .where(eq(appSettings.key, "telegramBotAlertTopicId"));
+    if (topicSetting?.value) topicRaw = topicSetting.value;
+  } catch {
+    // ignore — fall back to env/general topic below
+  }
+
+  if (!chatId) {
+    console.warn("[Telegram Notifier] No admin group chatId configured for MMQR reconcile alert.");
+    return false;
+  }
+
+  if (!topicRaw) topicRaw = config.TELEGRAM_BOT_ALERT_TOPIC_ID || "";
+  const topicId = parseInt(topicRaw, 10);
+
+  const warning = tgEmoji(BOT_EMOJIS.WARNING, "⚠️");
+  const money = tgEmoji(BOT_EMOJIS.MONEY, "💰");
+  const gatewayAmountLine =
+    typeof gatewayAmount === "number"
+      ? `• <b>Gateway amount:</b> <b>${gatewayAmount.toLocaleString("en-US")} ${escapeHtml(gatewayCurrency || "")}</b>\n`
+      : "";
+
+  const text =
+    `<blockquote>${warning} <b>MMQR — MANUAL RECONCILE NEEDED</b> ❞\n` +
+    `ဤ MMQR ကို gateway က ပေးချေပြီးဟု ပြသော်လည်း အလိုအလျောက် မသွင်းနိုင်ပါ။</blockquote>\n\n` +
+    `${money} <b>Reference:</b> <code>${escapeHtml(reference)}</code>\n` +
+    `• <b>Expected:</b> <b>${expectedAmountMmk.toLocaleString("en-US")} MMK</b>\n` +
+    gatewayAmountLine +
+    (telegramId ? `• <b>Customer TG:</b> <code>${escapeHtml(telegramId)}</code>\n` : "") +
+    `• <b>Reason:</b> <i>${escapeHtml(reason)}</i>\n\n` +
+    `ကျေးဇူးပြု၍ လက်ဖြင့် စစ်ဆေးပြီး လိုအပ်ပါက ကိုယ်တိုင် ဖြည့်သွင်းပေးပါ။`;
+
+  return sendTelegramMessage(chatId, text, Number.isFinite(topicId) && topicId > 0 ? topicId : undefined);
+}
+
