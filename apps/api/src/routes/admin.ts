@@ -1390,8 +1390,10 @@ export async function adminRoutes(server: FastifyInstance) {
       wallet = newWallet;
     }
 
-    // 3. Atomically update wallet balance, write ledger entry, and update order status in a single transaction
+    // 3. Atomically claim the refund, credit the wallet and write the ledger
+    //    entry in a single transaction.
     let newBalance = wallet.balanceMmk + order.totalAmountMmk;
+    let alreadyRefunded = false;
 
     const runTransaction =
       typeof (db as any).transaction === "function"
@@ -1399,6 +1401,25 @@ export async function adminRoutes(server: FastifyInstance) {
         : async (cb: any) => cb(db);
 
     await runTransaction(async (tx: any) => {
+      // Claim the refund atomically: the guarded UPDATE flips the order to
+      // REFUNDED only if it is not already, and returns the row only to the
+      // winner. The pre-check above is a fast path; THIS is the race-safe
+      // guarantee — a concurrent double-submit finds 0 rows here and aborts
+      // before crediting the wallet, so a customer can never be refunded twice.
+      const claimed = await tx
+        .update(orders)
+        .set({
+          status: "REFUNDED",
+          updatedAt: new Date(),
+        })
+        .where(and(eq(orders.id, order.id), ne(orders.status, "REFUNDED")))
+        .returning();
+
+      if (!claimed || claimed.length === 0) {
+        alreadyRefunded = true;
+        return;
+      }
+
       const [updatedWallet] = await tx
         .update(wallets)
         .set({
@@ -1420,15 +1441,11 @@ export async function adminRoutes(server: FastifyInstance) {
         referenceId: order.publicOrderNo,
         notes: `Refund for ${order.publicOrderNo}: ${reason}`,
       });
-
-      await tx
-        .update(orders)
-        .set({
-          status: "REFUNDED",
-          updatedAt: new Date(),
-        })
-        .where(eq(orders.id, order.id));
     });
+
+    if (alreadyRefunded) {
+      return reply.code(400).send({ ok: false, error: "This order has already been refunded" });
+    }
 
     // 4. Send Telegram instant notification to customer
     if (order.customerTelegramId) {
