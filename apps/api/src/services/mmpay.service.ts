@@ -70,12 +70,7 @@ export class MmpayService {
   /**
    * Server-to-server request signature, matching the official mmpay-node-sdk:
    * HMAC-SHA256 of `${nonce}.${bodyString}` with the SECRET key, sent as
-   * X-Mmpay-Nonce + X-Mmpay-Signature on every gateway call. This is how
-   * MyanMyanPay authenticates a SERVER integration. Without it the gateway
-   * treats the publishable-key call as a BROWSER-SDK call and gates it on the
-   * (optional, empty for us) browser Origin whitelist — which is why production
-   * rejected us with R0004 "Origin Requires SSL" / R0003 "Origin Whitelist Not
-   * Allowed" while the lax sandbox let the unsigned call through.
+   * X-Mmpay-Nonce + X-Mmpay-Signature on every gateway call.
    */
   private signHeaders(bodyString: string, nonce: string): Record<string, string> {
     const signature = crypto
@@ -86,24 +81,54 @@ export class MmpayService {
   }
 
   /**
-   * R0004 ("Origin Requires SSL") / R0003 ("Origin Whitelist Not Allowed") mean
-   * the gateway did NOT accept our server signature and fell back to treating the
-   * call as a browser-SDK call gated on the Origin whitelist. With a correct
-   * X-Mmpay-Signature this path is never taken — so in a server integration these
-   * codes almost always mean the SECRET key used to sign does not match the one on
-   * the MMPay application (wrong value, mismatched pk/sk pair, or stray whitespace
-   * in the host env). Surface that instead of a bare HTTP error.
+   * The production `/xpayments/*` endpoints gate every call on an HTTPS `Origin`
+   * header: with none (or an http:// one) the gateway answers R0004 "Origin
+   * Requires SSL"; with one whose host is not allowed it answers R0003 "Origin
+   * Whitelist Not Allowed". Our application leaves the browser Origin whitelist
+   * open, so ANY https origin is accepted — we send our own public API origin.
+   * Sandbox does not enforce this, so on dev/sandbox an empty PUBLIC_API_URL
+   * simply sends no Origin header.
+   */
+  private get originHeader(): Record<string, string> {
+    const raw = config.PUBLIC_API_URL;
+    if (!raw) return {};
+    try {
+      const { origin } = new URL(raw);
+      return origin.startsWith("https://") ? { Origin: origin } : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Turns a gateway handshake rejection into an actionable message. R0004/R0003
+   * are Origin-header errors (see originHeader): in practice R0004 means
+   * PUBLIC_API_URL is missing/non-https on this host, R0003 means its host is not
+   * on the application's Origin whitelist. R0002 means the publishable key/appId
+   * does not match a live application.
    */
   private describeHandshakeFailure(status: number, body: string): string {
     const base = `MMPay handshake failed (HTTP ${status}): ${body}`;
-    if (/R000[34]/.test(body)) {
-      return (
-        `${base} — the gateway rejected our server signature and fell back to ` +
-        `browser-origin mode. Verify MMPAY_SECRET_KEY (and the pk/sk pair + MMPAY_APP_ID) ` +
-        `on this host exactly matches the live MyanMyanPay application.`
-      );
+    if (/R0004/.test(body)) {
+      return `${base} — the production gateway requires an HTTPS Origin header. Set PUBLIC_API_URL to this service's public https URL (e.g. https://arena.ryanwez.com).`;
+    }
+    if (/R0003/.test(body)) {
+      return `${base} — the Origin we sent is not on the MMPay application's Origin whitelist. Add PUBLIC_API_URL's host, or clear the whitelist to allow any origin.`;
+    }
+    if (/R0002/.test(body)) {
+      return `${base} — the publishable key/appId was rejected. Verify MMPAY_PUBLISHABLE_KEY and MMPAY_APP_ID match the live MyanMyanPay application.`;
     }
     return base;
+  }
+
+  /** Guard: production gateway calls are impossible without an HTTPS Origin. */
+  private assertProductionOrigin(): void {
+    if (!this.isSandbox && !this.originHeader.Origin) {
+      throw new Error(
+        "MMPay production calls require an HTTPS Origin header, but PUBLIC_API_URL is unset or not https. " +
+          "Set PUBLIC_API_URL to this service's public https URL (e.g. https://arena.ryanwez.com)."
+      );
+    }
   }
 
   /**
@@ -116,6 +141,7 @@ export class MmpayService {
     }
 
     const envPrefix = this.isSandbox ? "sandbox" : "production";
+    this.assertProductionOrigin();
 
     // 1. Handshake to obtain one-time authorization token (signed as a server).
     const hsNonce = Date.now().toString();
@@ -126,6 +152,7 @@ export class MmpayService {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${config.MMPAY_PUBLISHABLE_KEY}`,
+        ...this.originHeader,
         ...this.signHeaders(hsBody, hsNonce),
       },
       body: hsBody,
@@ -158,6 +185,7 @@ export class MmpayService {
         "Content-Type": "application/json",
         Authorization: `Bearer ${config.MMPAY_PUBLISHABLE_KEY}`,
         "X-Mmpay-Btoken": token,
+        ...this.originHeader,
         ...this.signHeaders(createBody, createNonce),
       },
       body: createBody,
@@ -165,7 +193,7 @@ export class MmpayService {
 
     if (!createRes.ok) {
       const errText = await createRes.text();
-      throw new Error(`MMPay payment create failed (HTTP ${createRes.status}): ${errText}`);
+      throw new Error(this.describeHandshakeFailure(createRes.status, errText));
     }
 
     const data = (await createRes.json()) as MmpayPaymentResponse;
@@ -194,6 +222,7 @@ export class MmpayService {
     }
 
     const envPrefix = this.isSandbox ? "sandbox" : "production";
+    this.assertProductionOrigin();
 
     // 1. Handshake for a fresh one-time authorization token (signed as a server).
     const hsNonce = Date.now().toString();
@@ -204,6 +233,7 @@ export class MmpayService {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${config.MMPAY_PUBLISHABLE_KEY}`,
+        ...this.originHeader,
         ...this.signHeaders(hsBody, hsNonce),
       },
       body: hsBody,
@@ -229,6 +259,7 @@ export class MmpayService {
         "Content-Type": "application/json",
         Authorization: `Bearer ${config.MMPAY_PUBLISHABLE_KEY}`,
         "X-Mmpay-Btoken": token,
+        ...this.originHeader,
         ...this.signHeaders(showBody, showNonce),
       },
       body: showBody,
