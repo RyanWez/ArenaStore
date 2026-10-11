@@ -410,12 +410,16 @@ export const mmpayRoutes: FastifyPluginAsync = async (server) => {
         });
       } catch (err: any) {
         request.log.error(err, "[MMPay] Payment initiation failed");
-        // Mark topup as failed if gateway rejected
+        // Mark topup as failed if gateway rejected. reject_reason is varchar(255),
+        // and gateway errors (e.g. the verbose R0004 handshake message) can exceed
+        // that — an un-truncated write throws "value too long", which would crash
+        // this very catch block and turn a clean 502 into a 500. Cap it.
+        const rejectReason = (err?.message || "Gateway payment creation failed").slice(0, 255);
         await db
           .update(topUpRequests)
           .set({
             status: "FAILED",
-            rejectReason: err.message || "Gateway payment creation failed",
+            rejectReason,
           })
           .where(eq(topUpRequests.id, newTopUp.id));
 
