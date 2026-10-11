@@ -68,6 +68,24 @@ export class MmpayService {
   }
 
   /**
+   * Server-to-server request signature, matching the official mmpay-node-sdk:
+   * HMAC-SHA256 of `${nonce}.${bodyString}` with the SECRET key, sent as
+   * X-Mmpay-Nonce + X-Mmpay-Signature on every gateway call. This is how
+   * MyanMyanPay authenticates a SERVER integration. Without it the gateway
+   * treats the publishable-key call as a BROWSER-SDK call and gates it on the
+   * (optional, empty for us) browser Origin whitelist — which is why production
+   * rejected us with R0004 "Origin Requires SSL" / R0003 "Origin Whitelist Not
+   * Allowed" while the lax sandbox let the unsigned call through.
+   */
+  private signHeaders(bodyString: string, nonce: string): Record<string, string> {
+    const signature = crypto
+      .createHmac("sha256", config.MMPAY_SECRET_KEY)
+      .update(`${nonce}.${bodyString}`)
+      .digest("hex");
+    return { "X-Mmpay-Nonce": nonce, "X-Mmpay-Signature": signature };
+  }
+
+  /**
    * Generates a dynamic MMQR payment request with MyanMyanPay gateway.
    * Performs the required JWT token handshake first, then creates the payment.
    */
@@ -76,21 +94,20 @@ export class MmpayService {
       throw new Error("MyanMyanPay credentials are not configured in environment.");
     }
 
-    const nonce = Date.now().toString();
     const envPrefix = this.isSandbox ? "sandbox" : "production";
 
-    // 1. Handshake to obtain one-time authorization token
+    // 1. Handshake to obtain one-time authorization token (signed as a server).
+    const hsNonce = Date.now().toString();
+    const hsBody = JSON.stringify({ orderId: params.orderId, nonce: hsNonce });
     const tokenEndpoint = `${this.baseUrl}/xpayments/${envPrefix}-token-request`;
     const tokenRes = await fetch(tokenEndpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${config.MMPAY_PUBLISHABLE_KEY}`,
+        ...this.signHeaders(hsBody, hsNonce),
       },
-      body: JSON.stringify({
-        orderId: params.orderId,
-        nonce,
-      }),
+      body: hsBody,
     });
 
     if (!tokenRes.ok) {
@@ -103,7 +120,16 @@ export class MmpayService {
       throw new Error("MMPay handshake did not return authorization token.");
     }
 
-    // 2. Create Payment Instance
+    // 2. Create Payment Instance (signed as a server).
+    const createNonce = Date.now().toString();
+    const createBody = JSON.stringify({
+      orderId: params.orderId,
+      amount: params.amountMmk,
+      currency: "MMK",
+      nonce: createNonce,
+      callbackUrl: params.callbackUrl,
+      customMessage: params.customMessage,
+    });
     const createEndpoint = `${this.baseUrl}/xpayments/${envPrefix}-payment-create`;
     const createRes = await fetch(createEndpoint, {
       method: "POST",
@@ -111,15 +137,9 @@ export class MmpayService {
         "Content-Type": "application/json",
         Authorization: `Bearer ${config.MMPAY_PUBLISHABLE_KEY}`,
         "X-Mmpay-Btoken": token,
+        ...this.signHeaders(createBody, createNonce),
       },
-      body: JSON.stringify({
-        orderId: params.orderId,
-        amount: params.amountMmk,
-        currency: "MMK",
-        nonce,
-        callbackUrl: params.callbackUrl,
-        customMessage: params.customMessage,
-      }),
+      body: createBody,
     });
 
     if (!createRes.ok) {
@@ -152,18 +172,20 @@ export class MmpayService {
       throw new Error("getPaymentStatus requires an orderId.");
     }
 
-    const nonce = `${Date.now()}_show`;
     const envPrefix = this.isSandbox ? "sandbox" : "production";
 
-    // 1. Handshake for a fresh one-time authorization token (same as create).
+    // 1. Handshake for a fresh one-time authorization token (signed as a server).
+    const hsNonce = Date.now().toString();
+    const hsBody = JSON.stringify({ orderId, nonce: hsNonce });
     const tokenEndpoint = `${this.baseUrl}/xpayments/${envPrefix}-token-request`;
     const tokenRes = await fetch(tokenEndpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${config.MMPAY_PUBLISHABLE_KEY}`,
+        ...this.signHeaders(hsBody, hsNonce),
       },
-      body: JSON.stringify({ orderId, nonce }),
+      body: hsBody,
     });
 
     if (!tokenRes.ok) {
@@ -176,7 +198,9 @@ export class MmpayService {
       throw new Error("MMPay status handshake did not return authorization token.");
     }
 
-    // 2. Retrieve the payment.
+    // 2. Retrieve the payment (signed as a server).
+    const showNonce = Date.now().toString();
+    const showBody = JSON.stringify({ orderId, nonce: showNonce });
     const showEndpoint = `${this.baseUrl}/xpayments/${envPrefix}-payment-show`;
     const showRes = await fetch(showEndpoint, {
       method: "POST",
@@ -184,8 +208,9 @@ export class MmpayService {
         "Content-Type": "application/json",
         Authorization: `Bearer ${config.MMPAY_PUBLISHABLE_KEY}`,
         "X-Mmpay-Btoken": token,
+        ...this.signHeaders(showBody, showNonce),
       },
-      body: JSON.stringify({ orderId, nonce }),
+      body: showBody,
     });
 
     if (!showRes.ok) {
