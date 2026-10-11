@@ -72,7 +72,7 @@ const envSchema = z.object({
   MMPAY_SECRET_KEY: z.string().default("").transform((v) => v.trim()),
   MMPAY_API_BASE_URL: z
     .string()
-    .default("https://bbapi.myanmyanpay.com")
+    .default("https://ezapi.myanmyanpay.com")
     .transform((v) => v.trim()),
   /**
    * Public HTTPS base URL of this API, used to build the MMQR webhook callback

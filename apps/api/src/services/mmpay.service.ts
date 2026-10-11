@@ -81,54 +81,26 @@ export class MmpayService {
   }
 
   /**
-   * The production `/xpayments/*` endpoints gate every call on an HTTPS `Origin`
-   * header: with none (or an http:// one) the gateway answers R0004 "Origin
-   * Requires SSL"; with one whose host is not allowed it answers R0003 "Origin
-   * Whitelist Not Allowed". Our application leaves the browser Origin whitelist
-   * open, so ANY https origin is accepted — we send our own public API origin.
-   * Sandbox does not enforce this, so on dev/sandbox an empty PUBLIC_API_URL
-   * simply sends no Origin header.
+   * Maps a gateway rejection to actionable guidance. The server API uses the
+   * KA* (API-key layer) and BA* (JWT/Btoken layer) error families. The R000x
+   * codes are the BROWSER-SDK Origin errors — seeing one means MMPAY_API_BASE_URL
+   * points at the browser host (bbapi) instead of the server host.
    */
-  private get originHeader(): Record<string, string> {
-    const raw = config.PUBLIC_API_URL;
-    if (!raw) return {};
-    try {
-      const { origin } = new URL(raw);
-      return origin.startsWith("https://") ? { Origin: origin } : {};
-    } catch {
-      return {};
-    }
-  }
-
-  /**
-   * Turns a gateway handshake rejection into an actionable message. R0004/R0003
-   * are Origin-header errors (see originHeader): in practice R0004 means
-   * PUBLIC_API_URL is missing/non-https on this host, R0003 means its host is not
-   * on the application's Origin whitelist. R0002 means the publishable key/appId
-   * does not match a live application.
-   */
-  private describeHandshakeFailure(status: number, body: string): string {
-    const base = `MMPay handshake failed (HTTP ${status}): ${body}`;
-    if (/R0004/.test(body)) {
-      return `${base} — the production gateway requires an HTTPS Origin header. Set PUBLIC_API_URL to this service's public https URL (e.g. https://arena.ryanwez.com).`;
-    }
-    if (/R0003/.test(body)) {
-      return `${base} — the Origin we sent is not on the MMPay application's Origin whitelist. Add PUBLIC_API_URL's host, or clear the whitelist to allow any origin.`;
-    }
-    if (/R0002/.test(body)) {
-      return `${base} — the publishable key/appId was rejected. Verify MMPAY_PUBLISHABLE_KEY and MMPAY_APP_ID match the live MyanMyanPay application.`;
-    }
+  private describeFailure(stage: string, status: number, body: string): string {
+    const base = `MMPay ${stage} failed (HTTP ${status}): ${body}`;
+    if (/KA0001/.test(body))
+      return `${base} — Bearer token missing; check MMPAY_PUBLISHABLE_KEY is set.`;
+    if (/KA0002/.test(body))
+      return `${base} — the publishable key is not LIVE; activate the application or use the live key.`;
+    if (/KA0003/.test(body))
+      return `${base} — signature mismatch; verify MMPAY_SECRET_KEY matches the application.`;
+    if (/KA0005/.test(body))
+      return `${base} — this server's IP is not on the application's IP whitelist.`;
+    if (/BA00[0-2]/.test(body))
+      return `${base} — handshake Btoken/nonce rejected (the create/get nonce must equal the handshake nonce).`;
+    if (/R000?[0-9]/.test(body))
+      return `${base} — this is a BROWSER-SDK Origin error, which means MMPAY_API_BASE_URL is the browser host. Set it to the server host https://ezapi.myanmyanpay.com.`;
     return base;
-  }
-
-  /** Guard: production gateway calls are impossible without an HTTPS Origin. */
-  private assertProductionOrigin(): void {
-    if (!this.isSandbox && !this.originHeader.Origin) {
-      throw new Error(
-        "MMPay production calls require an HTTPS Origin header, but PUBLIC_API_URL is unset or not https. " +
-          "Set PUBLIC_API_URL to this service's public https URL (e.g. https://arena.ryanwez.com)."
-      );
-    }
   }
 
   /**
@@ -140,27 +112,27 @@ export class MmpayService {
       throw new Error("MyanMyanPay credentials are not configured in environment.");
     }
 
-    const envPrefix = this.isSandbox ? "sandbox" : "production";
-    this.assertProductionOrigin();
+    // Production segments are bare (`handshake`/`create`); sandbox keys use the
+    // `sandbox-` prefix. One nonce is shared by the handshake and the create: the
+    // handshake Btoken embeds this nonce and the create's X-Mmpay-Nonce must equal
+    // it, or the gateway rejects with BA002 "Btoken nonce mismatch".
+    const seg = this.isSandbox ? "sandbox-" : "";
+    const nonce = Date.now().toString();
 
-    // 1. Handshake to obtain one-time authorization token (signed as a server).
-    const hsNonce = Date.now().toString();
-    const hsBody = JSON.stringify({ orderId: params.orderId, nonce: hsNonce });
-    const tokenEndpoint = `${this.baseUrl}/xpayments/${envPrefix}-token-request`;
-    const tokenRes = await fetch(tokenEndpoint, {
+    // 1. Handshake to obtain the one-time Btoken.
+    const hsBody = JSON.stringify({ orderId: params.orderId, nonce });
+    const tokenRes = await fetch(`${this.baseUrl}/payments/${seg}handshake`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${config.MMPAY_PUBLISHABLE_KEY}`,
-        ...this.originHeader,
-        ...this.signHeaders(hsBody, hsNonce),
+        ...this.signHeaders(hsBody, nonce),
       },
       body: hsBody,
     });
 
     if (!tokenRes.ok) {
-      const errText = await tokenRes.text();
-      throw new Error(this.describeHandshakeFailure(tokenRes.status, errText));
+      throw new Error(this.describeFailure("handshake", tokenRes.status, await tokenRes.text()));
     }
 
     const { token } = (await tokenRes.json()) as { token: string };
@@ -168,32 +140,28 @@ export class MmpayService {
       throw new Error("MMPay handshake did not return authorization token.");
     }
 
-    // 2. Create Payment Instance (signed as a server).
-    const createNonce = Date.now().toString();
+    // 2. Create the payment with the SAME nonce + the Btoken.
     const createBody = JSON.stringify({
-      orderId: params.orderId,
+      appId: config.MMPAY_APP_ID,
       amount: params.amountMmk,
-      currency: "MMK",
-      nonce: createNonce,
+      orderId: params.orderId,
       callbackUrl: params.callbackUrl,
       customMessage: params.customMessage,
+      nonce,
     });
-    const createEndpoint = `${this.baseUrl}/xpayments/${envPrefix}-payment-create`;
-    const createRes = await fetch(createEndpoint, {
+    const createRes = await fetch(`${this.baseUrl}/payments/${seg}create`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${config.MMPAY_PUBLISHABLE_KEY}`,
         "X-Mmpay-Btoken": token,
-        ...this.originHeader,
-        ...this.signHeaders(createBody, createNonce),
+        ...this.signHeaders(createBody, nonce),
       },
       body: createBody,
     });
 
     if (!createRes.ok) {
-      const errText = await createRes.text();
-      throw new Error(this.describeHandshakeFailure(createRes.status, errText));
+      throw new Error(this.describeFailure("payment create", createRes.status, await createRes.text()));
     }
 
     const data = (await createRes.json()) as MmpayPaymentResponse;
@@ -221,27 +189,23 @@ export class MmpayService {
       throw new Error("getPaymentStatus requires an orderId.");
     }
 
-    const envPrefix = this.isSandbox ? "sandbox" : "production";
-    this.assertProductionOrigin();
+    const seg = this.isSandbox ? "sandbox-" : "";
+    const nonce = Date.now().toString();
 
-    // 1. Handshake for a fresh one-time authorization token (signed as a server).
-    const hsNonce = Date.now().toString();
-    const hsBody = JSON.stringify({ orderId, nonce: hsNonce });
-    const tokenEndpoint = `${this.baseUrl}/xpayments/${envPrefix}-token-request`;
-    const tokenRes = await fetch(tokenEndpoint, {
+    // 1. Handshake for a fresh one-time Btoken (same nonce reused on get → BA002 otherwise).
+    const hsBody = JSON.stringify({ orderId, nonce });
+    const tokenRes = await fetch(`${this.baseUrl}/payments/${seg}handshake`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${config.MMPAY_PUBLISHABLE_KEY}`,
-        ...this.originHeader,
-        ...this.signHeaders(hsBody, hsNonce),
+        ...this.signHeaders(hsBody, nonce),
       },
       body: hsBody,
     });
 
     if (!tokenRes.ok) {
-      const errText = await tokenRes.text();
-      throw new Error(`MMPay status handshake failed (HTTP ${tokenRes.status}): ${errText}`);
+      throw new Error(this.describeFailure("status handshake", tokenRes.status, await tokenRes.text()));
     }
 
     const { token } = (await tokenRes.json()) as { token?: string };
@@ -249,31 +213,27 @@ export class MmpayService {
       throw new Error("MMPay status handshake did not return authorization token.");
     }
 
-    // 2. Retrieve the payment (signed as a server).
-    const showNonce = Date.now().toString();
-    const showBody = JSON.stringify({ orderId, nonce: showNonce });
-    const showEndpoint = `${this.baseUrl}/xpayments/${envPrefix}-payment-show`;
-    const showRes = await fetch(showEndpoint, {
+    // 2. Retrieve the payment with the SAME nonce + the Btoken.
+    const getBody = JSON.stringify({ orderId, nonce });
+    const showRes = await fetch(`${this.baseUrl}/payments/${seg}get`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${config.MMPAY_PUBLISHABLE_KEY}`,
         "X-Mmpay-Btoken": token,
-        ...this.originHeader,
-        ...this.signHeaders(showBody, showNonce),
+        ...this.signHeaders(getBody, nonce),
       },
-      body: showBody,
+      body: getBody,
     });
 
     if (!showRes.ok) {
-      const errText = await showRes.text();
-      throw new Error(`MMPay payment-show failed (HTTP ${showRes.status}): ${errText}`);
+      throw new Error(this.describeFailure("payment get", showRes.status, await showRes.text()));
     }
 
     const data = (await showRes.json()) as Record<string, unknown>;
     const rawStatus = String(data.status ?? "").toUpperCase();
     if (!KNOWN_GATEWAY_STATUSES.includes(rawStatus as MmpayGatewayStatus)) {
-      throw new Error(`MMPay payment-show returned unrecognized status: "${rawStatus}"`);
+      throw new Error(`MMPay payment get returned unrecognized status: "${rawStatus}"`);
     }
 
     const amount = typeof data.amount === "number" ? data.amount : Number(data.amount);
