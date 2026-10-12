@@ -208,7 +208,6 @@ export function createBot(): Bot<BotContext> {
       await ctx.reply(formatForceJoinMessage(check.channelUsername), {
         parse_mode: "HTML",
         reply_markup: buildForceJoinKeyboard(check.channelUrl),
-        ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
       });
       return false;
     }
@@ -246,7 +245,7 @@ export function createBot(): Bot<BotContext> {
     return next();
   });
 
-  // 5. Command Handlers (quoting user's message)
+  // 5. Command Handlers
   bot.command(["start", "menu"], async (ctx) => {
     const telegramId = String(ctx.from?.id || "");
     if (ctx.session.awaitingTopUpSlip?.reference) {
@@ -276,7 +275,6 @@ export function createBot(): Bot<BotContext> {
           await ctx.reply(formatProductDetailMessage(product, 1), {
             parse_mode: "HTML",
             reply_markup: buildProductDetailKeyboard(product, 1),
-            ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
           });
           return;
         }
@@ -287,7 +285,6 @@ export function createBot(): Bot<BotContext> {
     await ctx.reply(formatStartMessage(firstName), {
       parse_mode: "HTML",
       reply_markup: buildMainMenuKeyboard(supportUrl),
-      ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
     });
   });
 
@@ -295,19 +292,13 @@ export function createBot(): Bot<BotContext> {
     if (!(await ensureChannelMember(ctx))) return;
     const settings = await botSettingsService.getSettings();
     const supportUrl = resolveTelegramSupportUrl(settings.supportTelegramHandle);
-    const handle = settings.supportTelegramHandle.startsWith("@")
-      ? settings.supportTelegramHandle
-      : `@${settings.supportTelegramHandle}`;
 
     await ctx.reply(
-      `<blockquote>${tgEmoji(BOT_EMOJIS.CHAT, "💬")} <b>Customer Support & Help Desk</b> ❞
-ဝန်ဆောင်မှုနှင့် ပတ်သက်၍ အကူအညီ ရယူရန်</blockquote>
-
-အော်ဒါများ၊ ငွေဖြည့်သွင်းမှုများနှင့် ပတ်သက်၍ သိရှိလိုသည်များ သို့မဟုတ် အခက်အခဲ တစ်စုံတစ်ရာ ရှိပါက ကျွန်ုပ်တို့၏ Customer Support (<b>${escapeHtml(handle)}</b>) သို့ တိုက်ရိုက် ဆက်သွယ် မေးမြန်းနိုင်ပါသည်ခင်ဗျာ ${tgEmoji(BOT_EMOJIS.SPARKLES, "✨")}`,
+      `${tgEmoji(BOT_EMOJIS.CHAT, "💬")} <b>Customer Support</b>\n\n` +
+      `အော်ဒါများနှင့် ငွေဖြည့်သွင်းမှုများအတွက် အကူအညီ လိုအပ်ပါက Support ထံ တိုက်ရိုက် ဆက်သွယ် မေးမြန်းနိုင်ပါသည်ခင်ဗျာ။`,
       {
         parse_mode: "HTML",
-        reply_markup: buildHelpKeyboard(supportUrl, handle),
-        ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
+        reply_markup: buildHelpKeyboard(supportUrl),
       }
     );
   });
@@ -322,7 +313,6 @@ export function createBot(): Bot<BotContext> {
     await ctx.reply(formatOrdersListMessage(orders.length), {
       parse_mode: "HTML",
       reply_markup: buildOrderListKeyboard(orders),
-      ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
     });
   });
 
@@ -343,7 +333,6 @@ export function createBot(): Bot<BotContext> {
       {
         parse_mode: "HTML",
         reply_markup: buildWalletKeyboard(),
-        ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
       }
     );
   });
@@ -372,7 +361,6 @@ export function createBot(): Bot<BotContext> {
       {
         parse_mode: "HTML",
         reply_markup: buildProfileKeyboard(),
-        ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
       }
     );
   });
@@ -384,7 +372,6 @@ export function createBot(): Bot<BotContext> {
       {
         parse_mode: "HTML",
         reply_markup: buildWalletKeyboard(),
-        ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
       }
     );
   });
@@ -547,12 +534,11 @@ export function createBot(): Bot<BotContext> {
     const msgId = ctx.callbackQuery.message?.message_id;
     const promptText =
       product.stock === 1
-        ? `${tgEmoji(BOT_EMOJIS.COUNTER, "🔢")} <b>Custom Quantity သတ်မှတ်ခြင်း:</b>\nလက်ရှိတွင် စတော့ 1 ခုသာ ရနိုင်ပါသဖြင့် ဝယ်ယူလိုပါက <code>1</code> ဟု ရိုက်ထည့်ပေးပါခင်ဗျာ:`
-        : `${tgEmoji(BOT_EMOJIS.COUNTER, "🔢")} <b>Custom Quantity သတ်မှတ်ခြင်း:</b>\nဝယ်ယူလိုသော အရေအတွက် (1 မှ ${product.stock} အထိ) ကို ဂဏန်းအတိအကျ ရိုက်ထည့်ပေးပါခင်ဗျာ:`;
+        ? `${tgEmoji(BOT_EMOJIS.COUNTER, "🔢")} <b>စိတ်ကြိုက် အရေအတွက် သတ်မှတ်ခြင်း:</b>\nလက်ရှိတွင် စတော့ 1 ခုသာ ရနိုင်ပါသဖြင့် ဝယ်ယူလိုပါက <code>1</code> ဟု ရိုက်ထည့်ပေးပါခင်ဗျာ:`
+        : `${tgEmoji(BOT_EMOJIS.COUNTER, "🔢")} <b>စိတ်ကြိုက် အရေအတွက် သတ်မှတ်ခြင်း:</b>\nဝယ်ယူလိုသော အရေအတွက် (1 မှ ${product.stock} အထိ) ကို ဂဏန်းအတိအကျ ရိုက်ထည့်ပေးပါခင်ဗျာ:`;
 
     await ctx.reply(promptText, {
       parse_mode: "HTML",
-      ...(msgId ? { reply_parameters: { message_id: msgId } } : {}),
     });
   });
 
@@ -1103,7 +1089,6 @@ export function createBot(): Bot<BotContext> {
       `${tgEmoji(BOT_EMOJIS.COUNTER, "🔢")} <b>စိတ်ကြိုက် ငွေဖြည့်သွင်းခြင်း:</b>\nဖြည့်သွင်းလိုသော ပမာဏ (MMK) ကို ဂဏန်းအတိအကျ ရိုက်ထည့်ပေးပါခင်ဗျာ (ဥပမာ: <code>15000</code>):`,
       {
         parse_mode: "HTML",
-        ...(msgId ? { reply_parameters: { message_id: msgId } } : {}),
       }
     );
   });
@@ -1281,7 +1266,6 @@ export function createBot(): Bot<BotContext> {
         await ctx.reply(formatTopUpSlipReceivedMessage({ amountMmk, reference }), {
           parse_mode: "HTML",
           reply_markup: buildMainMenuKeyboard(),
-          reply_parameters: { message_id: ctx.message.message_id },
         });
         return;
       }
@@ -1302,7 +1286,6 @@ export function createBot(): Bot<BotContext> {
         {
           parse_mode: "HTML",
           reply_markup: buildUnmatchedPhotoKeyboard(),
-          reply_parameters: { message_id: ctx.message.message_id },
         }
       );
     } finally {
@@ -1326,7 +1309,6 @@ export function createBot(): Bot<BotContext> {
         `✨ <b>Custom Emoji Detected</b>\n\n• <b>Emoji:</b> ${escapeHtml(emojiText)}\n• <b>Custom ID:</b> <code>${customId}</code> <i>(tap to copy)</i>\n• <b>HTML Tag:</b> <code>&lt;tg-emoji emoji-id="${customId}"&gt;${escapeHtml(emojiText)}&lt;/tg-emoji&gt;</code>\n\n💡 <i>You can copy this ID into the Admin Panel under Animated Emojis!</i>`,
         {
           parse_mode: "HTML",
-          reply_parameters: { message_id: ctx.message.message_id },
         }
       );
       return;
@@ -1343,7 +1325,6 @@ export function createBot(): Bot<BotContext> {
           `${tgEmoji(BOT_EMOJIS.WARNING, "⚠️")} အနည်းဆုံး 1,000 MMK မှစ၍ မှန်ကန်သော ငွေပမာဏကိုသာ ရိုက်ထည့်ပေးပါခင်ဗျာ (ဥပမာ: <code>15000</code>):`,
           {
             parse_mode: "HTML",
-            reply_parameters: { message_id: ctx.message.message_id },
           }
         );
         return;
@@ -1368,7 +1349,6 @@ export function createBot(): Bot<BotContext> {
             {
               parse_mode: "HTML",
               reply_markup: buildActiveMmpayPromptKeyboard(activeMmpay.reference),
-              reply_parameters: { message_id: ctx.message.message_id },
             }
           );
           return;
@@ -1400,7 +1380,6 @@ export function createBot(): Bot<BotContext> {
             {
               parse_mode: "HTML",
               reply_markup: buildMainMenuKeyboard(),
-              reply_parameters: { message_id: ctx.message.message_id },
             }
           );
           return;
@@ -1412,7 +1391,6 @@ export function createBot(): Bot<BotContext> {
           {
             parse_mode: "HTML",
             reply_markup: buildPaymentMethodChoiceKeyboard(amount),
-            reply_parameters: { message_id: ctx.message.message_id },
           }
         );
         return;
@@ -1435,7 +1413,6 @@ export function createBot(): Bot<BotContext> {
 
         await ctx.reply(errorMsg, {
           parse_mode: "HTML",
-          reply_parameters: { message_id: ctx.message.message_id },
         });
         return;
       }
@@ -1446,7 +1423,6 @@ export function createBot(): Bot<BotContext> {
       await ctx.reply(formatProductDetailMessage(product, qty), {
         parse_mode: "HTML",
         reply_markup: buildProductDetailKeyboard(product, qty),
-        reply_parameters: { message_id: ctx.message.message_id },
       });
       return;
     }
@@ -1457,7 +1433,6 @@ export function createBot(): Bot<BotContext> {
       {
         parse_mode: "HTML",
         reply_markup: buildMainMenuKeyboard(),
-        reply_parameters: { message_id: ctx.message.message_id },
       }
     );
   });
