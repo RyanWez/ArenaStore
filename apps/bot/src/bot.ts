@@ -449,22 +449,24 @@ export function createBot(): Bot<BotContext> {
   });
 
   // 5. Categories Grid (Screenshot 1)
-  bot.callbackQuery("menu_categories", async (ctx) => {
+  bot.callbackQuery(/^menu_categories(?:_p(\d+))?$/, async (ctx) => {
     ctx.session.awaitingCustomQuantity = false;
     ctx.session.awaitingCustomTopUp = false;
+    const page = ctx.match[1] ? parseInt(ctx.match[1], 10) : 0;
     const categories = await botCatalog.getCategories();
 
     await ctx.editMessageText(formatCategoriesMessage(), {
       parse_mode: "HTML",
-      reply_markup: buildCategoriesKeyboard(categories),
+      reply_markup: buildCategoriesKeyboard(categories, page),
     });
   });
 
   // 6. Category Selection -> Products List (Screenshot 2)
-  bot.callbackQuery(/^cat_(\d+)$/, async (ctx) => {
+  bot.callbackQuery(/^cat_(\d+)(?:_p(\d+))?$/, async (ctx) => {
     ctx.session.awaitingCustomQuantity = false;
     ctx.session.awaitingCustomTopUp = false;
     const categoryId = parseInt(ctx.match[1], 10);
+    const page = ctx.match[2] ? parseInt(ctx.match[2], 10) : 0;
     ctx.session.activeCategoryId = categoryId;
 
     const category = await botCatalog.getCategoryById(categoryId);
@@ -473,7 +475,7 @@ export function createBot(): Bot<BotContext> {
 
     await ctx.editMessageText(formatProductsListMessage(categoryName), {
       parse_mode: "HTML",
-      reply_markup: buildProductsKeyboard(categoryId, products),
+      reply_markup: buildProductsKeyboard(categoryId, products, page),
     });
   });
 
@@ -1166,15 +1168,16 @@ export function createBot(): Bot<BotContext> {
   });
 
   // 18. Orders Menu (Listing Real Orders & Delivery Viewer)
-  bot.callbackQuery("menu_orders", async (ctx) => {
+  bot.callbackQuery(/^menu_orders(?:_p(\d+))?$/, async (ctx) => {
     ctx.session.awaitingCustomQuantity = false;
     ctx.session.awaitingCustomTopUp = false;
+    const page = ctx.match[1] ? parseInt(ctx.match[1], 10) : 0;
     const telegramId = String(ctx.from?.id || "");
     const orders = await botOrderService.getUserOrders(telegramId);
 
     await ctx.editMessageText(formatOrdersListMessage(orders.length), {
       parse_mode: "HTML",
-      reply_markup: buildOrderListKeyboard(orders),
+      reply_markup: buildOrderListKeyboard(orders, page),
     });
   });
 
@@ -1467,6 +1470,15 @@ export function createBot(): Bot<BotContext> {
   bot.callbackQuery("out_of_stock", async (ctx) => {
     await ctx.answerCallbackQuery({
       text: "ဤပစ္စည်းမှာ လက်ရှိတွင် စတော့ပြတ်လပ်နေပါသည်ခင်ဗျာ။",
+      show_alert: true,
+    });
+  });
+
+  // Preset quantity exceeds available stock — explain instead of silently ignoring.
+  bot.callbackQuery(/^qty_max_(\d+)$/, async (ctx) => {
+    const stock = parseInt(ctx.match[1], 10);
+    await ctx.answerCallbackQuery({
+      text: `လက်ရှိတွင် စတော့ ${stock} ခုသာ ရှိပါသဖြင့် ထို အရေအတွက်ကို ရွေး၍ မရပါခင်ဗျာ။`,
       show_alert: true,
     });
   });

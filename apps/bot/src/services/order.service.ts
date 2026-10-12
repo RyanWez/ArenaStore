@@ -1595,7 +1595,7 @@ export class BotOrderService {
           .leftJoin(orderItems, eq(orderItems.orderId, orders.id))
           .where(eq(orders.customerId, userRecord.user.id))
           .orderBy(desc(orders.createdAt))
-          .limit(20);
+          .limit(50);
 
         if (dbOrders.length > 0) {
           return dbOrders.map(({ order: o, item }) => ({

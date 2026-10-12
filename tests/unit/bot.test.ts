@@ -85,18 +85,18 @@ describe("Phase 4 Customer Telegram Bot", () => {
       const keyboard = buildMainMenuKeyboard();
       const buttons = keyboard.inline_keyboard.flat();
 
-      expect(buttons.some((b) => b.text.includes("ပစ္စည်းများဝယ်ယူရန်"))).toBe(true);
-      expect(buttons.some((b) => b.text.includes("ကျွန်ုပ်၏အော်ဒါများ"))).toBe(true);
+      expect(buttons.some((b) => b.text.includes("ပစ္စည်းများ ဝယ်ယူရန်"))).toBe(true);
+      expect(buttons.some((b) => b.text.includes("ကျွန်ုပ်၏ အော်ဒါများ"))).toBe(true);
       expect(buttons.some((b) => b.text.includes("Wallet"))).toBe(true);
-      expect(buttons.some((b) => b.text.includes("My Profile"))).toBe(true);
-      expect(buttons.some((b) => b.text.includes("Help & Support"))).toBe(true);
+      expect(buttons.some((b) => b.text.includes("ကျွန်ုပ်၏ အကောင့်"))).toBe(true);
+      expect(buttons.some((b) => b.text.includes("အကူအညီ"))).toBe(true);
       expect(buttons.some((b) => b.text.includes("Channel"))).toBe(true);
 
-      const shopBtn = buttons.find((b) => b.text.includes("ပစ္စည်းများဝယ်ယူရန်"));
+      const shopBtn = buttons.find((b) => b.text.includes("ပစ္စည်းများ ဝယ်ယူရန်"));
       expect((shopBtn as any).icon_custom_emoji_id).toBe("4958714256343171878");
       expect((shopBtn as any).style).toBe("success");
 
-      const profileBtn = buttons.find((b) => b.text.includes("My Profile"));
+      const profileBtn = buttons.find((b) => b.text.includes("ကျွန်ုပ်၏ အကောင့်"));
       expect((profileBtn as any).icon_custom_emoji_id).toBe("5373012449597335010");
 
       const channelBtn = buttons.find((b) => b.text.includes("Channel"));
@@ -108,18 +108,18 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(keyboard.inline_keyboard[2].length).toBe(2); // Row 3: Support & Channel
     });
 
-    it("builds profile keyboard with Back button and animated back icon", () => {
+    it("builds profile keyboard with a home button", () => {
       const keyboard = buildProfileKeyboard();
       const rows = keyboard.inline_keyboard;
-      expect(rows[0][0].text).toBe("Back");
-      expect((rows[0][0] as any).icon_custom_emoji_id).toBe("5456187398977247949");
+      expect(rows[0][0].text).toBe("Main Menu");
+      expect((rows[0][0] as any).icon_custom_emoji_id).toBe("5269762917565212118");
       expect((rows[0][0] as any).callback_data).toBe("menu_start");
     });
 
     it("uses dynamic support URL in main menu and checkout keyboards matching admin settings", () => {
       const customSupportUrl = "https://t.me/ArenaStoreSupport_Bot";
       const keyboard = buildMainMenuKeyboard(customSupportUrl);
-      const supportBtn = keyboard.inline_keyboard.flat().find((b) => b.text.includes("Help & Support"));
+      const supportBtn = keyboard.inline_keyboard.flat().find((b) => b.text.includes("အကူအညီ"));
       expect(supportBtn).toBeDefined();
       expect((supportBtn as any).url).toBe(customSupportUrl);
 
@@ -162,10 +162,10 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(rows[0][1].text).toBe("Duolingo");
       expect((rows[0][1] as any).icon_custom_emoji_id).toBe("4963072209334567688");
 
-      // Last row must be Back button with animated custom emoji
+      // Last row must be the home button
       const lastRow = rows[rows.length - 1];
-      expect(lastRow[0].text).toBe("Back");
-      expect((lastRow[0] as any).icon_custom_emoji_id).toBe("5456187398977247949");
+      expect(lastRow[0].text).toBe("Main Menu");
+      expect((lastRow[0] as any).icon_custom_emoji_id).toBe("5269762917565212118");
       expect((lastRow[0] as any).callback_data).toBe("menu_start");
     });
 
@@ -206,7 +206,7 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect((rows[0][0] as any).callback_data).toBe("prod_10");
 
       const backButton = rows[rows.length - 1][0];
-      expect(backButton.text).toBe("Back");
+      expect(backButton.text).toBe("နောက်သို့");
       expect((backButton as any).icon_custom_emoji_id).toBe("5456187398977247949");
       expect((backButton as any).callback_data).toBe("menu_categories");
     });
@@ -241,7 +241,7 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect((rows[4][0] as any).callback_data).toBe("checkout_10_1");
 
       // Row 6: Back
-      expect(rows[5][0].text).toBe("Back");
+      expect(rows[5][0].text).toBe("နောက်သို့");
       expect((rows[5][0] as any).icon_custom_emoji_id).toBe("5456187398977247949");
       expect((rows[5][0] as any).callback_data).toBe("cat_10");
 
@@ -254,6 +254,82 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect((rowsQty5[1][1] as any).icon_custom_emoji_id).toBe("5206607081334906820"); // 5 is now selected
       expect(rowsQty5[4][0].text).toBe("Buy Now · 19,500 Ks");
       expect((rowsQty5[4][0] as any).icon_custom_emoji_id).toBe("5267300544094948794");
+    });
+  });
+
+  describe("List Pagination (categories, products, orders)", () => {
+    const makeProducts = (count: number): BotProduct[] =>
+      Array.from({ length: count }, (_, i) => ({
+        ...sampleProduct,
+        id: 1000 + i,
+        cleanName: `Product ${i}`,
+      }));
+
+    const makeOrders = (count: number) =>
+      Array.from({ length: count }, (_, i) => ({
+        id: `ORD-${i}`,
+        publicOrderNo: `ARN-${i}`,
+        productName: `Item ${i}`,
+        status: "DELIVERED",
+      }));
+
+    const makeCategories = (count: number): BotCategory[] =>
+      Array.from({ length: count }, (_, i) => ({
+        id: 500 + i,
+        name: `Cat ${i}`,
+        cleanName: `Cat ${i}`,
+        emojiId: null,
+        iconEmoji: null,
+      }));
+
+    it("renders no pager row when products fit on a single page", () => {
+      const keyboard = buildProductsKeyboard(10, makeProducts(5));
+      const flat = keyboard.inline_keyboard.flat();
+      expect(flat.some((b) => (b as any).callback_data?.startsWith("cat_10_p"))).toBe(false);
+    });
+
+    it("renders a prev/page/next pager when products exceed one page", () => {
+      const products = makeProducts(20); // 3 pages at 8/page
+      const page0 = buildProductsKeyboard(10, products, 0);
+      const navRow0 = page0.inline_keyboard.find((r) =>
+        r.some((b) => b.text === "1/3")
+      );
+      expect(navRow0).toBeDefined();
+      // On page 0 the next button targets page 1; prev is a disabled placeholder.
+      expect(navRow0!.some((b) => (b as any).callback_data === "cat_10_p1")).toBe(true);
+      // Only the page window is shown (8 product rows).
+      const prodRows = page0.inline_keyboard.filter((r) =>
+        r.some((b) => (b as any).callback_data?.startsWith("prod_"))
+      );
+      expect(prodRows.length).toBe(8);
+
+      const page1 = buildProductsKeyboard(10, products, 1);
+      const navRow1 = page1.inline_keyboard.find((r) => r.some((b) => b.text === "2/3"));
+      expect(navRow1).toBeDefined();
+      expect(navRow1!.some((b) => (b as any).callback_data === "cat_10_p0")).toBe(true);
+      expect(navRow1!.some((b) => (b as any).callback_data === "cat_10_p2")).toBe(true);
+    });
+
+    it("paginates the orders list beyond the first 8 orders", () => {
+      const orders = makeOrders(12);
+      const page1 = buildOrderListKeyboard(orders, 1);
+      const viewRows = page1.inline_keyboard.filter((r) =>
+        r.some((b) => (b as any).callback_data?.startsWith("view_order_"))
+      );
+      expect(viewRows.length).toBe(4); // 12 - 8 = 4 on page 2
+      const navRow = page1.inline_keyboard.find((r) => r.some((b) => b.text === "2/2"));
+      expect(navRow).toBeDefined();
+      expect(navRow!.some((b) => (b as any).callback_data === "menu_orders_p0")).toBe(true);
+    });
+
+    it("paginates categories only when they exceed one page", () => {
+      const single = buildCategoriesKeyboard(makeCategories(6));
+      expect(single.inline_keyboard.flat().some((b) => b.text?.includes("/"))).toBe(false);
+
+      const many = buildCategoriesKeyboard(makeCategories(25), 0);
+      const navRow = many.inline_keyboard.find((r) => r.some((b) => b.text === "1/3"));
+      expect(navRow).toBeDefined();
+      expect(navRow!.some((b) => (b as any).callback_data === "menu_categories_p1")).toBe(true);
     });
   });
 
@@ -432,9 +508,9 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(rows[0][2].text).toBe(" ");
       expect((rows[0][2] as any).callback_data).toBe("noop");
 
-      // Presets > stock (5, 10, 20, 30, 50) should be noop
-      expect((rows[1][1] as any).callback_data).toBe("noop"); // 5
-      expect((rows[1][2] as any).callback_data).toBe("noop"); // 10
+      // Presets > stock (5, 10, 20, 30, 50) route to the over-stock alert
+      expect((rows[1][1] as any).callback_data).toBe("qty_max_3"); // 5
+      expect((rows[1][2] as any).callback_data).toBe("qty_max_3"); // 10
     });
 
     it("handles empty categories product list gracefully", () => {
