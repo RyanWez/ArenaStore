@@ -534,8 +534,8 @@ export function createBot(): Bot<BotContext> {
     const msgId = ctx.callbackQuery.message?.message_id;
     const promptText =
       product.stock === 1
-        ? `${tgEmoji(BOT_EMOJIS.COUNTER, "🔢")} <b>စိတ်ကြိုက် အရေအတွက် သတ်မှတ်ခြင်း:</b>\nလက်ရှိတွင် စတော့ 1 ခုသာ ရနိုင်ပါသဖြင့် ဝယ်ယူလိုပါက <code>1</code> ဟု ရိုက်ထည့်ပေးပါခင်ဗျာ:`
-        : `${tgEmoji(BOT_EMOJIS.COUNTER, "🔢")} <b>စိတ်ကြိုက် အရေအတွက် သတ်မှတ်ခြင်း:</b>\nဝယ်ယူလိုသော အရေအတွက် (1 မှ ${product.stock} အထိ) ကို ဂဏန်းအတိအကျ ရိုက်ထည့်ပေးပါခင်ဗျာ:`;
+        ? `${tgEmoji(BOT_EMOJIS.EDIT, "✏️")} <b>စိတ်ကြိုက် အရေအတွက် သတ်မှတ်ခြင်း:</b>\nလက်ရှိတွင် စတော့ 1 ခုသာ ရနိုင်ပါသဖြင့် ဝယ်ယူလိုပါက <code>1</code> ဟု ရိုက်ထည့်ပေးပါခင်ဗျာ:`
+        : `${tgEmoji(BOT_EMOJIS.EDIT, "✏️")} <b>စိတ်ကြိုက် အရေအတွက် သတ်မှတ်ခြင်း:</b>\nဝယ်ယူလိုသော အရေအတွက် (1 မှ ${product.stock} အထိ) ကို ဂဏန်းအတိအကျ ရိုက်ထည့်ပေးပါခင်ဗျာ:`;
 
     await ctx.reply(promptText, {
       parse_mode: "HTML",
@@ -1086,7 +1086,7 @@ export function createBot(): Bot<BotContext> {
     const msgId = ctx.callbackQuery.message?.message_id;
 
     await ctx.reply(
-      `${tgEmoji(BOT_EMOJIS.COUNTER, "🔢")} <b>စိတ်ကြိုက် ငွေဖြည့်သွင်းခြင်း:</b>\nဖြည့်သွင်းလိုသော ပမာဏ (MMK) ကို ဂဏန်းအတိအကျ ရိုက်ထည့်ပေးပါခင်ဗျာ (ဥပမာ: <code>15000</code>):`,
+      `${tgEmoji(BOT_EMOJIS.EDIT, "✏️")} <b>စိတ်ကြိုက် ငွေဖြည့်သွင်းခြင်း:</b>\nဖြည့်သွင်းလိုသော ပမာဏ (MMK) ကို ဂဏန်းအတိအကျ ရိုက်ထည့်ပေးပါခင်ဗျာ (ဥပမာ: <code>15000</code>):`,
       {
         parse_mode: "HTML",
       }
