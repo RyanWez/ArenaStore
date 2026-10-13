@@ -585,6 +585,7 @@ describe("Phase 4 Customer Telegram Bot", () => {
       );
       expect(deficitBtn).toBeDefined();
       expect((deficitBtn as any).callback_data).toBe("topup_deficit_10_2_4800");
+      expect((deficitBtn as any).icon_custom_emoji_id).toBe("5258204546391351475");
     });
 
     it("Recommendation B: formats wallet dashboard and provides quick top-up preset options", async () => {
