@@ -4,34 +4,28 @@ import { escapeHtml, BOT_EMOJIS, tgEmoji } from "@arena/shared";
 import { formatCredentialsText } from "../services/encryption";
 
 /**
- * Formats the Welcome /start greeting message with animated custom emojis.
+ * Formats the Welcome /start greeting message.
  */
 export function formatStartMessage(firstName: string): string {
-  return `${tgEmoji(BOT_EMOJIS.WAVE, "👋")} Hello, <b>${escapeHtml(firstName)}</b>,
-
-<b>Arena Store</b> မှ ကြိုဆိုပါတယ်ဗျာ! ${tgEmoji(BOT_EMOJIS.SPARKLES, "✨")}\n
-AI Tools များနှင့် Digital Products များကို မြန်မာကျပ်ငွေ (MMK) ဖြင့် စျေးနှုန်းသက်သာစွာ ဝယ်ယူနိုင်ပါတယ် ခင်ဗျာ။\n
-ဝယ်ယူလိုသော ပစ္စည်း အမျိုးအစားများကို ရွေးချယ်ရန် အောက်ပါ ခလုတ်ကို နှိပ်ပါ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}`;
+  return `${tgEmoji(BOT_EMOJIS.STORE, "🛍")} <b>Welcome Back, ${escapeHtml(firstName)},</b>\n\nPremium AI Tools နှင့် Digital Accounts များကို တစ်နေရာထဲတွင် 24/7 ရနိုင်ပါပြီ ဗျာ။\nအောက်ပါ Menu များမှ ရွေးချယ်ပါ။`;
 }
 
 /**
- * Formats the Categories header message matching Screenshot 1.
+ * Formats the Categories header message.
  */
 export function formatCategoriesMessage(): string {
-  return `<blockquote>${tgEmoji(BOT_EMOJIS.BAGS, "🛍")} <b>Store Categories</b> ❞
-Choose a category to browse products ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}</blockquote>`;
+  return `${tgEmoji(BOT_EMOJIS.STORE, "🛍")} <b>ပစ္စည်း အမျိုးအစားများ</b>\n\nဝယ်ယူလိုသော အမျိုးအစားကို ရွေးချယ်ပေးပါခင်ဗျာ။`;
 }
 
 /**
- * Formats the Product List header message matching Screenshot 2.
+ * Formats the Product List header message.
  */
 export function formatProductsListMessage(categoryName: string): string {
-  return `<blockquote>${tgEmoji(BOT_EMOJIS.BAGS, "🎁")} <b>Available Products — ${escapeHtml(categoryName)}</b> ❞
-Tap a product to view details & buy ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}</blockquote>`;
+  return `${tgEmoji(BOT_EMOJIS.STORE, "🛍")} <b>${escapeHtml(categoryName)} ပစ္စည်းများ</b>\n\nအသေးစိတ် ကြည့်ရှုလိုသည့် ပစ္စည်းကို ရွေးချယ်ပေးပါခင်ဗျာ။`;
 }
 
 /**
- * Formats the Product Detail Card matching Screenshot 3.
+ * Formats the Product Detail Card.
  */
 export function formatProductDetailMessage(product: BotProduct, quantity: number): string {
   const totalMmk = product.retailPriceMmk * quantity;
@@ -39,7 +33,7 @@ export function formatProductDetailMessage(product: BotProduct, quantity: number
   // Title with custom emoji if available
   const emojiHeader = product.emojiId
     ? `<tg-emoji emoji-id="${product.emojiId}">🛍</tg-emoji>`
-    : tgEmoji(BOT_EMOJIS.BAGS, "🛍");
+    : tgEmoji(BOT_EMOJIS.STORE, "🛍");
 
   // Clean description or fallback
   const descriptionText = product.formattedDescription || escapeHtml(product.description) || "Instant activation on your personal account.";
@@ -47,12 +41,9 @@ export function formatProductDetailMessage(product: BotProduct, quantity: number
   return `<blockquote>${emojiHeader} <b>${escapeHtml(product.cleanName)}</b> ❞
 ${descriptionText}</blockquote>
 
-${tgEmoji(BOT_EMOJIS.PRICE, "💵")} <b>Price:</b> ${product.formattedPriceMmk}
-${tgEmoji(BOT_EMOJIS.GIFT, "🎁")} <b>Stock:</b> ${product.stock} available
-
-${tgEmoji(BOT_EMOJIS.ABACUS, "🧮")} <b>Selected ·</b> ${quantity}   ${tgEmoji(BOT_EMOJIS.MONEY, "💰")} <b>Total ·</b> ${totalMmk.toLocaleString("en-US")} Ks
-
-<i>Pick a quantity below, then tap Buy Now.</i>`;
+စျေးနှုန်း: <b>${product.formattedPriceMmk}</b>
+လက်ကျန်: <b>${product.stock} ခု</b>
+အရေအတွက်: <b>${quantity} ခု</b> • စုစုပေါင်း: <b>${totalMmk.toLocaleString("en-US")} Ks</b>`;
 }
 
 export interface DynamicPaymentInfo {
@@ -164,7 +155,7 @@ Arena Store ကို အားပေးသည့်အတွက် ကျေး
 }
 
 /**
- * Formats the My Profile Card matching Screenshot 2.
+ * Formats the My Profile Card.
  */
 export function formatProfileMessage(params: {
   fullName: string;
@@ -177,24 +168,19 @@ export function formatProfileMessage(params: {
   ordersCount?: number;
 }): string {
   const name = params.fullName || "Customer";
-  const usernameText = params.username ? `@${escapeHtml(params.username)}` : "<i>Not set</i>";
-  const joined = params.joinedDate || new Date().toISOString().split("T")[0];
+  const usernameText = params.username ? `@${escapeHtml(params.username)}` : "<i>မရှိပါ</i>";
   const walletBalance = (params.walletBalanceMmk ?? 0).toLocaleString("en-US");
-  const totalDeposits = (params.totalDepositsMmk ?? 0).toLocaleString("en-US");
   const totalSpent = (params.totalSpentMmk ?? 0).toLocaleString("en-US");
   const orders = params.ordersCount ?? 0;
 
-  return `<blockquote>${tgEmoji(BOT_EMOJIS.PROFILE, "👤")} <b>My Profile</b> ❞
-<b>Name:</b> <b>${escapeHtml(name)}</b>
-<b>Username:</b> ${usernameText}
-<b>User ID:</b> <code>${params.telegramId}</code>
-<b>Joined:</b> ${joined}
-<b>Status:</b> <b>Active</b></blockquote>
-────────────────────
-${tgEmoji(BOT_EMOJIS.BUY_NOW, "💳")} <b>Wallet Balance:</b> ${walletBalance} MMK
-${tgEmoji(BOT_EMOJIS.MONEY, "💰")} <b>Total Deposits:</b> ${totalDeposits} MMK
-${tgEmoji(BOT_EMOJIS.BAGS, "🛍")} <b>Total Spent:</b> ${totalSpent} MMK
-${tgEmoji(BOT_EMOJIS.BOX, "📦")} <b>Orders:</b> ${orders}`;
+  return `${tgEmoji(BOT_EMOJIS.PROFILE, "👤")} <b>ကျွန်ုပ်၏ အကောင့်</b>
+
+အမည်: <b>${escapeHtml(name)}</b> (${usernameText})
+User ID: <code>${params.telegramId}</code>
+
+Wallet လက်ကျန်ငွေ: <b>${walletBalance} Ks</b>
+ဝယ်ယူခဲ့သည့် ပမာဏ: <b>${totalSpent} Ks</b>
+အော်ဒါ အရေအတွက်: <b>${orders} ခု</b>`;
 }
 
 /**
@@ -205,14 +191,12 @@ export function formatWalletMessage(params: {
   balanceMmk: number;
   totalSpentMmk: number;
 }): string {
-  return `<blockquote>${tgEmoji(BOT_EMOJIS.MONEY, "💰")} <b>Arena Store Wallet</b> ❞
-အကောင့်လက်ကျန်ငွေနှင့် ငွေဖြည့်သွင်းခြင်း</blockquote>
+  return `${tgEmoji(BOT_EMOJIS.WALLET, "💰")} <b>Arena Store Wallet</b>
 
-${tgEmoji(BOT_EMOJIS.PROFILE, "👤")} <b>Customer:</b> <b>${escapeHtml(params.fullName)}</b>
-${tgEmoji(BOT_EMOJIS.BUY_NOW, "💳")} <b>Wallet Balance:</b> <b>${params.balanceMmk.toLocaleString("en-US")} MMK</b>
-${tgEmoji(BOT_EMOJIS.BAGS, "🛍")} <b>Total Spent:</b> ${params.totalSpentMmk.toLocaleString("en-US")} MMK
+လက်ရှိ လက်ကျန်ငွေ: <b>${params.balanceMmk.toLocaleString("en-US")} Ks</b>
+စုစုပေါင်း သုံးစွဲမှု: <b>${params.totalSpentMmk.toLocaleString("en-US")} Ks</b>
 
-ငွေဖြည့်သွင်းလိုသော ပမာဏကို အောက်တွင် ရွေးချယ်ပါ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}`;
+ဖြည့်သွင်းလိုသော ငွေပမာဏကို ရွေးချယ်ပေးပါခင်ဗျာ။`;
 }
 
 /**
@@ -229,7 +213,7 @@ export function formatTopUpInvoiceMessage(params: {
   const wavepayAccount = params.paymentInfo?.wavepayAccountName || botConfig.PAYMENT_ACCOUNT_NAME;
 
   return `<blockquote>${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>Wallet ငွေဖြည့်သွင်းရန် အချက်အလက်များ</b> ❞
-ဖြည့်သွင်းမည့် ပမာဏ: <b>${params.amountMmk.toLocaleString("en-US")} MMK</b>
+ဖြည့်သွင်းမည့် ပမာဏ: <b>${params.amountMmk.toLocaleString("en-US")} Ks</b>
 ကိုးကားနံပါတ်: <code>${params.reference}</code></blockquote>
 
 ${tgEmoji(BOT_EMOJIS.BUY_NOW, "💳")} <b>ငွေလွှဲလက်ခံမည့် အကောင့်များ:</b>
@@ -255,7 +239,7 @@ ${tgEmoji(BOT_EMOJIS.WAVEPAY, "🆗")} <b>WavePay:</b>
 ${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>ငွေလွှဲပြီးပါက:</b>
 ငွေလွှဲပြေစာ Screenshot ပုံကို <b>ဤ Chat ထဲသို့ ဓာတ်ပုံ (Photo) အဖြစ် တိုက်ရိုက် ပေးပို့ပေးပါရန်</b> ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}
 
-<i>Admin မှ စစ်ဆေးအတည်ပြုပြီးသည်နှင့် သင့် Wallet ထဲသို့ ငွေချက်ချင်း ရောက်ရှိမည်ဖြစ်ပြီး Bot မှ အကြောင်းကြားစာ ပေးပို့ပေးပါမည်ခင်ဗျာ ${tgEmoji(BOT_EMOJIS.SPARKLES, "✨")}</i>`;
+<i>Admin မှ စစ်ဆေးအတည်ပြုပြီးသည်နှင့် သင့် Wallet ထဲသို့ ငွေချက်ချင်း ရောက်ရှိမည်ဖြစ်ပြီး အသိပေးစာ ပေးပို့ပေးပါမည်ခင်ဗျာ။</i>`;
 }
 
 /**
@@ -265,12 +249,13 @@ export function formatTopUpSlipReceivedMessage(params: {
   amountMmk: number;
   reference: string;
 }): string {
-  return `<blockquote>${tgEmoji(BOT_EMOJIS.CHECK, "✅")} <b>ငွေဖြည့်ပြေစာ လက်ခံရရှိပါပြီ!</b> ❞
-ဖြည့်သွင်းသည့်ပမာဏ: <b>${params.amountMmk.toLocaleString("en-US")} MMK</b>
-ကိုးကားနံပါတ်: <code>${params.reference}</code>
-အခြေအနေ: ${tgEmoji(BOT_EMOJIS.HOURGLASS, "⏳")} <b>စစ်ဆေးနေပါသည် (Under Review)</b></blockquote>
+  return `${tgEmoji(BOT_EMOJIS.CHECK, "✅")} <b>ငွေဖြည့်ပြေစာ လက်ခံရရှိပါပြီ</b>
 
-ငွေလွှဲပြေစာကို Admin မှ စစ်ဆေးနေပါပြီ။ စစ်ဆေးအတည်ပြုပြီးသည်နှင့် သင့် Wallet ထဲသို့ ငွေချက်ချင်း ထည့်သွင်းပေးမည်ဖြစ်ပြီး Bot မှတစ်ဆင့် အသိပေးစာ ပေးပို့ပေးပါမည်ခင်ဗျာ ✨`;
+ဖြည့်သွင်းသည့်ပမာဏ: <b>${params.amountMmk.toLocaleString("en-US")} Ks</b>
+ကိုးကားနံပါတ်: <code>${params.reference}</code>
+အခြေအနေ: <b>စစ်ဆေးနေဆဲ</b>
+
+Admin မှ အတည်ပြုပြီးသည်နှင့် သင့် Wallet ထဲသို့ ငွေချက်ချင်း ထည့်သွင်းပေးမည်ဖြစ်ပြီး အသိပေးစာ ပေးပို့ပေးပါမည်ခင်ဗျာ။`;
 }
 
 /**
@@ -280,12 +265,12 @@ export function formatTopUpSuccessMessage(params: {
   amountMmk: number;
   newBalanceMmk: number;
 }): string {
-  return `<blockquote>${tgEmoji(BOT_EMOJIS.PARTY, "🎉")} <b>ငွေဖြည့်သွင်းမှု အောင်မြင်ပါသည်!</b> ❞
-ဖြည့်သွင်းငွေ: <b>+${params.amountMmk.toLocaleString("en-US")} MMK</b>
-လက်ရှိ Wallet Balance: <b>${params.newBalanceMmk.toLocaleString("en-US")} MMK</b></blockquote>
+  return `${tgEmoji(BOT_EMOJIS.CHECK, "✅")} <b>ငွေဖြည့်သွင်းမှု အောင်မြင်ပါသည်</b>
 
-သင့် Wallet ထဲသို့ ငွေဖြည့်သွင်းပြီးပါပြီခင်ဗျာ!
-ယခုပင် လိုအပ်သော AI Tools & Digital Products များကို <b>Buy Now</b> ဖြင့် စက္ကန့်ပိုင်းအတွင်း ချက်ချင်း ဝယ်ယူနိုင်ပါပြီ ${tgEmoji(BOT_EMOJIS.SPARKLES, "✨")}`;
+ဖြည့်သွင်းငွေ: <b>+${params.amountMmk.toLocaleString("en-US")} Ks</b>
+လက်ရှိ Wallet Balance: <b>${params.newBalanceMmk.toLocaleString("en-US")} Ks</b>
+
+သင့် Wallet ထဲသို့ ငွေဖြည့်သွင်းပြီးပါပြီခင်ဗျာ။ ယခုပင် လိုအပ်သော ပစ္စည်းများကို ချက်ချင်း ဝယ်ယူနိုင်ပါပြီ။`;
 }
 
 /**
@@ -298,15 +283,13 @@ export function formatInsufficientBalanceMessage(params: {
   walletBalanceMmk: number;
   deficitMmk: number;
 }): string {
-  return `<blockquote>${tgEmoji(BOT_EMOJIS.WARNING, "⚠️")} <b>လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ!</b> ❞
-အော်ဒါဝယ်ယူရန် Wallet ထဲသို့ ငွေဖြည့်သွင်းရန် လိုအပ်ပါသည်။</blockquote>
+  return `${tgEmoji(BOT_EMOJIS.ALERT, "⚠️")} <b>Wallet လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ</b>
 
-${tgEmoji(BOT_EMOJIS.BOX, "📦")} <b>ပစ္စည်း:</b> <b>${escapeHtml(params.productName)}</b> x ${params.quantity}
-${tgEmoji(BOT_EMOJIS.PRICE, "💵")} <b>ကျသင့်ငွေ:</b> <b>${params.totalMmk.toLocaleString("en-US")} MMK</b>
-${tgEmoji(BOT_EMOJIS.BUY_NOW, "💳")} <b>လက်ရှိ Wallet Balance:</b> <b>${params.walletBalanceMmk.toLocaleString("en-US")} MMK</b>
-${tgEmoji(BOT_EMOJIS.ABACUS, "🧮")} <b>ထပ်မံလိုအပ်သောငွေ:</b> <b>${params.deficitMmk.toLocaleString("en-US")} MMK</b>
+ကျသင့်ငွေ: <b>${params.totalMmk.toLocaleString("en-US")} Ks</b>
+လက်ရှိငွေ: <b>${params.walletBalanceMmk.toLocaleString("en-US")} Ks</b>
+ထပ်ဖြည့်ရန် လိုငွေ: <b>${params.deficitMmk.toLocaleString("en-US")} Ks</b>
 
-အောက်ပါ ခလုတ်မှတစ်ဆင့် လိုအပ်သော ငွေပမာဏကို အတိအကျ တိုက်ရိုက် ငွေဖြည့်နိုင်ပါသည် ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}`;
+အောက်ပါခလုတ်ဖြင့် လိုအပ်သော ငွေပမာဏကို တိုက်ရိုက် ဖြည့်သွင်းနိုင်ပါသည်ခင်ဗျာ။`;
 }
 
 /**
@@ -319,15 +302,13 @@ export function formatPurchaseConfirmMessage(params: {
   walletBalanceMmk: number;
   remainingBalanceMmk: number;
 }): string {
-  return `<blockquote>${tgEmoji(BOT_EMOJIS.BAGS, "🛍")} <b>ဝယ်ယူမှု အတည်ပြုခြင်း</b> ❞
-သင့် Wallet ထဲမှ ငွေနုတ်ယူပြီး အကောင့်ကို ချက်ချင်း ပေးပို့ပါမည်။</blockquote>
+  return `${tgEmoji(BOT_EMOJIS.STORE, "🛍")} <b>ဝယ်ယူမှု အတည်ပြုရန်</b>
 
-${tgEmoji(BOT_EMOJIS.BOX, "📦")} <b>ပစ္စည်း:</b> <b>${escapeHtml(params.productName)}</b> x ${params.quantity}
-${tgEmoji(BOT_EMOJIS.PRICE, "💵")} <b>ကျသင့်ငွေ:</b> <b>${params.totalMmk.toLocaleString("en-US")} MMK</b>
-${tgEmoji(BOT_EMOJIS.BUY_NOW, "💳")} <b>လက်ရှိ Wallet Balance:</b> <b>${params.walletBalanceMmk.toLocaleString("en-US")} MMK</b>
-${tgEmoji(BOT_EMOJIS.MONEY, "💰")} <b>ဝယ်ယူပြီး လက်ကျန်ငွေ:</b> <b>${params.remainingBalanceMmk.toLocaleString("en-US")} MMK</b>
+ပစ္စည်း: <b>${escapeHtml(params.productName)}</b> (x${params.quantity})
+ကျသင့်ငွေ: <b>${params.totalMmk.toLocaleString("en-US")} Ks</b>
+ဝယ်ယူပြီး လက်ကျန်ငွေ: <b>${params.remainingBalanceMmk.toLocaleString("en-US")} Ks</b>
 
-ဝယ်ယူရန် သေချာပါက အောက်ပါ <b>'အတည်ပြု ဝယ်ယူမည်'</b> ခလုတ်ကို နှိပ်ပေးပါခင်ဗျာ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}`;
+ဝယ်ယူရန် သေချာပါက အောက်ပါခလုတ်ကို နှိပ်ပေးပါခင်ဗျာ။`;
 }
 
 /**
@@ -344,19 +325,19 @@ export function formatWalletDeliveryMessage(params: {
 }): string {
   const cleanCreds = formatCredentialsText(params.credentialsText);
   const viewUrlBlock = params.viewUrl
-    ? `\n\n🔗 <b>Order Status / Access Link:</b>\n<a href="${escapeHtml(params.viewUrl)}">${escapeHtml(params.viewUrl)}</a>`
+    ? `\n\n🔗 <b>လင့်ခ်:</b> <a href="${escapeHtml(params.viewUrl)}">${escapeHtml(params.viewUrl)}</a>`
     : "";
 
-  return `<blockquote>${tgEmoji(BOT_EMOJIS.PARTY, "🎉")} <b>အော်ဒါ အောင်မြင်စွာ ပို့ဆောင်ပြီးပါပြီ!</b> ❞
-အော်ဒါနံပါတ်: <b>${params.publicOrderNo}</b>
-ပစ္စည်း: <b>${escapeHtml(params.productName)} x ${params.quantity}</b>
-ကျသင့်ငွေ: <b>${params.totalMmk.toLocaleString("en-US")} MMK</b> (Wallet မှ နုတ်ယူပြီး)
-လက်ကျန် Wallet Balance: <b>${params.remainingBalanceMmk.toLocaleString("en-US")} MMK</b></blockquote>
+  return `${tgEmoji(BOT_EMOJIS.CHECK, "✅")} <b>ဝယ်ယူမှု အောင်မြင်ပါသည်</b>
+
+အော်ဒါအမှတ်: <code>${params.publicOrderNo}</code>
+ပစ္စည်း: <b>${escapeHtml(params.productName)}</b> (x${params.quantity})
+လက်ကျန်ငွေ: <b>${params.remainingBalanceMmk.toLocaleString("en-US")} Ks</b>
 
 ${tgEmoji(BOT_EMOJIS.KEY, "🔑")} <b>သင့်အကောင့် အချက်အလက်များ:</b>
 <pre><code>${escapeHtml(cleanCreds)}</code></pre>${viewUrlBlock}
 
-Arena Store ကို အားပေးသည့်အတွက် ကျေးဇူးအထူးတင်ရှိပါသည်! ${tgEmoji(BOT_EMOJIS.SPARKLES, "✨")}`;
+အားပေးမှုကို အထူးပင် ကျေးဇူးတင်ရှိပါသည်ခင်ဗျာ။`;
 }
 
 /**
@@ -364,16 +345,15 @@ Arena Store ကို အားပေးသည့်အတွက် ကျေး
  */
 export function formatOrdersListMessage(ordersCount: number): string {
   if (ordersCount === 0) {
-    return `<blockquote>${tgEmoji(BOT_EMOJIS.BOX, "📦")} <b>ကျွန်ုပ်၏ အော်ဒါများ (My Orders)</b> ❞
-လက်ရှိတွင် ဝယ်ယူထားသော အော်ဒါမှတ်တမ်း မရှိသေးပါခင်ဗျာ။</blockquote>
+    return `${tgEmoji(BOT_EMOJIS.ORDERS, "📦")} <b>ကျွန်ုပ်၏ အော်ဒါများ</b>
 
-ပစ္စည်းများ ကြည့်ရှုဝယ်ယူလိုပါက အောက်ပါ ခလုတ်ကို နှိပ်ပါ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}`;
+လက်ရှိတွင် ဝယ်ယူထားသော အော်ဒါမှတ်တမ်း မရှိသေးပါခင်ဗျာ။`;
   }
 
-  return `<blockquote>${tgEmoji(BOT_EMOJIS.BOX, "📦")} <b>ကျွန်ုပ်၏ အော်ဒါများ (My Orders)</b> ❞
-စုစုပေါင်း အော်ဒါ: <b>${ordersCount} ခု</b></blockquote>
+  return `${tgEmoji(BOT_EMOJIS.ORDERS, "📦")} <b>ကျွန်ုပ်၏ အော်ဒါများ</b>
 
-အသေးစိတ်နှင့် အကောင့်အချက်အလက်များကို ပြန်လည်ကြည့်ရှုရန် အောက်ပါ အော်ဒါနံပါတ်တစ်ခုခုကို နှိပ်ပါ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}`;
+စုစုပေါင်း အော်ဒါ: <b>${ordersCount} ခု</b>
+အသေးစိတ် ကြည့်ရှုလိုသည့် အော်ဒါကို အောက်တွင် ရွေးချယ်ပေးပါခင်ဗျာ။`;
 }
 
 /**
@@ -391,10 +371,10 @@ export function formatOrderDetailMessage(order: {
 }): string {
   const statusLabel =
     order.status === "DELIVERED"
-      ? `${tgEmoji(BOT_EMOJIS.CHECK, "✅")} အောင်မြင်စွာ ပို့ဆောင်ပြီး (DELIVERED)`
+      ? `${tgEmoji(BOT_EMOJIS.CHECK, "✅")} ပို့ဆောင်ပြီး`
       : order.status === "PAYMENT_SUBMITTED"
-      ? `${tgEmoji(BOT_EMOJIS.HOURGLASS, "⏳")} စစ်ဆေးနေပါသည် (UNDER REVIEW)`
-      : `${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} ငွေလွှဲရန် စောင့်ဆိုင်းဆဲ`;
+      ? `${tgEmoji(BOT_EMOJIS.HOURGLASS, "⏳")} စစ်ဆေးဆဲ`
+      : `${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} ငွေလွှဲစောင့်ဆိုင်းဆဲ`;
 
   const dateFormatted = order.createdAt.split("T")[0];
 
@@ -402,17 +382,18 @@ export function formatOrderDetailMessage(order: {
   if (order.status === "DELIVERED" && order.credentialsText) {
     const cleanCreds = formatCredentialsText(order.credentialsText);
     const viewUrlLine = order.viewUrl
-      ? `\n\n🔗 <b>Order Status / Access Link:</b>\n<a href="${escapeHtml(order.viewUrl)}">${escapeHtml(order.viewUrl)}</a>`
+      ? `\n\n🔗 <b>လင့်ခ်:</b> <a href="${escapeHtml(order.viewUrl)}">${escapeHtml(order.viewUrl)}</a>`
       : "";
-    credentialsBlock = `\n\n${tgEmoji(BOT_EMOJIS.KEY, "🔑")} <b>အကောင့် အချက်အလက်များ:</b>\n<pre><code>${escapeHtml(cleanCreds)}</code></pre>${viewUrlLine}`;
+    credentialsBlock = `\n\n${tgEmoji(BOT_EMOJIS.KEY, "🔑")} <b>သင့်အကောင့် အချက်အလက်များ:</b>\n<pre><code>${escapeHtml(cleanCreds)}</code></pre>${viewUrlLine}`;
   }
 
-  return `<blockquote>${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>အော်ဒါ အသေးစိတ် · ${order.publicOrderNo}</b> ❞
-ရက်စွဲ: <b>${dateFormatted}</b>
-အခြေအနေ: ${statusLabel}</blockquote>
+  return `${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>အော်ဒါ အသေးစိတ် · ${order.publicOrderNo}</b>
 
-${tgEmoji(BOT_EMOJIS.BOX, "📦")} <b>ပစ္စည်း:</b> <b>${escapeHtml(order.productName)}</b> x ${order.quantity}
-${tgEmoji(BOT_EMOJIS.PRICE, "💵")} <b>ကျသင့်ငွေ:</b> <b>${order.totalMmk.toLocaleString("en-US")} MMK</b>${credentialsBlock}`;
+ရက်စွဲ: <b>${dateFormatted}</b>
+အခြေအနေ: <b>${statusLabel}</b>
+
+ပစ္စည်း: <b>${escapeHtml(order.productName)}</b> (x${order.quantity})
+ကျသင့်ငွေ: <b>${order.totalMmk.toLocaleString("en-US")} Ks</b>${credentialsBlock}`;
 }
 
 /**
@@ -431,14 +412,9 @@ export function formatAccountSuspendedMessage(): string {
  */
 export function formatForceJoinMessage(channelUsername: string): string {
   return `<blockquote>${tgEmoji(BOT_EMOJIS.LIGHTNING, "⚡")} <b>Welcome to Arena Store!</b> ❞
-Telegram Bot ကို စတင်အသုံးပြုရန်အတွက် တရားဝင် <b>Announcement Channel (${channelUsername})</b> ကို အရင် Join ပေးပါရန် လိုအပ်ပါသည်ခင်ဗျာ ${tgEmoji(BOT_EMOJIS.SPARKLES, "✨")}</blockquote>
+Bot ကို စတင်အသုံးပြုရန် ကျွန်ုပ်တို့၏ တရားဝင် <b>Announcement Channel (${channelUsername})</b> ကို အရင် Join ပေးရန် လိုအပ်ပါသည်ခင်ဗျာ။</blockquote>
 
-${tgEmoji(BOT_EMOJIS.SPEAKER, "📢")} <b>Channel သို့ Join ထားခြင်းဖြင့်:</b>
-• နောက်ဆုံးထွက် AI Tools & Digital Products အသစ်များ သိရှိနိုင်ခြင်း
-• လျှော့စျေး Promotion နှင့် အထူး Discount Coupon များ ရရှိနိုင်ခြင်း
-• ဝန်ဆောင်မှု အပြောင်းအလဲနှင့် အရေးကြီး သတိပေးချက်များ သိရှိနိုင်ခြင်း
-
-${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")} <b>အောက်ပါ "Join Channel" ခလုတ်ကို နှိပ်၍ အရင် Join ပြီးပါက "Joined ပြီးပါပြီ" ကို နှိပ်ပေးပါခင်ဗျာ:</b>`;
+${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")} အောက်ပါ <b>"Join Channel"</b> ခလုတ်ကို နှိပ်ပြီး Join ပြီးပါက <b>"Joined ပြီးပါပြီ"</b> ကို နှိပ်ပေးပါခင်ဗျာ:`;
 }
 
 /**
@@ -486,7 +462,7 @@ export function formatMmpayQrInvoiceMessage(params: {
       ? `⏳ <b>ကျန်ချိန်:</b> ~${remainingMin} မိနစ်`
       : `⏳ <b>ကျန်ချိန်:</b> သက်တမ်းကုန်လုနီးပါပြီ`;
 
-  return `<blockquote>${tgEmoji(BOT_EMOJIS.LIGHTNING, "⚡")} <b>MMQR အလိုအလျောက် ငွေပေးချေလွှာ</b>
+  return `<blockquote>${tgEmoji(BOT_EMOJIS.MMQR, "⚡")} <b>MMQR အလိုအလျောက် ငွေပေးချေလွှာ</b>
 ငွေပမာဏ: <b>${params.amountMmk.toLocaleString("en-US")} MMK</b> (၁၅ မိနစ်အတွင်း ပေးချေပါ)</blockquote>
 
 ${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>အော်ဒါ:</b> <code>${escapeHtml(params.reference)}</code>
@@ -536,7 +512,7 @@ export function formatPaymentMethodChoiceMessage(params: {
   return `<blockquote>${tgEmoji(BOT_EMOJIS.MONEY, "💰")} <b>ငွေပေးချေမှု နည်းလမ်း ရွေးချယ်ပါ</b> ❞
 ငွေပမာဏ: <b>${params.amountMmk.toLocaleString("en-US")} MMK</b></blockquote>
 
-${tgEmoji(BOT_EMOJIS.LIGHTNING, "⚡")} <b>MMQR:</b> စလစ်တင်ရန် မလိုဘဲ စက္ကန့်ပိုင်းအတွင်း အလိုအလျောက် ငွေဝင်မည်။
+${tgEmoji(BOT_EMOJIS.MMQR, "⚡")} <b>MMQR:</b> စလစ်တင်ရန် မလိုဘဲ စက္ကန့်ပိုင်းအတွင်း အလိုအလျောက် ငွေဝင်မည်။
 ${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>Manual Slip:</b> ပုံမှန် KPay/WavePay သို့ လွှဲပြီး ပြေစာ ပုံ တင်ပေးရမည်။
 
 အဆင်ပြေရာ နည်းလမ်းကို အောက်တွင် ရွေးချယ်ပေးပါ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}`;

@@ -15,8 +15,10 @@ import {
   buildProfileKeyboard,
   buildWalletKeyboard,
   buildTopUpInvoiceKeyboard,
+  buildTopUpCancelConfirmKeyboard,
   buildPaymentMethodChoiceKeyboard,
   buildMmpayInvoiceKeyboard,
+  buildMmpayCancelConfirmKeyboard,
   buildActiveMmpayPromptKeyboard,
   buildInsufficientBalanceKeyboard,
   buildPurchaseConfirmKeyboard,
@@ -55,6 +57,18 @@ import { channelVerificationService } from "./services/channel-verification.serv
 import { notifyAdminGroupDepositSlip } from "./services/admin-group.service";
 import { registerAdminDepositReviewHandlers } from "./handlers/admin-deposit-review";
 import { BOT_EMOJIS, tgEmoji, escapeHtml, TopUpStatus } from "@arena/shared";
+
+/**
+ * Bot commands registered in the Telegram Bot menu (☰ button).
+ */
+export const BOT_COMMANDS = [
+  { command: "start", description: "Bot ကိုစတင်ရန်" },
+  { command: "products", description: "ပစ္စည်းများ ကြည့်ရှုဝယ်ယူရန်" },
+  { command: "orders", description: "မှာယူထားသည်များကို ကြည့်ရန်" },
+  { command: "wallet", description: "Wallet လက်ကျန်ငွေ စစ်ဆေးရန်" },
+  { command: "profile", description: "မိမိ၏ အကောင့်အချက်အလက်" },
+  { command: "help", description: "Customer Support & အကူအညီ" },
+] as const;
 
 export function createBot(): Bot<BotContext> {
   const bot = new Bot<BotContext>(botConfig.TELEGRAM_BOT_TOKEN);
@@ -208,7 +222,6 @@ export function createBot(): Bot<BotContext> {
       await ctx.reply(formatForceJoinMessage(check.channelUsername), {
         parse_mode: "HTML",
         reply_markup: buildForceJoinKeyboard(check.channelUrl),
-        ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
       });
       return false;
     }
@@ -246,7 +259,7 @@ export function createBot(): Bot<BotContext> {
     return next();
   });
 
-  // 5. Command Handlers (quoting user's message)
+  // 5. Command Handlers
   bot.command(["start", "menu"], async (ctx) => {
     const telegramId = String(ctx.from?.id || "");
     if (ctx.session.awaitingTopUpSlip?.reference) {
@@ -260,12 +273,13 @@ export function createBot(): Bot<BotContext> {
 
     if (!(await ensureChannelMember(ctx))) return;
 
-    // Deep-link support: /start restock_<productId> or /start prod_<productId>
+    // Deep-link support: /start restock_<productId>, /start prod_<productId>, or section deep links
     const deepLinkPayload = ctx.match?.trim();
     if (deepLinkPayload) {
-      const match = deepLinkPayload.match(/^(?:restock_|prod_)?(\d+)$/);
-      if (match) {
-        const productId = parseInt(match[1], 10);
+      // 1. Product detail deep-link: /start prod_<id>, /start restock_<id>, /start <id>
+      const prodMatch = deepLinkPayload.match(/^(?:restock_|prod_)?(\d+)$/);
+      if (prodMatch && !deepLinkPayload.startsWith("cat_")) {
+        const productId = parseInt(prodMatch[1], 10);
         const product = await botCatalog.getProductById(productId);
 
         if (product) {
@@ -276,10 +290,99 @@ export function createBot(): Bot<BotContext> {
           await ctx.reply(formatProductDetailMessage(product, 1), {
             parse_mode: "HTML",
             reply_markup: buildProductDetailKeyboard(product, 1),
-            ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
           });
           return;
         }
+      }
+
+      // 2. Category deep-link: /start cat_<categoryId>
+      const catMatch = deepLinkPayload.match(/^(?:cat_|category_)(\d+)$/);
+      if (catMatch) {
+        const categoryId = parseInt(catMatch[1], 10);
+        const products = await botCatalog.getProductsByCategory(categoryId);
+        const category = await botCatalog.getCategoryById(categoryId);
+        const categoryName = category?.name || "ပစ္စည်းများ";
+        await ctx.reply(formatProductsListMessage(categoryName), {
+          parse_mode: "HTML",
+          reply_markup: buildProductsKeyboard(categoryId, products),
+        });
+        return;
+      }
+
+      // 3. Products / Store catalog deep-link: /start products, /start store
+      if (["products", "store", "shop"].includes(deepLinkPayload)) {
+        const categories = await botCatalog.getCategories();
+        await ctx.reply(formatCategoriesMessage(), {
+          parse_mode: "HTML",
+          reply_markup: buildCategoriesKeyboard(categories, 0),
+        });
+        return;
+      }
+
+      // 4. Wallet dashboard deep-link: /start wallet
+      if (deepLinkPayload === "wallet") {
+        const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || "Customer";
+        const stats = await botOrderService.getUserProfile(telegramId);
+        await ctx.reply(
+          formatWalletMessage({
+            fullName,
+            balanceMmk: stats.walletBalanceMmk,
+            totalSpentMmk: stats.totalSpentMmk,
+          }),
+          {
+            parse_mode: "HTML",
+            reply_markup: buildWalletKeyboard(),
+          }
+        );
+        return;
+      }
+
+      // 5. Orders history deep-link: /start orders
+      if (deepLinkPayload === "orders") {
+        const orders = await botOrderService.getUserOrders(telegramId);
+        await ctx.reply(formatOrdersListMessage(orders.length), {
+          parse_mode: "HTML",
+          reply_markup: buildOrderListKeyboard(orders),
+        });
+        return;
+      }
+
+      // 6. Profile deep-link: /start profile
+      if (deepLinkPayload === "profile") {
+        const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || "Customer";
+        const stats = await botOrderService.getUserProfile(telegramId);
+        await ctx.reply(
+          formatProfileMessage({
+            fullName,
+            username: ctx.from?.username,
+            telegramId,
+            joinedDate: stats.joinedDate,
+            walletBalanceMmk: stats.walletBalanceMmk,
+            totalDepositsMmk: stats.totalDepositsMmk,
+            totalSpentMmk: stats.totalSpentMmk,
+            ordersCount: stats.ordersCount,
+          }),
+          {
+            parse_mode: "HTML",
+            reply_markup: buildProfileKeyboard(),
+          }
+        );
+        return;
+      }
+
+      // 7. Help & Support deep-link: /start help, /start support
+      if (["help", "support"].includes(deepLinkPayload)) {
+        const settings = await botSettingsService.getSettings();
+        const supportUrl = resolveTelegramSupportUrl(settings.supportTelegramHandle);
+        await ctx.reply(
+          `${tgEmoji(BOT_EMOJIS.CHAT, "💬")} <b>Customer Support</b>\n\n` +
+          `အော်ဒါများနှင့် ငွေဖြည့်သွင်းမှုများအတွက် အကူအညီ လိုအပ်ပါက Support ထံ တိုက်ရိုက် ဆက်သွယ် မေးမြန်းနိုင်ပါသည်ခင်ဗျာ။`,
+          {
+            parse_mode: "HTML",
+            reply_markup: buildHelpKeyboard(supportUrl),
+          }
+        );
+        return;
       }
     }
 
@@ -287,7 +390,18 @@ export function createBot(): Bot<BotContext> {
     await ctx.reply(formatStartMessage(firstName), {
       parse_mode: "HTML",
       reply_markup: buildMainMenuKeyboard(supportUrl),
-      ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
+    });
+  });
+
+  bot.command(["products", "store", "shop"], async (ctx) => {
+    ctx.session.awaitingCustomQuantity = false;
+    ctx.session.awaitingCustomTopUp = false;
+    if (!(await ensureChannelMember(ctx))) return;
+
+    const categories = await botCatalog.getCategories();
+    await ctx.reply(formatCategoriesMessage(), {
+      parse_mode: "HTML",
+      reply_markup: buildCategoriesKeyboard(categories, 0),
     });
   });
 
@@ -295,19 +409,13 @@ export function createBot(): Bot<BotContext> {
     if (!(await ensureChannelMember(ctx))) return;
     const settings = await botSettingsService.getSettings();
     const supportUrl = resolveTelegramSupportUrl(settings.supportTelegramHandle);
-    const handle = settings.supportTelegramHandle.startsWith("@")
-      ? settings.supportTelegramHandle
-      : `@${settings.supportTelegramHandle}`;
 
     await ctx.reply(
-      `<blockquote>${tgEmoji(BOT_EMOJIS.CHAT, "💬")} <b>Customer Support & Help Desk</b> ❞
-ဝန်ဆောင်မှုနှင့် ပတ်သက်၍ အကူအညီ ရယူရန်</blockquote>
-
-အော်ဒါများ၊ ငွေဖြည့်သွင်းမှုများနှင့် ပတ်သက်၍ သိရှိလိုသည်များ သို့မဟုတ် အခက်အခဲ တစ်စုံတစ်ရာ ရှိပါက ကျွန်ုပ်တို့၏ Customer Support (<b>${escapeHtml(handle)}</b>) သို့ တိုက်ရိုက် ဆက်သွယ် မေးမြန်းနိုင်ပါသည်ခင်ဗျာ ${tgEmoji(BOT_EMOJIS.SPARKLES, "✨")}`,
+      `${tgEmoji(BOT_EMOJIS.CHAT, "💬")} <b>Customer Support</b>\n\n` +
+      `အော်ဒါများနှင့် ငွေဖြည့်သွင်းမှုများအတွက် အကူအညီ လိုအပ်ပါက Support ထံ တိုက်ရိုက် ဆက်သွယ် မေးမြန်းနိုင်ပါသည်ခင်ဗျာ။`,
       {
         parse_mode: "HTML",
-        reply_markup: buildHelpKeyboard(supportUrl, handle),
-        ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
+        reply_markup: buildHelpKeyboard(supportUrl),
       }
     );
   });
@@ -322,7 +430,6 @@ export function createBot(): Bot<BotContext> {
     await ctx.reply(formatOrdersListMessage(orders.length), {
       parse_mode: "HTML",
       reply_markup: buildOrderListKeyboard(orders),
-      ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
     });
   });
 
@@ -343,7 +450,6 @@ export function createBot(): Bot<BotContext> {
       {
         parse_mode: "HTML",
         reply_markup: buildWalletKeyboard(),
-        ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
       }
     );
   });
@@ -372,7 +478,6 @@ export function createBot(): Bot<BotContext> {
       {
         parse_mode: "HTML",
         reply_markup: buildProfileKeyboard(),
-        ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
       }
     );
   });
@@ -384,7 +489,6 @@ export function createBot(): Bot<BotContext> {
       {
         parse_mode: "HTML",
         reply_markup: buildWalletKeyboard(),
-        ...(ctx.message ? { reply_parameters: { message_id: ctx.message.message_id } } : {}),
       }
     );
   });
@@ -449,22 +553,24 @@ export function createBot(): Bot<BotContext> {
   });
 
   // 5. Categories Grid (Screenshot 1)
-  bot.callbackQuery("menu_categories", async (ctx) => {
+  bot.callbackQuery(/^menu_categories(?:_p(\d+))?$/, async (ctx) => {
     ctx.session.awaitingCustomQuantity = false;
     ctx.session.awaitingCustomTopUp = false;
+    const page = ctx.match[1] ? parseInt(ctx.match[1], 10) : 0;
     const categories = await botCatalog.getCategories();
 
     await ctx.editMessageText(formatCategoriesMessage(), {
       parse_mode: "HTML",
-      reply_markup: buildCategoriesKeyboard(categories),
+      reply_markup: buildCategoriesKeyboard(categories, page),
     });
   });
 
   // 6. Category Selection -> Products List (Screenshot 2)
-  bot.callbackQuery(/^cat_(\d+)$/, async (ctx) => {
+  bot.callbackQuery(/^cat_(\d+)(?:_p(\d+))?$/, async (ctx) => {
     ctx.session.awaitingCustomQuantity = false;
     ctx.session.awaitingCustomTopUp = false;
     const categoryId = parseInt(ctx.match[1], 10);
+    const page = ctx.match[2] ? parseInt(ctx.match[2], 10) : 0;
     ctx.session.activeCategoryId = categoryId;
 
     const category = await botCatalog.getCategoryById(categoryId);
@@ -473,7 +579,7 @@ export function createBot(): Bot<BotContext> {
 
     await ctx.editMessageText(formatProductsListMessage(categoryName), {
       parse_mode: "HTML",
-      reply_markup: buildProductsKeyboard(categoryId, products),
+      reply_markup: buildProductsKeyboard(categoryId, products, page),
     });
   });
 
@@ -545,12 +651,11 @@ export function createBot(): Bot<BotContext> {
     const msgId = ctx.callbackQuery.message?.message_id;
     const promptText =
       product.stock === 1
-        ? `${tgEmoji(BOT_EMOJIS.COUNTER, "🔢")} <b>Custom Quantity သတ်မှတ်ခြင်း:</b>\nလက်ရှိတွင် စတော့ 1 ခုသာ ရနိုင်ပါသဖြင့် ဝယ်ယူလိုပါက <code>1</code> ဟု ရိုက်ထည့်ပေးပါခင်ဗျာ:`
-        : `${tgEmoji(BOT_EMOJIS.COUNTER, "🔢")} <b>Custom Quantity သတ်မှတ်ခြင်း:</b>\nဝယ်ယူလိုသော အရေအတွက် (1 မှ ${product.stock} အထိ) ကို ဂဏန်းအတိအကျ ရိုက်ထည့်ပေးပါခင်ဗျာ:`;
+        ? `${tgEmoji(BOT_EMOJIS.EDIT, "✏️")} <b>စိတ်ကြိုက် အရေအတွက် သတ်မှတ်ခြင်း:</b>\nလက်ရှိတွင် စတော့ 1 ခုသာ ရနိုင်ပါသဖြင့် ဝယ်ယူလိုပါက <code>1</code> ဟု ရိုက်ထည့်ပေးပါခင်ဗျာ:`
+        : `${tgEmoji(BOT_EMOJIS.EDIT, "✏️")} <b>စိတ်ကြိုက် အရေအတွက် သတ်မှတ်ခြင်း:</b>\nဝယ်ယူလိုသော အရေအတွက် (1 မှ ${product.stock} အထိ) ကို ဂဏန်းအတိအကျ ရိုက်ထည့်ပေးပါခင်ဗျာ:`;
 
     await ctx.reply(promptText, {
       parse_mode: "HTML",
-      ...(msgId ? { reply_parameters: { message_id: msgId } } : {}),
     });
   });
 
@@ -939,8 +1044,8 @@ export function createBot(): Bot<BotContext> {
     }
   });
 
-  // 14D. Cancel Active MMQR Invoice (Compliance Rule 8 & 9: Manual Cancellation)
-  bot.callbackQuery(/^mmpay_cancel_(.+)$/, async (ctx) => {
+  // 14D-1. Confirm and execute MMQR cancellation (Compliance Rule 8 & 9: Manual Cancellation)
+  bot.callbackQuery(/^mmpay_cancel_confirm_(.+)$/, async (ctx) => {
     const reference = ctx.match[1];
     const telegramId = String(ctx.from?.id || "");
 
@@ -992,6 +1097,40 @@ export function createBot(): Bot<BotContext> {
         reply_markup: buildWalletKeyboard(),
       }
     );
+  });
+
+  // 14D-2. Abort cancellation and restore keyboard
+  bot.callbackQuery(/^mmpay_cancel_abort_prompt_(.+)$/, async (ctx) => {
+    const reference = ctx.match[1];
+    await ctx.answerCallbackQuery({ text: "လက်ရှိ MMQR ကို ဆက်လက်ကြည့်ရှုနိုင်ပါသည်ခင်ဗျာ" });
+    await ctx.editMessageReplyMarkup({
+      reply_markup: buildActiveMmpayPromptKeyboard(reference),
+    });
+  });
+
+  bot.callbackQuery(/^mmpay_cancel_abort_(.+)$/, async (ctx) => {
+    const reference = ctx.match[1];
+    await ctx.answerCallbackQuery({ text: "ငွေပေးချေမှုကို ဆက်လက်လုပ်ဆောင်နိုင်ပါသည်ခင်ဗျာ" });
+    await ctx.editMessageReplyMarkup({
+      reply_markup: buildMmpayInvoiceKeyboard(reference),
+    });
+  });
+
+  // 14D-3. Ask confirmation before cancelling MMQR invoice
+  bot.callbackQuery(/^mmpay_cancel_prompt_(.+)$/, async (ctx) => {
+    const reference = ctx.match[1];
+    await ctx.answerCallbackQuery({ text: "အော်ဒါ ဖျက်သိမ်းရန် အတည်ပြုပေးပါခင်ဗျာ" });
+    await ctx.editMessageReplyMarkup({
+      reply_markup: buildMmpayCancelConfirmKeyboard(reference, true),
+    });
+  });
+
+  bot.callbackQuery(/^mmpay_cancel_(.+)$/, async (ctx) => {
+    const reference = ctx.match[1];
+    await ctx.answerCallbackQuery({ text: "ငွေပေးချေမှုကို ဖျက်သိမ်းရန် အတည်ပြုပေးပါခင်ဗျာ" });
+    await ctx.editMessageReplyMarkup({
+      reply_markup: buildMmpayCancelConfirmKeyboard(reference, false),
+    });
   });
 
   // 14E. Check MMQR Status / Refresh
@@ -1098,16 +1237,35 @@ export function createBot(): Bot<BotContext> {
     const msgId = ctx.callbackQuery.message?.message_id;
 
     await ctx.reply(
-      `${tgEmoji(BOT_EMOJIS.COUNTER, "🔢")} <b>စိတ်ကြိုက် ငွေဖြည့်သွင်းခြင်း:</b>\nဖြည့်သွင်းလိုသော ပမာဏ (MMK) ကို ဂဏန်းအတိအကျ ရိုက်ထည့်ပေးပါခင်ဗျာ (ဥပမာ: <code>15000</code>):`,
+      `${tgEmoji(BOT_EMOJIS.EDIT, "✏️")} <b>စိတ်ကြိုက် ငွေဖြည့်သွင်းခြင်း:</b>\nဖြည့်သွင်းလိုသော ပမာဏ (MMK) ကို ဂဏန်းအတိအကျ ရိုက်ထည့်ပေးပါခင်ဗျာ (ဥပမာ: <code>15000</code>):`,
       {
         parse_mode: "HTML",
-        ...(msgId ? { reply_parameters: { message_id: msgId } } : {}),
       }
     );
   });
 
-  // 16. Cancel Top-Up
+  // 16A. Ask confirmation before cancelling manual top-up
   bot.callbackQuery("cancel_topup", async (ctx) => {
+    await ctx.answerCallbackQuery({
+      text: "ငွေဖြည့်ခြင်းကို ပယ်ဖျက်ရန် အတည်ပြုပေးပါခင်ဗျာ",
+    });
+    await ctx.editMessageReplyMarkup({
+      reply_markup: buildTopUpCancelConfirmKeyboard(),
+    });
+  });
+
+  // 16B. Abort manual top-up cancellation and restore invoice keyboard
+  bot.callbackQuery("cancel_topup_abort", async (ctx) => {
+    await ctx.answerCallbackQuery({
+      text: "ငွေလွှဲခြင်းကို ဆက်လက်လုပ်ဆောင်နိုင်ပါသည်ခင်ဗျာ",
+    });
+    await ctx.editMessageReplyMarkup({
+      reply_markup: buildTopUpInvoiceKeyboard(),
+    });
+  });
+
+  // 16C. Confirm and execute manual top-up cancellation
+  bot.callbackQuery("cancel_topup_confirm", async (ctx) => {
     const telegramId = String(ctx.from?.id || "");
     const topUpRef = ctx.session.awaitingTopUpSlip?.reference || ctx.session.awaitingTopUpSlip?.topUpId;
 
@@ -1166,15 +1324,16 @@ export function createBot(): Bot<BotContext> {
   });
 
   // 18. Orders Menu (Listing Real Orders & Delivery Viewer)
-  bot.callbackQuery("menu_orders", async (ctx) => {
+  bot.callbackQuery(/^menu_orders(?:_p(\d+))?$/, async (ctx) => {
     ctx.session.awaitingCustomQuantity = false;
     ctx.session.awaitingCustomTopUp = false;
+    const page = ctx.match[1] ? parseInt(ctx.match[1], 10) : 0;
     const telegramId = String(ctx.from?.id || "");
     const orders = await botOrderService.getUserOrders(telegramId);
 
     await ctx.editMessageText(formatOrdersListMessage(orders.length), {
       parse_mode: "HTML",
-      reply_markup: buildOrderListKeyboard(orders),
+      reply_markup: buildOrderListKeyboard(orders, page),
     });
   });
 
@@ -1278,7 +1437,6 @@ export function createBot(): Bot<BotContext> {
         await ctx.reply(formatTopUpSlipReceivedMessage({ amountMmk, reference }), {
           parse_mode: "HTML",
           reply_markup: buildMainMenuKeyboard(),
-          reply_parameters: { message_id: ctx.message.message_id },
         });
         return;
       }
@@ -1299,7 +1457,6 @@ export function createBot(): Bot<BotContext> {
         {
           parse_mode: "HTML",
           reply_markup: buildUnmatchedPhotoKeyboard(),
-          reply_parameters: { message_id: ctx.message.message_id },
         }
       );
     } finally {
@@ -1323,7 +1480,6 @@ export function createBot(): Bot<BotContext> {
         `✨ <b>Custom Emoji Detected</b>\n\n• <b>Emoji:</b> ${escapeHtml(emojiText)}\n• <b>Custom ID:</b> <code>${customId}</code> <i>(tap to copy)</i>\n• <b>HTML Tag:</b> <code>&lt;tg-emoji emoji-id="${customId}"&gt;${escapeHtml(emojiText)}&lt;/tg-emoji&gt;</code>\n\n💡 <i>You can copy this ID into the Admin Panel under Animated Emojis!</i>`,
         {
           parse_mode: "HTML",
-          reply_parameters: { message_id: ctx.message.message_id },
         }
       );
       return;
@@ -1340,7 +1496,6 @@ export function createBot(): Bot<BotContext> {
           `${tgEmoji(BOT_EMOJIS.WARNING, "⚠️")} အနည်းဆုံး 1,000 MMK မှစ၍ မှန်ကန်သော ငွေပမာဏကိုသာ ရိုက်ထည့်ပေးပါခင်ဗျာ (ဥပမာ: <code>15000</code>):`,
           {
             parse_mode: "HTML",
-            reply_parameters: { message_id: ctx.message.message_id },
           }
         );
         return;
@@ -1365,7 +1520,6 @@ export function createBot(): Bot<BotContext> {
             {
               parse_mode: "HTML",
               reply_markup: buildActiveMmpayPromptKeyboard(activeMmpay.reference),
-              reply_parameters: { message_id: ctx.message.message_id },
             }
           );
           return;
@@ -1397,7 +1551,6 @@ export function createBot(): Bot<BotContext> {
             {
               parse_mode: "HTML",
               reply_markup: buildMainMenuKeyboard(),
-              reply_parameters: { message_id: ctx.message.message_id },
             }
           );
           return;
@@ -1409,7 +1562,6 @@ export function createBot(): Bot<BotContext> {
           {
             parse_mode: "HTML",
             reply_markup: buildPaymentMethodChoiceKeyboard(amount),
-            reply_parameters: { message_id: ctx.message.message_id },
           }
         );
         return;
@@ -1432,7 +1584,6 @@ export function createBot(): Bot<BotContext> {
 
         await ctx.reply(errorMsg, {
           parse_mode: "HTML",
-          reply_parameters: { message_id: ctx.message.message_id },
         });
         return;
       }
@@ -1443,7 +1594,6 @@ export function createBot(): Bot<BotContext> {
       await ctx.reply(formatProductDetailMessage(product, qty), {
         parse_mode: "HTML",
         reply_markup: buildProductDetailKeyboard(product, qty),
-        reply_parameters: { message_id: ctx.message.message_id },
       });
       return;
     }
@@ -1454,7 +1604,6 @@ export function createBot(): Bot<BotContext> {
       {
         parse_mode: "HTML",
         reply_markup: buildMainMenuKeyboard(),
-        reply_parameters: { message_id: ctx.message.message_id },
       }
     );
   });
@@ -1468,6 +1617,19 @@ export function createBot(): Bot<BotContext> {
     await ctx.answerCallbackQuery({
       text: "ဤပစ္စည်းမှာ လက်ရှိတွင် စတော့ပြတ်လပ်နေပါသည်ခင်ဗျာ။",
       show_alert: true,
+    });
+  });
+
+  // Preset quantity exceeds available stock — show top toast notification.
+  bot.callbackQuery(/^qty_max_(\d+)$/, async (ctx) => {
+    const stock = parseInt(ctx.match[1], 10);
+    const text =
+      stock > 0
+        ? `Stock ${stock} ခုထိပဲ ရနိုင်ပါတော့မယ်ဗျာ`
+        : "ဤပစ္စည်းမှာ လက်ရှိတွင် စတော့ပြတ်လပ်နေပါသည်ခင်ဗျာ။";
+    await ctx.answerCallbackQuery({
+      text,
+      show_alert: false,
     });
   });
 
