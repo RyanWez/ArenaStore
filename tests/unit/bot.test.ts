@@ -760,5 +760,13 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(parseDeepLink("")).toBeNull();
       expect(parseDeepLink(undefined)).toBeNull();
     });
+
+    it("defines standard bot menu commands with Burmese descriptions", async () => {
+      const { BOT_COMMANDS } = await import("../../apps/bot/src/bot");
+      const cmdNames = BOT_COMMANDS.map((c) => c.command);
+      expect(cmdNames).toEqual(["start", "products", "orders", "wallet", "profile", "help"]);
+      expect(BOT_COMMANDS.find((c) => c.command === "products")?.description).toContain("ပစ္စည်းများ");
+      expect(BOT_COMMANDS.find((c) => c.command === "profile")?.description).toContain("အကောင့်");
+    });
   });
 });

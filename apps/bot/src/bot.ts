@@ -58,6 +58,18 @@ import { notifyAdminGroupDepositSlip } from "./services/admin-group.service";
 import { registerAdminDepositReviewHandlers } from "./handlers/admin-deposit-review";
 import { BOT_EMOJIS, tgEmoji, escapeHtml, TopUpStatus } from "@arena/shared";
 
+/**
+ * Bot commands registered in the Telegram Bot menu (☰ button).
+ */
+export const BOT_COMMANDS = [
+  { command: "start", description: "Bot ကိုစတင်ရန်" },
+  { command: "products", description: "ပစ္စည်းများ ကြည့်ရှုဝယ်ယူရန်" },
+  { command: "orders", description: "မှာယူထားသည်များကို ကြည့်ရန်" },
+  { command: "wallet", description: "Wallet လက်ကျန်ငွေ စစ်ဆေးရန်" },
+  { command: "profile", description: "မိမိ၏ အကောင့်အချက်အလက်" },
+  { command: "help", description: "Customer Support & အကူအညီ" },
+] as const;
+
 export function createBot(): Bot<BotContext> {
   const bot = new Bot<BotContext>(botConfig.TELEGRAM_BOT_TOKEN);
 
@@ -287,6 +299,18 @@ export function createBot(): Bot<BotContext> {
     await ctx.reply(formatStartMessage(firstName), {
       parse_mode: "HTML",
       reply_markup: buildMainMenuKeyboard(supportUrl),
+    });
+  });
+
+  bot.command(["products", "store", "shop"], async (ctx) => {
+    ctx.session.awaitingCustomQuantity = false;
+    ctx.session.awaitingCustomTopUp = false;
+    if (!(await ensureChannelMember(ctx))) return;
+
+    const categories = await botCatalog.getCategories();
+    await ctx.reply(formatCategoriesMessage(), {
+      parse_mode: "HTML",
+      reply_markup: buildCategoriesKeyboard(categories, 0),
     });
   });
 
