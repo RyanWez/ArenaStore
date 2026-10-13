@@ -412,14 +412,9 @@ export function formatAccountSuspendedMessage(): string {
  */
 export function formatForceJoinMessage(channelUsername: string): string {
   return `<blockquote>${tgEmoji(BOT_EMOJIS.LIGHTNING, "⚡")} <b>Welcome to Arena Store!</b> ❞
-Telegram Bot ကို စတင်အသုံးပြုရန်အတွက် တရားဝင် <b>Announcement Channel (${channelUsername})</b> ကို အရင် Join ပေးပါရန် လိုအပ်ပါသည်ခင်ဗျာ ${tgEmoji(BOT_EMOJIS.SPARKLES, "✨")}</blockquote>
+Bot ကို စတင်အသုံးပြုရန် ကျွန်ုပ်တို့၏ တရားဝင် <b>Announcement Channel (${channelUsername})</b> ကို အရင် Join ပေးပါရန် လိုအပ်ပါသည်ခင်ဗျာ။</blockquote>
 
-${tgEmoji(BOT_EMOJIS.SPEAKER, "📢")} <b>Channel သို့ Join ထားခြင်းဖြင့်:</b>
-• နောက်ဆုံးထွက် AI Tools & Digital Products အသစ်များ သိရှိနိုင်ခြင်း
-• လျှော့စျေး Promotion နှင့် အထူး Discount Coupon များ ရရှိနိုင်ခြင်း
-• ဝန်ဆောင်မှု အပြောင်းအလဲနှင့် အရေးကြီး သတိပေးချက်များ သိရှိနိုင်ခြင်း
-
-${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")} <b>အောက်ပါ "Join Channel" ခလုတ်ကို နှိပ်၍ အရင် Join ပြီးပါက "Joined ပြီးပါပြီ" ကို နှိပ်ပေးပါခင်ဗျာ:</b>`;
+${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")} အောက်ပါ <b>"Join Channel"</b> ခလုတ်ဖြင့် Join ပြီးပါက <b>"Joined ပြီးပါပြီ"</b> ကို နှိပ်ပေးပါခင်ဗျာ:`;
 }
 
 /**
