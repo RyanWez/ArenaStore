@@ -618,6 +618,35 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect((customBtn as any)?.icon_custom_emoji_id).toBe("5985774024968379294");
     });
 
+    it("provides two-step confirmation keyboards for manual and MMQR top-up cancellation", async () => {
+      const {
+        buildTopUpCancelConfirmKeyboard,
+        buildMmpayCancelConfirmKeyboard,
+      } = await import("../../apps/bot/src/keyboards/store.keyboards");
+
+      const manualKb = buildTopUpCancelConfirmKeyboard();
+      const manualBtns = manualKb.inline_keyboard.flat();
+      const manualConfirm = manualBtns.find((b) => b.text.includes("သေချာပါသည်"));
+      const manualAbort = manualBtns.find((b) => b.text.includes("မဖျက်တော့ပါ"));
+      expect((manualConfirm as any)?.callback_data).toBe("cancel_topup_confirm");
+      expect((manualConfirm as any)?.icon_custom_emoji_id).toBe("5341498036868634459"); // ALERT
+      expect((manualAbort as any)?.callback_data).toBe("cancel_topup_abort");
+      expect((manualAbort as any)?.icon_custom_emoji_id).toBe("5258236805890710909"); // BACK
+
+      const mmpayKb = buildMmpayCancelConfirmKeyboard("REF12345");
+      const mmpayBtns = mmpayKb.inline_keyboard.flat();
+      const mmpayConfirm = mmpayBtns.find((b) => b.text.includes("သေချာပါသည်"));
+      const mmpayAbort = mmpayBtns.find((b) => b.text.includes("မဖျက်တော့ပါ"));
+      expect((mmpayConfirm as any)?.callback_data).toBe("mmpay_cancel_confirm_REF12345");
+      expect((mmpayConfirm as any)?.icon_custom_emoji_id).toBe("5341498036868634459");
+      expect((mmpayAbort as any)?.callback_data).toBe("mmpay_cancel_abort_REF12345");
+      expect((mmpayAbort as any)?.icon_custom_emoji_id).toBe("5258236805890710909");
+
+      const mmpayPromptKb = buildMmpayCancelConfirmKeyboard("REF12345", true);
+      const promptAbort = mmpayPromptKb.inline_keyboard.flat().find((b) => b.text.includes("မဖျက်တော့ပါ"));
+      expect((promptAbort as any)?.callback_data).toBe("mmpay_cancel_abort_prompt_REF12345");
+    });
+
     it("Recommendation C: creates top-up request, accepts slip proof, and approves credit", async () => {
       const { botOrderService } = await import(
         "../../apps/bot/src/services/order.service"

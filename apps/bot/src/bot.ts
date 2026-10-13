@@ -15,8 +15,10 @@ import {
   buildProfileKeyboard,
   buildWalletKeyboard,
   buildTopUpInvoiceKeyboard,
+  buildTopUpCancelConfirmKeyboard,
   buildPaymentMethodChoiceKeyboard,
   buildMmpayInvoiceKeyboard,
+  buildMmpayCancelConfirmKeyboard,
   buildActiveMmpayPromptKeyboard,
   buildInsufficientBalanceKeyboard,
   buildPurchaseConfirmKeyboard,
@@ -927,8 +929,8 @@ export function createBot(): Bot<BotContext> {
     }
   });
 
-  // 14D. Cancel Active MMQR Invoice (Compliance Rule 8 & 9: Manual Cancellation)
-  bot.callbackQuery(/^mmpay_cancel_(.+)$/, async (ctx) => {
+  // 14D-1. Confirm and execute MMQR cancellation (Compliance Rule 8 & 9: Manual Cancellation)
+  bot.callbackQuery(/^mmpay_cancel_confirm_(.+)$/, async (ctx) => {
     const reference = ctx.match[1];
     const telegramId = String(ctx.from?.id || "");
 
@@ -980,6 +982,40 @@ export function createBot(): Bot<BotContext> {
         reply_markup: buildWalletKeyboard(),
       }
     );
+  });
+
+  // 14D-2. Abort cancellation and restore keyboard
+  bot.callbackQuery(/^mmpay_cancel_abort_prompt_(.+)$/, async (ctx) => {
+    const reference = ctx.match[1];
+    await ctx.answerCallbackQuery({ text: "လက်ရှိ MMQR ကို ဆက်လက်ကြည့်ရှုနိုင်ပါသည်ခင်ဗျာ" });
+    await ctx.editMessageReplyMarkup({
+      reply_markup: buildActiveMmpayPromptKeyboard(reference),
+    });
+  });
+
+  bot.callbackQuery(/^mmpay_cancel_abort_(.+)$/, async (ctx) => {
+    const reference = ctx.match[1];
+    await ctx.answerCallbackQuery({ text: "ငွေပေးချေမှုကို ဆက်လက်လုပ်ဆောင်နိုင်ပါသည်ခင်ဗျာ" });
+    await ctx.editMessageReplyMarkup({
+      reply_markup: buildMmpayInvoiceKeyboard(reference),
+    });
+  });
+
+  // 14D-3. Ask confirmation before cancelling MMQR invoice
+  bot.callbackQuery(/^mmpay_cancel_prompt_(.+)$/, async (ctx) => {
+    const reference = ctx.match[1];
+    await ctx.answerCallbackQuery({ text: "အော်ဒါ ဖျက်သိမ်းရန် အတည်ပြုပေးပါခင်ဗျာ" });
+    await ctx.editMessageReplyMarkup({
+      reply_markup: buildMmpayCancelConfirmKeyboard(reference, true),
+    });
+  });
+
+  bot.callbackQuery(/^mmpay_cancel_(.+)$/, async (ctx) => {
+    const reference = ctx.match[1];
+    await ctx.answerCallbackQuery({ text: "ငွေပေးချေမှုကို ဖျက်သိမ်းရန် အတည်ပြုပေးပါခင်ဗျာ" });
+    await ctx.editMessageReplyMarkup({
+      reply_markup: buildMmpayCancelConfirmKeyboard(reference, false),
+    });
   });
 
   // 14E. Check MMQR Status / Refresh
@@ -1093,8 +1129,28 @@ export function createBot(): Bot<BotContext> {
     );
   });
 
-  // 16. Cancel Top-Up
+  // 16A. Ask confirmation before cancelling manual top-up
   bot.callbackQuery("cancel_topup", async (ctx) => {
+    await ctx.answerCallbackQuery({
+      text: "ငွေဖြည့်ခြင်းကို ပယ်ဖျက်ရန် အတည်ပြုပေးပါခင်ဗျာ",
+    });
+    await ctx.editMessageReplyMarkup({
+      reply_markup: buildTopUpCancelConfirmKeyboard(),
+    });
+  });
+
+  // 16B. Abort manual top-up cancellation and restore invoice keyboard
+  bot.callbackQuery("cancel_topup_abort", async (ctx) => {
+    await ctx.answerCallbackQuery({
+      text: "ငွေလွှဲခြင်းကို ဆက်လက်လုပ်ဆောင်နိုင်ပါသည်ခင်ဗျာ",
+    });
+    await ctx.editMessageReplyMarkup({
+      reply_markup: buildTopUpInvoiceKeyboard(),
+    });
+  });
+
+  // 16C. Confirm and execute manual top-up cancellation
+  bot.callbackQuery("cancel_topup_confirm", async (ctx) => {
     const telegramId = String(ctx.from?.id || "");
     const topUpRef = ctx.session.awaitingTopUpSlip?.reference || ctx.session.awaitingTopUpSlip?.topUpId;
 

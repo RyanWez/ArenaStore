@@ -472,6 +472,25 @@ export function buildTopUpInvoiceKeyboard(): InlineKeyboard {
 }
 
 /**
+ * Builds Confirmation Keyboard when user initiates cancellation of manual top-up.
+ */
+export function buildTopUpCancelConfirmKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .add({
+      text: "သေချာပါသည်၊ ဖျက်သိမ်းမည်",
+      callback_data: "cancel_topup_confirm",
+      icon_custom_emoji_id: BOT_EMOJIS.ALERT,
+      style: "danger",
+    } as any)
+    .row()
+    .add({
+      text: "မဖျက်တော့ပါ (ဆက်လက်လွှဲမည်)",
+      callback_data: "cancel_topup_abort",
+      icon_custom_emoji_id: BOT_EMOJIS.BACK,
+    });
+}
+
+/**
  * Builds Payment Method Selection Keyboard (MMQR Auto-Pay vs Manual Bank Slip).
  */
 export function buildPaymentMethodChoiceKeyboard(amountMmk: number, contextData?: string): InlineKeyboard {
@@ -513,6 +532,25 @@ export function buildMmpayInvoiceKeyboard(reference: string): InlineKeyboard {
 }
 
 /**
+ * Builds Confirmation Keyboard when user initiates cancellation of active MMQR invoice.
+ */
+export function buildMmpayCancelConfirmKeyboard(reference: string, fromPrompt = false): InlineKeyboard {
+  return new InlineKeyboard()
+    .add({
+      text: "သေချာပါသည်၊ ဖျက်သိမ်းမည်",
+      callback_data: `mmpay_cancel_confirm_${reference}`,
+      icon_custom_emoji_id: BOT_EMOJIS.ALERT,
+      style: "danger",
+    } as any)
+    .row()
+    .add({
+      text: "မဖျက်တော့ပါ (ဆက်လက်ပေးချေမည်)",
+      callback_data: fromPrompt ? `mmpay_cancel_abort_prompt_${reference}` : `mmpay_cancel_abort_${reference}`,
+      icon_custom_emoji_id: BOT_EMOJIS.BACK,
+    });
+}
+
+/**
  * Builds prompt keyboard when an unexpired active MMQR order is blocking a new request.
  */
 export function buildActiveMmpayPromptKeyboard(reference: string): InlineKeyboard {
@@ -526,7 +564,7 @@ export function buildActiveMmpayPromptKeyboard(reference: string): InlineKeyboar
     .row()
     .add({
       text: "လက်ရှိ အော်ဒါ ဖျက်သိမ်းမည်",
-      callback_data: `mmpay_cancel_${reference}`,
+      callback_data: `mmpay_cancel_prompt_${reference}`,
       icon_custom_emoji_id: BOT_EMOJIS.CANCEL,
       style: "danger",
     } as any)
