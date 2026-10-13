@@ -273,7 +273,11 @@ export function buildProductDetailKeyboard(
     keyboard.add({
       text: `${preset}`,
       callback_data: isAvailable ? `qty_set_${product.id}_${preset}` : `qty_max_${product.stock}`,
-      ...(isSelected ? { icon_custom_emoji_id: BOT_EMOJIS.CHECK } : {}),
+      ...(isSelected
+        ? { icon_custom_emoji_id: BOT_EMOJIS.CHECK }
+        : !isAvailable
+          ? { icon_custom_emoji_id: BOT_EMOJIS.PROHIBITED }
+          : {}),
     });
   }
   keyboard.row();

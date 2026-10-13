@@ -30,6 +30,8 @@ export const BOT_EMOJIS = {
   HOME: "5348064629547351986",       // 🏡 Home
   EDIT: "5985774024968379294",       // ✏️ Custom / Edit
   FIRE: "5303040337059543238",       // 🔥 Fire / Hot / Popular
+  PROHIBITED: "5872829476143894491", // 🚫 Prohibited / Unavailable
+  DISABLED: "5872829476143894491",   // 🚫 Prohibited / Unavailable
 
   // Detail Card & Status
   PRICE: "5409048419211682843",      // 💵

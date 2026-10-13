@@ -1449,12 +1449,16 @@ export function createBot(): Bot<BotContext> {
     });
   });
 
-  // Preset quantity exceeds available stock — explain instead of silently ignoring.
+  // Preset quantity exceeds available stock — show top toast notification.
   bot.callbackQuery(/^qty_max_(\d+)$/, async (ctx) => {
     const stock = parseInt(ctx.match[1], 10);
+    const text =
+      stock > 0
+        ? `Stock ${stock} ခုထိပဲ ရနိုင်ပါတော့မယ်ဗျာ`
+        : "ဤပစ္စည်းမှာ လက်ရှိတွင် စတော့ပြတ်လပ်နေပါသည်ခင်ဗျာ။";
     await ctx.answerCallbackQuery({
-      text: `လက်ရှိတွင် စတော့ ${stock} ခုသာ ရှိပါသဖြင့် ထို အရေအတွက်ကို ရွေး၍ မရပါခင်ဗျာ။`,
-      show_alert: true,
+      text,
+      show_alert: false,
     });
   });
 

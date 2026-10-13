@@ -81,6 +81,8 @@ describe("Telegram Custom Emoji & HTML Formatting", () => {
     expect(BOT_EMOJIS.HOME).toBe("5348064629547351986");
     expect(BOT_EMOJIS.EDIT).toBe("5985774024968379294");
     expect(BOT_EMOJIS.FIRE).toBe("5303040337059543238");
+    expect(BOT_EMOJIS.PROHIBITED).toBe("5872829476143894491");
+    expect(BOT_EMOJIS.DISABLED).toBe("5872829476143894491");
 
     // Payment Emojis
     expect(BOT_EMOJIS.KBZPAY).toBe("6206487605421280759");

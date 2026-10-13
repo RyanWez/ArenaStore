@@ -504,9 +504,14 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(rows[0][2].text).toBe(" ");
       expect((rows[0][2] as any).callback_data).toBe("noop");
 
-      // Presets > stock (5, 10, 20, 30, 50) route to the over-stock alert
+      // Presets > stock (5, 10, 20) route to over-stock alert and display PROHIBITED icon
+      expect((rows[1][0] as any).icon_custom_emoji_id).toBeUndefined(); // 1 (available, not selected)
       expect((rows[1][1] as any).callback_data).toBe("qty_max_3"); // 5
+      expect((rows[1][1] as any).icon_custom_emoji_id).toBe("5872829476143894491");
       expect((rows[1][2] as any).callback_data).toBe("qty_max_3"); // 10
+      expect((rows[1][2] as any).icon_custom_emoji_id).toBe("5872829476143894491");
+      expect((rows[1][3] as any).callback_data).toBe("qty_max_3"); // 20
+      expect((rows[1][3] as any).icon_custom_emoji_id).toBe("5872829476143894491");
     });
 
     it("handles empty categories product list gracefully", () => {
