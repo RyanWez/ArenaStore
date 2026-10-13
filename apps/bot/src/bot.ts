@@ -273,12 +273,13 @@ export function createBot(): Bot<BotContext> {
 
     if (!(await ensureChannelMember(ctx))) return;
 
-    // Deep-link support: /start restock_<productId> or /start prod_<productId>
+    // Deep-link support: /start restock_<productId>, /start prod_<productId>, or section deep links
     const deepLinkPayload = ctx.match?.trim();
     if (deepLinkPayload) {
-      const match = deepLinkPayload.match(/^(?:restock_|prod_)?(\d+)$/);
-      if (match) {
-        const productId = parseInt(match[1], 10);
+      // 1. Product detail deep-link: /start prod_<id>, /start restock_<id>, /start <id>
+      const prodMatch = deepLinkPayload.match(/^(?:restock_|prod_)?(\d+)$/);
+      if (prodMatch && !deepLinkPayload.startsWith("cat_")) {
+        const productId = parseInt(prodMatch[1], 10);
         const product = await botCatalog.getProductById(productId);
 
         if (product) {
@@ -292,6 +293,96 @@ export function createBot(): Bot<BotContext> {
           });
           return;
         }
+      }
+
+      // 2. Category deep-link: /start cat_<categoryId>
+      const catMatch = deepLinkPayload.match(/^(?:cat_|category_)(\d+)$/);
+      if (catMatch) {
+        const categoryId = parseInt(catMatch[1], 10);
+        const products = await botCatalog.getProductsByCategory(categoryId);
+        const category = await botCatalog.getCategoryById(categoryId);
+        const categoryName = category?.name || "ပစ္စည်းများ";
+        await ctx.reply(formatProductsListMessage(categoryName), {
+          parse_mode: "HTML",
+          reply_markup: buildProductsKeyboard(categoryId, products),
+        });
+        return;
+      }
+
+      // 3. Products / Store catalog deep-link: /start products, /start store
+      if (["products", "store", "shop"].includes(deepLinkPayload)) {
+        const categories = await botCatalog.getCategories();
+        await ctx.reply(formatCategoriesMessage(), {
+          parse_mode: "HTML",
+          reply_markup: buildCategoriesKeyboard(categories, 0),
+        });
+        return;
+      }
+
+      // 4. Wallet dashboard deep-link: /start wallet
+      if (deepLinkPayload === "wallet") {
+        const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || "Customer";
+        const stats = await botOrderService.getUserProfile(telegramId);
+        await ctx.reply(
+          formatWalletMessage({
+            fullName,
+            balanceMmk: stats.walletBalanceMmk,
+            totalSpentMmk: stats.totalSpentMmk,
+          }),
+          {
+            parse_mode: "HTML",
+            reply_markup: buildWalletKeyboard(),
+          }
+        );
+        return;
+      }
+
+      // 5. Orders history deep-link: /start orders
+      if (deepLinkPayload === "orders") {
+        const orders = await botOrderService.getUserOrders(telegramId);
+        await ctx.reply(formatOrdersListMessage(orders.length), {
+          parse_mode: "HTML",
+          reply_markup: buildOrderListKeyboard(orders),
+        });
+        return;
+      }
+
+      // 6. Profile deep-link: /start profile
+      if (deepLinkPayload === "profile") {
+        const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || "Customer";
+        const stats = await botOrderService.getUserProfile(telegramId);
+        await ctx.reply(
+          formatProfileMessage({
+            fullName,
+            username: ctx.from?.username,
+            telegramId,
+            joinedDate: stats.joinedDate,
+            walletBalanceMmk: stats.walletBalanceMmk,
+            totalDepositsMmk: stats.totalDepositsMmk,
+            totalSpentMmk: stats.totalSpentMmk,
+            ordersCount: stats.ordersCount,
+          }),
+          {
+            parse_mode: "HTML",
+            reply_markup: buildProfileKeyboard(),
+          }
+        );
+        return;
+      }
+
+      // 7. Help & Support deep-link: /start help, /start support
+      if (["help", "support"].includes(deepLinkPayload)) {
+        const settings = await botSettingsService.getSettings();
+        const supportUrl = resolveTelegramSupportUrl(settings.supportTelegramHandle);
+        await ctx.reply(
+          `${tgEmoji(BOT_EMOJIS.CHAT, "💬")} <b>Customer Support</b>\n\n` +
+          `အော်ဒါများနှင့် ငွေဖြည့်သွင်းမှုများအတွက် အကူအညီ လိုအပ်ပါက Support ထံ တိုက်ရိုက် ဆက်သွယ် မေးမြန်းနိုင်ပါသည်ခင်ဗျာ။`,
+          {
+            parse_mode: "HTML",
+            reply_markup: buildHelpKeyboard(supportUrl),
+          }
+        );
+        return;
       }
     }
 
