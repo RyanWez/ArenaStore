@@ -139,8 +139,13 @@ export function formatDeliveryMessage(params: {
   viewUrl?: string;
 }): string {
   const cleanCreds = formatCredentialsText(params.credentialsText);
-  const viewUrlBlock = params.viewUrl
-    ? `\n\n🔗 <b>Order Status / Access Link:</b>\n<a href="${escapeHtml(params.viewUrl)}">${escapeHtml(params.viewUrl)}</a>`
+  const showViewUrl = Boolean(
+    params.viewUrl &&
+      !params.viewUrl.includes("digitalcore.top") &&
+      !cleanCreds.includes(params.viewUrl)
+  );
+  const viewUrlBlock = showViewUrl
+    ? `\n\n🔗 <b>Order Status / Access Link:</b>\n<a href="${escapeHtml(params.viewUrl!)}">${escapeHtml(params.viewUrl!)}</a>`
     : "";
 
   return `<blockquote>${tgEmoji(BOT_EMOJIS.PARTY, "🎉")} <b>အော်ဒါ အောင်မြင်စွာ ပို့ဆောင်ပြီးပါပြီ!</b> ❞
@@ -324,8 +329,13 @@ export function formatWalletDeliveryMessage(params: {
   viewUrl?: string;
 }): string {
   const cleanCreds = formatCredentialsText(params.credentialsText);
-  const viewUrlBlock = params.viewUrl
-    ? `\n\n🔗 <b>လင့်ခ်:</b> <a href="${escapeHtml(params.viewUrl)}">${escapeHtml(params.viewUrl)}</a>`
+  const showViewUrl = Boolean(
+    params.viewUrl &&
+      !params.viewUrl.includes("digitalcore.top") &&
+      !cleanCreds.includes(params.viewUrl)
+  );
+  const viewUrlBlock = showViewUrl
+    ? `\n\n🔗 <b>လင့်ခ်:</b> <a href="${escapeHtml(params.viewUrl!)}">${escapeHtml(params.viewUrl!)}</a>`
     : "";
 
   return `${tgEmoji(BOT_EMOJIS.CHECK, "✅")} <b>ဝယ်ယူမှု အောင်မြင်ပါသည်</b>
@@ -381,8 +391,13 @@ export function formatOrderDetailMessage(order: {
   let credentialsBlock = "";
   if (order.status === "DELIVERED" && order.credentialsText) {
     const cleanCreds = formatCredentialsText(order.credentialsText);
-    const viewUrlLine = order.viewUrl
-      ? `\n\n🔗 <b>လင့်ခ်:</b> <a href="${escapeHtml(order.viewUrl)}">${escapeHtml(order.viewUrl)}</a>`
+    const showViewUrl = Boolean(
+      order.viewUrl &&
+        !order.viewUrl.includes("digitalcore.top") &&
+        !cleanCreds.includes(order.viewUrl)
+    );
+    const viewUrlLine = showViewUrl
+      ? `\n\n🔗 <b>လင့်ခ်:</b> <a href="${escapeHtml(order.viewUrl!)}">${escapeHtml(order.viewUrl!)}</a>`
       : "";
     credentialsBlock = `\n\n${tgEmoji(BOT_EMOJIS.KEY, "🔑")} <b>သင့်အကောင့် အချက်အလက်များ:</b>\n<pre><code>${escapeHtml(cleanCreds)}</code></pre>${viewUrlLine}`;
   }

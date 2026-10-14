@@ -24,6 +24,8 @@ import {
   formatTopUpInvoiceMessage,
   formatSlipReceivedMessage,
   formatDeliveryMessage,
+  formatWalletDeliveryMessage,
+  formatOrderDetailMessage,
   formatProfileMessage,
 } from "../../apps/bot/src/formatters/messages";
 import { BotProduct, BotCategory } from "../../apps/bot/src/services/catalog.service";
@@ -431,6 +433,45 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(deliveryMsg).not.toContain('["');
       expect(deliveryMsg).not.toContain('"]');
       expect(deliveryMsg).not.toContain("လုံခြုံရေး သတိပေးချက်");
+    });
+
+    it("formats wallet delivery message for DigitalCore without exposing supplier order viewUrl or combining #1/#2", () => {
+      const msg = formatWalletDeliveryMessage({
+        publicOrderNo: "ARN-MV7GLA1P195C4DDB",
+        productName: "Gemini Pro 18 Months",
+        quantity: 1,
+        totalMmk: 5000,
+        remainingBalanceMmk: 10000,
+        credentialsText:
+          "#1: https://serviceactivation.link/subscription/new/AQCpiIEQNmdGQ0gSrMnzQEExr7n3DYPT\n#2: https://digitalcore.top/order?number=51c4de8e-ef0e-432c-bf2b-1676fca087f4",
+        viewUrl: "https://digitalcore.top/order?number=51c4de8e-ef0e-432c-bf2b-1676fca087f4",
+      });
+
+      expect(msg).toContain("Gemini Pro 18 Months");
+      expect(msg).toContain("<pre><code>https://serviceactivation.link/subscription/new/AQCpiIEQNmdGQ0gSrMnzQEExr7n3DYPT</code></pre>");
+      expect(msg).not.toContain("digitalcore.top");
+      expect(msg).not.toContain("#1:");
+      expect(msg).not.toContain("#2:");
+      expect(msg).not.toContain("လင့်ခ်:");
+    });
+
+    it("formats order detail message for DigitalCore without exposing supplier order viewUrl", () => {
+      const msg = formatOrderDetailMessage({
+        publicOrderNo: "ARN-MV7GLA1P195C4DDB",
+        productName: "Gemini Pro 18 Months",
+        quantity: 1,
+        totalMmk: 5000,
+        status: "DELIVERED",
+        createdAt: "2026-10-14T01:56:34.421Z",
+        credentialsText:
+          "https://serviceactivation.link/subscription/new/AQCpiIEQNmdGQ0gSrMnzQEExr7n3DYPT",
+        viewUrl: "https://digitalcore.top/order?number=51c4de8e-ef0e-432c-bf2b-1676fca087f4",
+      });
+
+      expect(msg).toContain("Gemini Pro 18 Months");
+      expect(msg).toContain("<pre><code>https://serviceactivation.link/subscription/new/AQCpiIEQNmdGQ0gSrMnzQEExr7n3DYPT</code></pre>");
+      expect(msg).not.toContain("digitalcore.top");
+      expect(msg).not.toContain("လင့်ခ်:");
     });
 
     it("formats profile card matching Screenshot 2 with user details and MMK stats", () => {

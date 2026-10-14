@@ -269,10 +269,16 @@ function cleanCredentialsText(raw: any): string {
     }
   }
   if (Array.isArray(val)) {
-    return val
+    let items = val
       .map((item) => (typeof item === 'string' ? item.replace(/^"+|"+$/g, '').trim() : JSON.stringify(item)))
       .filter(Boolean)
-      .join('\n')
+    if (items.length > 1) {
+      const nonSupplier = items.filter(
+        (i) => !i.includes('digitalcore.top/order') && !i.includes('digitalcore.top/view')
+      )
+      if (nonSupplier.length > 0) items = nonSupplier
+    }
+    return items.join('\n')
   }
   if (typeof val === 'object' && val !== null) {
     return JSON.stringify(val, null, 2)
@@ -283,6 +289,16 @@ function cleanCredentialsText(raw: any): string {
       res = JSON.parse(res)
     } catch {
       res = res.slice(1, -1)
+    }
+  }
+  if (res.includes('\n') && (res.includes('digitalcore.top/order') || res.includes('digitalcore.top/view'))) {
+    const lines = res.split('\n').map((l) => l.trim()).filter(Boolean)
+    const nonSupplier = lines.filter(
+      (l) => !l.includes('digitalcore.top/order') && !l.includes('digitalcore.top/view')
+    )
+    if (nonSupplier.length > 0) {
+      if (nonSupplier.length === 1) return nonSupplier[0].replace(/^#\d+:\s*/, '')
+      return nonSupplier.join('\n')
     }
   }
   return res

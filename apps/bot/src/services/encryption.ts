@@ -142,7 +142,7 @@ export function formatCredentialsText(raw: unknown): string {
   }
 
   if (Array.isArray(val)) {
-    return val
+    let items = val
       .map((item) => {
         if (typeof item === "string") {
           let s = item.trim();
@@ -157,8 +157,20 @@ export function formatCredentialsText(raw: unknown): string {
         }
         return JSON.stringify(item);
       })
-      .filter(Boolean)
-      .join("\n");
+      .filter(Boolean);
+
+    // If there are multiple items and one is the upstream supplier order link,
+    // filter it out so customers/admins only get the actual delivered digital product.
+    if (items.length > 1) {
+      const nonSupplierItems = items.filter(
+        (item) => !item.includes("digitalcore.top/order") && !item.includes("digitalcore.top/view")
+      );
+      if (nonSupplierItems.length > 0) {
+        items = nonSupplierItems;
+      }
+    }
+
+    return items.join("\n");
   }
 
   if (typeof val === "object" && val !== null) {
@@ -173,5 +185,20 @@ export function formatCredentialsText(raw: unknown): string {
       result = result.slice(1, -1);
     }
   }
+
+  // Handle formatted strings containing multiple lines with supplier order links (e.g. #1: ... \n #2: https://digitalcore.top/...)
+  if (result.includes("\n") && (result.includes("digitalcore.top/order") || result.includes("digitalcore.top/view"))) {
+    const lines = result.split("\n").map((l) => l.trim()).filter(Boolean);
+    const nonSupplierLines = lines.filter(
+      (l) => !l.includes("digitalcore.top/order") && !l.includes("digitalcore.top/view")
+    );
+    if (nonSupplierLines.length > 0) {
+      if (nonSupplierLines.length === 1) {
+        return nonSupplierLines[0].replace(/^#\d+:\s*/, "");
+      }
+      return nonSupplierLines.join("\n");
+    }
+  }
+
   return result;
 }

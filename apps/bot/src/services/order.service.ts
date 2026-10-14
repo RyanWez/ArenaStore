@@ -1255,9 +1255,12 @@ export class BotOrderService {
           upstreamOrderId = upstreamRes.upstreamOrderId ? String(upstreamRes.upstreamOrderId) : null;
           upstreamViewUrl = upstreamRes.viewUrl;
           deliveryType = (upstreamRes.raw as any)?.delivery?.type || product.deliveryType || "CREDENTIALS";
-          deliveryLines = upstreamRes.items || [];
-          if (upstreamRes.viewUrl && !deliveryLines.includes(upstreamRes.viewUrl)) {
-            deliveryLines.push(upstreamRes.viewUrl);
+          if (upstreamRes.items && upstreamRes.items.length > 0) {
+            deliveryLines = upstreamRes.items;
+          } else if (upstreamRes.viewUrl) {
+            deliveryLines = [upstreamRes.viewUrl];
+          } else {
+            deliveryLines = [];
           }
           upstreamUnitPrice = String(
             (upstreamRes.raw as any)?.order?.unitPrice || product.supplierPriceUsd
@@ -1487,6 +1490,14 @@ export class BotOrderService {
         }
       }
 
+      // Do not expose wholesale supplier tracking link (like digitalcore.top) to customer
+      const customerViewUrl =
+        upstreamViewUrl &&
+        !upstreamViewUrl.includes("digitalcore.top") &&
+        (!deliveryLines || deliveryLines.length === 0)
+          ? upstreamViewUrl
+          : undefined;
+
       // 6. Update In-Memory Cache
       const orderRecord: OrderRecord = {
         id: publicOrderNo,
@@ -1498,7 +1509,7 @@ export class BotOrderService {
         status: "DELIVERED",
         createdAt: new Date().toISOString(),
         credentialsText,
-        viewUrl: upstreamViewUrl,
+        viewUrl: customerViewUrl,
       };
 
       const list = this.memoryOrders.get(params.telegramId) || [];
@@ -1522,7 +1533,7 @@ export class BotOrderService {
         quantity: params.quantity,
         totalMmk,
         credentialsText,
-        viewUrl: upstreamViewUrl,
+        viewUrl: customerViewUrl,
         remainingBalance,
       };
     } finally {
@@ -1658,7 +1669,13 @@ export class BotOrderService {
           try {
             const dec = decryptDeliveryPayload(deliv.encryptedPayload);
             credentialsText = formatCredentialsText(dec.lines);
-            viewUrl = dec.viewUrl;
+            if (
+              dec.viewUrl &&
+              !dec.viewUrl.includes("digitalcore.top") &&
+              (!dec.lines || dec.lines.length === 0)
+            ) {
+              viewUrl = dec.viewUrl;
+            }
           } catch (err: any) {
             console.warn(`[BotOrderService] Decryption failed for order ${orderRow.publicOrderNo}:`, err.message);
             credentialsText = deliv.encryptedPayload;

@@ -143,5 +143,27 @@ describe("AES-256-GCM Delivery Credentials Encryption", () => {
       const raw = "user: buyer@example.com\npass: Secret123!";
       expect(formatCredentialsText(raw)).toBe("user: buyer@example.com\npass: Secret123!");
     });
+
+    it("filters out supplier tracking link from lines array when actual product link is present", () => {
+      const v2 = {
+        v: 2,
+        lines: [
+          "https://serviceactivation.link/subscription/new/AQCpiIEQNmdGQ0gSrMnzQEExr7n3DYPT",
+          "https://digitalcore.top/order?number=51c4de8e-ef0e-432c-bf2b-1676fca087f4",
+        ],
+        viewUrl: "https://digitalcore.top/order?number=51c4de8e-ef0e-432c-bf2b-1676fca087f4",
+      };
+      expect(formatCredentialsText(v2)).toBe(
+        "https://serviceactivation.link/subscription/new/AQCpiIEQNmdGQ0gSrMnzQEExr7n3DYPT"
+      );
+    });
+
+    it("cleans #1/#2 formatted string with supplier tracking link and strips #1: prefix", () => {
+      const raw =
+        "#1: https://serviceactivation.link/subscription/new/AQCpiIEQNmdGQ0gSrMnzQEExr7n3DYPT\n#2: https://digitalcore.top/order?number=51c4de8e-ef0e-432c-bf2b-1676fca087f4";
+      expect(formatCredentialsText(raw)).toBe(
+        "https://serviceactivation.link/subscription/new/AQCpiIEQNmdGQ0gSrMnzQEExr7n3DYPT"
+      );
+    });
   });
 });
