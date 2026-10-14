@@ -49,6 +49,7 @@ onMounted(async () => {
   }, 10000)
 
   pollInterval = setInterval(async () => {
+    if (typeof document !== 'undefined' && document.hidden) return
     await fetchStatus().catch(() => {})
   }, 30000)
 

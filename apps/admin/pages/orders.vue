@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
 import { usePermission } from '~/composables/usePermission'
-import { useAdminEvents, type AdminEventPayload } from '~/composables/useAdminEvents'
+import { useSmartSync } from '~/composables/useAdminEvents'
 import {
   formatMyanmarDateTime,
   formatMyanmarDate,
@@ -75,7 +75,6 @@ const isRefunding = ref(false)
 const isResending = ref(false)
 
 const ordersList = ref<OrderRecord[]>([])
-let ordersPollInterval: ReturnType<typeof setInterval> | null = null
 
 function cleanCredentialsText(raw: any): string {
   if (!raw) return ''
@@ -204,22 +203,13 @@ async function refreshOrders(isSilent = false) {
   await fetchOrders(isSilent)
 }
 
-useAdminEvents((event: AdminEventPayload) => {
-  if (event.type === 'ORDER_CREATED' || event.type === 'ORDER_STATUS_CHANGED') {
-    fetchOrders(true)
-  }
-})
-
-onMounted(() => {
-  fetchOrders(false)
-  ordersPollInterval = setInterval(() => {
-    if (typeof document !== 'undefined' && document.hidden) return
-    fetchOrders(true)
-  }, 4000)
+useSmartSync({
+  onSync: (isSilent) => fetchOrders(isSilent),
+  eventTypes: ['ORDER_CREATED', 'ORDER_STATUS_CHANGED'],
+  fallbackIntervalMs: 30000,
 })
 
 onUnmounted(() => {
-  if (ordersPollInterval) clearInterval(ordersPollInterval)
   if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
 })
 

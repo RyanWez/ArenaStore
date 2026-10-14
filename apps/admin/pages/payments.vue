@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
 import { usePermission } from '~/composables/usePermission'
-import { useAdminEvents, type AdminEventPayload } from '~/composables/useAdminEvents'
+import { useSmartSync } from '~/composables/useAdminEvents'
 import {
   formatMyanmarDateTime,
   formatMyanmarDate,
@@ -72,7 +72,6 @@ const serverStats = ref<{
   pendingCount: number
   rejectedCount: number
 } | null>(null)
-let pollInterval: ReturnType<typeof setInterval> | null = null
 
 async function fetchSlips(isSilent = false) {
   if (!isSilent) {
@@ -138,22 +137,13 @@ async function refreshSlips(isSilent = false) {
   await fetchSlips(isSilent)
 }
 
-useAdminEvents((event: AdminEventPayload) => {
-  if (event.type === 'DEPOSIT_SUBMITTED' || event.type === 'DEPOSIT_REVIEWED') {
-    fetchSlips(true)
-  }
-})
-
-onMounted(() => {
-  fetchSlips(false)
-  pollInterval = setInterval(() => {
-    if (typeof document !== 'undefined' && document.hidden) return
-    fetchSlips(true)
-  }, 4000)
+useSmartSync({
+  onSync: (isSilent) => fetchSlips(isSilent),
+  eventTypes: ['DEPOSIT_SUBMITTED', 'DEPOSIT_REVIEWED'],
+  fallbackIntervalMs: 30000,
 })
 
 onUnmounted(() => {
-  if (pollInterval) clearInterval(pollInterval)
   if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
 })
 

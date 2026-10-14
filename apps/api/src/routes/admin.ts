@@ -41,7 +41,7 @@ import { fetchTelegramFile, getPlaceholderSlipSvg } from "../services/telegram-f
 import { adminEventBus, broadcastAdminEvent } from "../services/admin-event.service";
 import { writeAudit } from "../services/audit.service";
 import { getAnalytics } from "../services/analytics.service";
-import { getRbac, requirePermission } from "../rbac/require-permission";
+import { getRbac, requirePermission, requireAnyPermission } from "../rbac/require-permission";
 import { filterSettingsForPermissions } from "../rbac/catalog";
 import { RbacContext } from "../services/rbac.service";
 
@@ -1105,7 +1105,7 @@ export async function adminRoutes(server: FastifyInstance) {
   // GET /api/admin/events (Server-Sent Events for real-time order and deposit updates)
   server.get(
     "/api/admin/events",
-    { preHandler: requirePermission("orders.view") },
+    { preHandler: requireAnyPermission(["orders.view", "payments.view", "customers.view", "overview.view"]) },
     async (request, reply) => {
       reply.raw.setHeader("Content-Type", "text/event-stream");
       reply.raw.setHeader("Cache-Control", "no-cache, no-transform");
@@ -2383,6 +2383,13 @@ export async function adminRoutes(server: FastifyInstance) {
       },
     });
 
+    broadcastAdminEvent("CUSTOMER_UPDATED", {
+      customerId,
+      action,
+      amountMmk,
+      newBalanceMmk,
+    });
+
     return {
       ok: true,
       action,
@@ -2442,6 +2449,11 @@ export async function adminRoutes(server: FastifyInstance) {
       });
     });
 
+    broadcastAdminEvent("CUSTOMER_UPDATED", {
+      customerId,
+      status: "DEACTIVATED",
+    });
+
     return {
       ok: true,
       customerId,
@@ -2489,6 +2501,11 @@ export async function adminRoutes(server: FastifyInstance) {
           previousStatus: customer.status,
         },
       });
+    });
+
+    broadcastAdminEvent("CUSTOMER_UPDATED", {
+      customerId,
+      status: "ACTIVE",
     });
 
     return {

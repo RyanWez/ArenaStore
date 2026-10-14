@@ -41,7 +41,41 @@ export function requirePermission(permission: string) {
   };
 }
 
+export function requireAnyPermission(permissions: string[]) {
+  return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const session = (request as any).adminUser;
+    if (!session?.userId) {
+      reply.status(401).send({
+        ok: false,
+        error: "Unauthorized. Please log in to access admin functions.",
+      });
+      return;
+    }
+
+    const ctx = await rbacService.getContext(session.userId);
+    if (!ctx) {
+      reply.status(403).send({
+        ok: false,
+        error: "Access denied. Your account is inactive or has no role assigned.",
+      });
+      return;
+    }
+
+    const hasAny = permissions.some((p) => rbacService.hasPermission(ctx, p));
+    if (!hasAny) {
+      reply.status(403).send({
+        ok: false,
+        error: `Permission denied. Required one of: ${permissions.join(", ")}.`,
+      });
+      return;
+    }
+
+    (request as any).rbac = ctx;
+  };
+}
+
 /** Handler-side accessor for the resolved RBAC context (set by requirePermission). */
 export function getRbac(request: FastifyRequest): RbacContext | undefined {
   return (request as any).rbac as RbacContext | undefined;
 }
+

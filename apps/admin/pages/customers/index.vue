@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
 import { usePermission } from '~/composables/usePermission'
+import { useSmartSync } from '~/composables/useAdminEvents'
 import { formatMyanmarDate, formatMyanmarTime } from '~/utils/date'
 
 const router = useRouter()
@@ -91,7 +92,6 @@ const actionInProgressId = ref<number | null>(null)
 
 let fetchSeq = 0
 let lastListSignature = ''
-let pollInterval: ReturnType<typeof setInterval> | null = null
 
 async function fetchCustomers(isSilent = false) {
   const hasData = customers.value.length > 0
@@ -175,16 +175,13 @@ watch(currentPage, () => {
   fetchCustomers(false)
 })
 
-onMounted(() => {
-  fetchCustomers(false)
-  pollInterval = setInterval(() => {
-    if (typeof document !== 'undefined' && document.hidden) return
-    fetchCustomers(true)
-  }, 4000)
+useSmartSync({
+  onSync: (isSilent) => fetchCustomers(isSilent),
+  eventTypes: ['CUSTOMER_UPDATED', 'DEPOSIT_REVIEWED', 'ORDER_CREATED'],
+  fallbackIntervalMs: 30000,
 })
 
 onUnmounted(() => {
-  if (pollInterval) clearInterval(pollInterval)
   if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
 })
 

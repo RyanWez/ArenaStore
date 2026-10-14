@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useSupplierStatus } from '~/composables/useSupplierStatus'
 import { useToast } from '~/composables/useToast'
 import { useAuth } from '~/composables/useAuth'
+import { useSmartSync } from '~/composables/useAdminEvents'
 import { formatMyanmarDateTime } from '~/utils/date'
 
 const router = useRouter()
@@ -25,7 +26,6 @@ const stats = ref({
 })
 
 const recentOrders = ref<any[]>([])
-let dashboardPollInterval: ReturnType<typeof setInterval> | null = null
 let isFetching = false
 
 async function fetchDashboardData(isSilent = false) {
@@ -93,16 +93,16 @@ async function refreshDashboard() {
   toast.info('Dashboard metrics updated.', 'Sync Complete')
 }
 
-onMounted(() => {
-  fetchDashboardData(false)
-  dashboardPollInterval = setInterval(() => {
-    if (typeof document !== 'undefined' && document.hidden) return
-    fetchDashboardData(true)
-  }, 10000)
-})
-
-onUnmounted(() => {
-  if (dashboardPollInterval) clearInterval(dashboardPollInterval)
+useSmartSync({
+  onSync: (isSilent) => fetchDashboardData(isSilent),
+  eventTypes: [
+    'ORDER_CREATED',
+    'ORDER_STATUS_CHANGED',
+    'DEPOSIT_SUBMITTED',
+    'DEPOSIT_REVIEWED',
+    'CUSTOMER_UPDATED',
+  ],
+  fallbackIntervalMs: 45000,
 })
 
 async function handleSync() {

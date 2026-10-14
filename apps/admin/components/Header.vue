@@ -6,10 +6,12 @@ import { useTheme } from '~/composables/useTheme'
 import { useSupplierStatus } from '~/composables/useSupplierStatus'
 import { useStoreSettings } from '~/composables/useStoreSettings'
 import { useToast } from '~/composables/useToast'
+import { useAdminEvents } from '~/composables/useAdminEvents'
 
 const route = useRoute()
 const { isCollapsed, toggleCollapse, toggleMobile } = useSidebar()
 const { isDark, toggleTheme } = useTheme()
+const { isConnected: isLiveEventsConnected } = useAdminEvents()
 const { xproBalanceUsd, digitalcoreBalanceUsd, isXProOnline, isDigitalcoreOnline, isSyncing, syncCatalog, fetchStatus } = useSupplierStatus()
 const { settings: storeSettings, fetchSettings: fetchStoreSettings } = useStoreSettings()
 const toast = useToast()
@@ -101,6 +103,27 @@ async function handleQuickSync() {
       <div class="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700/60">
         <i class="pi pi-dollar text-[11px] text-amber-500"></i>
         <span>1 USD = {{ formattedExchangeRate }} MMK</span>
+      </div>
+
+      <!-- Real-Time SSE Stream Status Badge -->
+      <div
+        class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors select-none"
+        :class="isLiveEventsConnected 
+          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' 
+          : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'"
+        :title="isLiveEventsConnected ? 'Real-time Event Stream Active (Zero-Polling)' : 'Reconnecting real-time stream...'"
+      >
+        <span class="relative flex h-2 w-2">
+          <span
+            v-if="isLiveEventsConnected"
+            class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"
+          ></span>
+          <span
+            class="relative inline-flex rounded-full h-2 w-2"
+            :class="isLiveEventsConnected ? 'bg-emerald-500' : 'bg-amber-500'"
+          ></span>
+        </span>
+        <span class="text-[11px] font-semibold">{{ isLiveEventsConnected ? 'Live' : 'Offline' }}</span>
       </div>
 
       <!-- Upstream Suppliers Balances Widget -->
