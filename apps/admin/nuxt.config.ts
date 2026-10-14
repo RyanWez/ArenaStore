@@ -5,7 +5,7 @@ export default defineNuxtConfig({
   ssr: false,
   compatibilityDate: '2026-09-30',
   telemetry: false,
-  devtools: { enabled: true },
+  devtools: { enabled: process.env.NODE_ENV !== 'production' },
   experimental: {
     appManifest: false,
     asyncContext: true,
@@ -44,6 +44,16 @@ export default defineNuxtConfig({
       '/api/**': {
         proxy: `${(process.env.API_BASE_URL || process.env.NUXT_PUBLIC_API_URL || 'http://localhost:4000').replace(/\/+$/, '')}/api/**`,
       },
+      '/_nuxt/**': { headers: { 'cache-control': 'public, max-age=31536000, immutable' } },
+      '/logo*.png': { headers: { 'cache-control': 'public, max-age=604800, stale-while-revalidate=86400' } },
+      '/favicon*': { headers: { 'cache-control': 'public, max-age=604800, stale-while-revalidate=86400' } },
+      '/site.webmanifest': { headers: { 'cache-control': 'public, max-age=86400' } },
+    },
+  },
+  vite: {
+    build: {
+      cssMinify: true,
+      minify: 'esbuild',
     },
   },
   modules: [

@@ -74,11 +74,16 @@ const supplierDetails = ref<SupplierDetails>({
 })
 
 let inFlightPromise: Promise<void> | null = null
+let lastFetchedAt = 0
+const STATUS_CACHE_TTL_MS = 10000 // 10 seconds client cache TTL
 
 export function useSupplierStatus() {
   const { getAuthHeaders } = useAuth()
 
-  async function fetchStatus() {
+  async function fetchStatus(force = false) {
+    if (!force && Date.now() - lastFetchedAt < STATUS_CACHE_TTL_MS) {
+      return
+    }
     if (inFlightPromise) return inFlightPromise
 
     inFlightPromise = (async () => {
@@ -93,6 +98,7 @@ export function useSupplierStatus() {
         })
 
         if (res.ok) {
+          lastFetchedAt = Date.now()
           if (res.supplier) {
             supplierBalanceUsd.value = String(res.supplier.balanceUsd)
             xproBalanceUsd.value = String(res.supplier.balanceUsd)
