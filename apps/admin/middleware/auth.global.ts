@@ -29,10 +29,19 @@ function requiredPermissionFor(path: string): string | null {
 }
 
 export default defineNuxtRouteMiddleware(async (to) => {
+  const nuxtApp = useNuxtApp()
   const { user, fetchUser, mustChangePassword, permissions } = useAuth()
 
   const isLoginPage = to.path === '/login'
   const isChangePasswordPage = to.path === '/change-password'
+
+  // Fast-path for SSR: if unauthenticated without cookie, redirect immediately to login
+  if (import.meta.server) {
+    const reqHeaders = useRequestHeaders(['cookie'])
+    if (!reqHeaders.cookie && !isLoginPage) {
+      return navigateTo('/login')
+    }
+  }
 
   // If user profile isn't in memory yet, check active session via /api/admin/auth/me
   if (!user.value) {
@@ -42,22 +51,24 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // If visiting /login while already authenticated, redirect to dashboard
   if (isLoginPage) {
     if (user.value) {
-      return navigateTo(mustChangePassword.value ? '/change-password' : '/')
+      return nuxtApp.runWithContext(() =>
+        navigateTo(mustChangePassword.value ? '/change-password' : '/')
+      )
     }
     return
   }
 
   // For all other pages, require authentication
   if (!user.value) {
-    return navigateTo('/login')
+    return nuxtApp.runWithContext(() => navigateTo('/login'))
   }
 
   // Staff created with a temporary password must rotate it before anything else
   if (mustChangePassword.value && !isChangePasswordPage) {
-    return navigateTo('/change-password')
+    return nuxtApp.runWithContext(() => navigateTo('/change-password'))
   }
   if (!mustChangePassword.value && isChangePasswordPage) {
-    return navigateTo('/')
+    return nuxtApp.runWithContext(() => navigateTo('/'))
   }
 
   // View-permission gate per page — mirror of the API's requirePermission map.
@@ -66,7 +77,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (to.path !== '/denied') {
     const required = requiredPermissionFor(to.path)
     if (required && !permissions.value.includes(required)) {
-      return navigateTo('/denied')
+      return nuxtApp.runWithContext(() => navigateTo('/denied'))
     }
   }
 })

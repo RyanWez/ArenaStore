@@ -2,11 +2,13 @@ import { defineNuxtConfig } from 'nuxt/config'
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
+  ssr: false,
   compatibilityDate: '2026-09-30',
   telemetry: false,
   devtools: { enabled: true },
   experimental: {
     appManifest: false,
+    asyncContext: true,
   },
   app: {
     head: {
