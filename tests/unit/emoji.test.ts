@@ -91,6 +91,6 @@ describe("Telegram Custom Emoji & HTML Formatting", () => {
     expect(BOT_EMOJIS.AYAPAY).toBe("5282730523343474638");
 
     const tag = tgEmoji(BOT_EMOJIS.WAVE, "👋");
-    expect(tag).toBe('<tg-emoji emoji-id="5215248074498128418">👋</tg-emoji>');
+    expect(tag).toBe(`<tg-emoji emoji-id="${BOT_EMOJIS.WAVE}">👋</tg-emoji>`);
   });
 });

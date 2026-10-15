@@ -43,7 +43,7 @@ export const BOT_EMOJIS = {
   WARNING: "5341498036868634459",    // ⚠️ Alert / Warning
   ALERT: "5341498036868634459",      // ⚠️ Alert / Warning
   CANCEL: "5985346521103604145",     // ❌ Cancel
-  WRENCH: "5332272404167140865",     // 🔧
+  WRENCH: "5258023599419171861",     // 🔧
 
   // Payment Providers
   KBZPAY: "6206487605421280759",     // 🏧 KBZ Pay
@@ -53,7 +53,7 @@ export const BOT_EMOJIS = {
 
   // Admin Group Notices
   CLOCK: "5359535585251838264",      // 🕐
-  BELL: "6260097382914986431",       // 🔔
+  BELL: "5346038654819123712",       // 🔔
 } as const;
 
 /**

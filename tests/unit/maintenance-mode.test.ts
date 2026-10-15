@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { BOT_EMOJIS } from "@arena/shared";
 import { formatMaintenanceMessage } from "../../apps/bot/src/formatters/messages";
 import { buildMaintenanceKeyboard } from "../../apps/bot/src/keyboards/store.keyboards";
 import { botSettingsService } from "../../apps/bot/src/services/settings.service";
@@ -10,7 +11,7 @@ describe("Telegram Bot Maintenance Mode", () => {
       const msg = formatMaintenanceMessage("https://t.me/ArenaStoreSupport");
       expect(msg).toContain("စနစ် ခေတ္တ ပြုပြင်ထိန်းသိမ်းနေပါသည်");
       expect(msg).toContain("System Maintenance");
-      expect(msg).toContain('emoji-id="5332272404167140865"');
+      expect(msg).toContain(`emoji-id="${BOT_EMOJIS.WRENCH}"`);
       expect(msg).toContain("Customer Support သို့ ဆက်သွယ်နိုင်ပါတယ်ခင်ဗျာ");
     });
 
