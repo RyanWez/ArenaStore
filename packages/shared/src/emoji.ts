@@ -18,6 +18,7 @@ export const BOT_EMOJIS = {
   SPEAKER: "5771868281212245617",    // 📢 Channel
   CHANNEL: "5771868281212245617",    // 📢 Channel
   PROFILE: "5316727448644103237",    // 👤 Profile
+  ID: "5936017305585586269",         // 🆔 Account ID
 
   // Store & Stepper Controls
   BUY_NOW: "5346227465876423936",    // 💳 Buy Now

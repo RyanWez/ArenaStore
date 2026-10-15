@@ -338,11 +338,19 @@ describe("Phase 4 Customer Telegram Bot", () => {
 
   describe("Storefront Messages & HTML Formatting", () => {
     it("formats start message in Myanmar language with customer greeting", () => {
-      const msg = formatStartMessage("Aung Aung");
+      const msg = formatStartMessage({
+        name: "Aung Aung",
+        telegramId: "8777968077",
+        balanceMmk: 15000,
+      });
       expect(msg).toContain("Aung Aung");
-      expect(msg).toContain("Welcome Back, Aung Aung,");
-      expect(msg).toContain("Premium AI Tools နှင့် Digital Accounts");
-      expect(msg).toContain("5983399041197675256"); // Store icon
+      expect(msg).toContain("Arena Store");
+      expect(msg).toContain("အကောင့် ID");
+      expect(msg).toContain("8777968077");
+      expect(msg).toContain("15,000 MMK");
+      expect(msg).toContain("5983399041197675256"); // Store icon (BOT_EMOJIS.BAGS)
+      expect(msg).toContain("5936017305585586269"); // ID icon (BOT_EMOJIS.ID)
+      expect(msg).toContain("5258204546391351475"); // Wallet icon (BOT_EMOJIS.WALLET)
     });
 
     it("formats product detail card with expandable quote and price (matching Screenshot 3)", () => {

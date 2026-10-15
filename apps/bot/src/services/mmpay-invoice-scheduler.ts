@@ -8,9 +8,15 @@ import {
 import { buildMmpayInvoiceKeyboard, buildWalletKeyboard } from "../keyboards/store.keyboards";
 import type { BotContext } from "../types";
 
-const TICK_MS = 60 * 1000; // countdown refresh + expiry sweep cadence
+const TICK_MS = 30 * 1000; // run every 30s to catch milestones accurately without missing any window
 const API_TIMEOUT_MS = 10 * 1000; // never let one hung Telegram call wedge a tick
 const MAX_TICK_MS = 2 * 60 * 1000; // escape hatch: a tick this old is treated as dead
+
+/**
+ * Key remaining-minute milestones to edit the countdown caption.
+ * Throttles 14 edits down to exactly 5 edits (~65% reduction in Telegram API traffic).
+ */
+export const COUNTDOWN_MILESTONES = [13, 10, 5, 3, 1] as const;
 
 interface InvoiceRow {
   id: number;
@@ -43,7 +49,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
  * Background janitor for MMQR invoice messages. `mmpay_qr_message_id IS NOT NULL`
  * means "a live QR invoice message still needs managing", so every such row is
  * handled here regardless of status:
- *   - PENDING, not expired  → refresh the live countdown caption.
+ *   - PENDING, not expired  → refresh countdown caption at milestones (13, 10, 5, 3, 1 min).
  *   - PENDING, past expiry   → claim-expire (PENDING→EXPIRED), delete the QR,
  *                              post the "expired" notice.
  *   - already EXPIRED        → delete the QR + post the "expired" notice (covers
@@ -60,6 +66,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
  */
 export function startMmpayInvoiceScheduler(bot: Bot<BotContext>): { stop: () => void } {
   let tickStartedAt = 0;
+  const lastEditedMilestones = new Map<string, number>();
 
   async function claimCleanup(id: number): Promise<boolean> {
     const claimed = await getDb()
@@ -74,24 +81,35 @@ export function startMmpayInvoiceScheduler(bot: Bot<BotContext>): { stop: () => 
     if (!row.telegramId || !row.qrMessageId) return;
     const chatId = row.telegramId;
     const msgId = row.qrMessageId;
-    const expired = row.expiresAt ? new Date(row.expiresAt).getTime() <= Date.now() : true;
+    const remainingMs = row.expiresAt ? new Date(row.expiresAt).getTime() - Date.now() : 0;
+    const expired = remainingMs <= 0;
+    const remainingMin = Math.max(0, Math.ceil(remainingMs / 60000));
 
-    // Still live and unpaid → tick the countdown caption.
+    // Still live and unpaid → tick the countdown caption ONLY on milestone minutes (13, 10, 5, 3, 1)
     if (row.status === "PENDING" && !expired) {
-      await withTimeout(
-        bot.api.editMessageCaption(chatId, msgId, {
-          caption: formatMmpayQrInvoiceMessage({
-            amountMmk: row.amountMmk,
-            reference: row.reference,
-            expiresAt: row.expiresAt ?? new Date(),
+      const isMilestone = (COUNTDOWN_MILESTONES as readonly number[]).includes(remainingMin);
+      const alreadyEdited = lastEditedMilestones.get(row.reference) === remainingMin;
+
+      if (isMilestone && !alreadyEdited) {
+        lastEditedMilestones.set(row.reference, remainingMin);
+        await withTimeout(
+          bot.api.editMessageCaption(chatId, msgId, {
+            caption: formatMmpayQrInvoiceMessage({
+              amountMmk: row.amountMmk,
+              reference: row.reference,
+              expiresAt: row.expiresAt ?? new Date(),
+            }),
+            parse_mode: "HTML",
+            reply_markup: buildMmpayInvoiceKeyboard(row.reference),
           }),
-          parse_mode: "HTML",
-          reply_markup: buildMmpayInvoiceKeyboard(row.reference),
-        }),
-        API_TIMEOUT_MS
-      ).catch(() => {});
+          API_TIMEOUT_MS
+        ).catch(() => {});
+      }
       return;
     }
+
+    // Terminal cleanup: delete any in-memory milestone tracker for this invoice
+    lastEditedMilestones.delete(row.reference);
 
     // Terminal cleanup. For a still-PENDING-but-expired row, flip it first,
     // guarded on status='PENDING' so a concurrent paying webhook always wins.

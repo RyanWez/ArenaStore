@@ -3,11 +3,40 @@ import { botConfig } from "../config";
 import { escapeHtml, BOT_EMOJIS, tgEmoji } from "@arena/shared";
 import { formatCredentialsText } from "../services/encryption";
 
+export interface StartMessageParams {
+  name: string;
+  telegramId?: string | number;
+  balanceMmk?: number;
+}
+
 /**
- * Formats the Welcome /start greeting message.
+ * Formats the Welcome /start greeting message as a clean text dashboard.
  */
-export function formatStartMessage(firstName: string): string {
-  return `${tgEmoji(BOT_EMOJIS.STORE, "🛍")} <b>Welcome Back, ${escapeHtml(firstName)},</b>\n\nPremium AI Tools နှင့် Digital Accounts များကို တစ်နေရာထဲတွင် 24/7 ရနိုင်ပါပြီ ဗျာ။\nအောက်ပါ Menu များမှ ရွေးချယ်ပါ။`;
+export function formatStartMessage(
+  paramsOrName: string | StartMessageParams,
+  telegramId?: string | number,
+  balanceMmk?: number
+): string {
+  let name: string;
+  let id: string | number | undefined;
+  let balance: number = 0;
+
+  if (typeof paramsOrName === "object" && paramsOrName !== null) {
+    name = paramsOrName.name;
+    id = paramsOrName.telegramId;
+    balance = paramsOrName.balanceMmk ?? 0;
+  } else {
+    name = paramsOrName || "Customer";
+    id = telegramId;
+    balance = balanceMmk ?? 0;
+  }
+
+  const idLine =
+    id != null && String(id).trim() !== ""
+      ? `\n${tgEmoji(BOT_EMOJIS.ID, "🆔")} အကောင့် ID: <code>${escapeHtml(String(id))}</code>`
+      : "";
+
+  return `${tgEmoji(BOT_EMOJIS.BAGS, "🛍️")} <b>Arena Store</b>\n${tgEmoji(BOT_EMOJIS.PROFILE, "👤")} အမည်: <b>${escapeHtml(name)}</b>${idLine}\n${tgEmoji(BOT_EMOJIS.WALLET, "💳")} လက်ကျန်ငွေ: <b>${balance.toLocaleString("en-US")} MMK</b>\n\nအောက်ပါ ရွေးချယ်မှုများမှ စတင်ပါခင်ဗျာ။`;
 }
 
 /**

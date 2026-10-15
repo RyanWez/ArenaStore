@@ -388,11 +388,20 @@ export function createBot(): Bot<BotContext> {
       }
     }
 
+    const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || firstName;
+    const profile = await botOrderService.getUserProfile(telegramId);
     const supportUrl = await botSettingsService.getSupportUrl();
-    await ctx.reply(formatStartMessage(firstName), {
-      parse_mode: "HTML",
-      reply_markup: buildMainMenuKeyboard(supportUrl),
-    });
+    await ctx.reply(
+      formatStartMessage({
+        name: fullName,
+        telegramId,
+        balanceMmk: profile.walletBalanceMmk,
+      }),
+      {
+        parse_mode: "HTML",
+        reply_markup: buildMainMenuKeyboard(supportUrl),
+      }
+    );
   });
 
   // Direct Buy command: /buy or /buy <productId> or /buy_<productId>
@@ -586,12 +595,21 @@ export function createBot(): Bot<BotContext> {
       text: "🎉 Channel Join ထားရှိမှု အတည်ပြုပြီးပါပြီ! Arena Store မှ ကြိုဆိုပါသည်ခင်ဗျာ ✨",
     });
 
-    const firstName = ctx.from?.first_name || "Customer";
+    const telegramId = String(ctx.from?.id || "");
+    const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || "Customer";
+    const profile = await botOrderService.getUserProfile(telegramId);
     const supportUrl = await botSettingsService.getSupportUrl();
-    await ctx.editMessageText(formatStartMessage(firstName), {
-      parse_mode: "HTML",
-      reply_markup: buildMainMenuKeyboard(supportUrl),
-    });
+    await ctx.editMessageText(
+      formatStartMessage({
+        name: fullName,
+        telegramId,
+        balanceMmk: profile.walletBalanceMmk,
+      }),
+      {
+        parse_mode: "HTML",
+        reply_markup: buildMainMenuKeyboard(supportUrl),
+      }
+    );
   });
 
   // 4. Main Menu Navigation
@@ -603,13 +621,21 @@ export function createBot(): Bot<BotContext> {
     ctx.session.awaitingCustomQuantity = false;
     ctx.session.awaitingCustomTopUp = false;
     ctx.session.awaitingTopUpSlip = undefined;
-    const firstName = ctx.from?.first_name || "Customer";
+    const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || "Customer";
+    const profile = await botOrderService.getUserProfile(telegramId);
 
     const supportUrl = await botSettingsService.getSupportUrl();
-    await ctx.editMessageText(formatStartMessage(firstName), {
-      parse_mode: "HTML",
-      reply_markup: buildMainMenuKeyboard(supportUrl),
-    });
+    await ctx.editMessageText(
+      formatStartMessage({
+        name: fullName,
+        telegramId,
+        balanceMmk: profile.walletBalanceMmk,
+      }),
+      {
+        parse_mode: "HTML",
+        reply_markup: buildMainMenuKeyboard(supportUrl),
+      }
+    );
   });
 
   // 5. Categories Grid (Screenshot 1)

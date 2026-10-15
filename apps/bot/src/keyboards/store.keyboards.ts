@@ -67,7 +67,7 @@ export function buildMainMenuKeyboard(supportUrl?: string): InlineKeyboard {
     .add({
       text: "ပစ္စည်းများ ဝယ်ယူရန်",
       callback_data: "menu_categories",
-      icon_custom_emoji_id: BOT_EMOJIS.BAGS,
+      icon_custom_emoji_id: BOT_EMOJIS.STORE,
       style: "success",
     } as any)
     .add({
