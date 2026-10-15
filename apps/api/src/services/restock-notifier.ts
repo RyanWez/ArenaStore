@@ -1,7 +1,11 @@
 import { and, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import { appSettings, getDb, products, users } from "@arena/db";
 import { catalogService } from "./catalog.service";
-import { buildRestockedMessage, sendTelegramMessageFloodAware } from "./telegram-notifier";
+import {
+  buildRestockedKeyboard,
+  buildRestockedMessage,
+  sendTelegramMessageFloodAware,
+} from "./telegram-notifier";
 import { config } from "../config";
 
 /** app_settings key toggling restock broadcasts (missing / anything but "false" = enabled). */
@@ -98,8 +102,12 @@ export class RestockNotifier {
           botUsername: config.TELEGRAM_BOT_USERNAME || null,
           productId: product.id,
         });
+        const replyMarkup = buildRestockedKeyboard({
+          botUsername: config.TELEGRAM_BOT_USERNAME || null,
+          productId: product.id,
+        });
         for (const telegramId of recipients) {
-          if (await sendTelegramMessageFloodAware(telegramId, text)) delivered++;
+          if (await sendTelegramMessageFloodAware(telegramId, text, { replyMarkup })) delivered++;
           await new Promise((resolve) => setTimeout(resolve, BROADCAST_DELAY_MS));
         }
       }

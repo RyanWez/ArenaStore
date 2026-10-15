@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { RestockNotifier } from "../../apps/api/src/services/restock-notifier";
 import { catalogService } from "../../apps/api/src/services/catalog.service";
 import * as telegramNotifier from "../../apps/api/src/services/telegram-notifier";
+import { BOT_EMOJIS } from "@arena/shared";
 import { getDb } from "@arena/db";
 
 vi.mock("../../apps/api/src/services/catalog.service", () => ({
@@ -102,8 +103,8 @@ describe("RestockNotifier (0 -> positive sellable stock edge)", () => {
 
     expect(res).toEqual({ restocked: 1, notified: true });
     expect(sendSpy).toHaveBeenCalledTimes(2);
-    expect(sendSpy).toHaveBeenCalledWith("111", expect.stringContaining("Restocked!"));
-    expect(sendSpy).toHaveBeenCalledWith("222", expect.stringContaining("Restocked!"));
+    expect(sendSpy).toHaveBeenCalledWith("111", expect.stringContaining("Restocked!"), expect.anything());
+    expect(sendSpy).toHaveBeenCalledWith("222", expect.stringContaining("Restocked!"), expect.anything());
   });
 
   it("stays silent while stock stays positive, and notifies again only after another 0 -> positive edge", async () => {
@@ -214,10 +215,10 @@ describe("RestockNotifier (0 -> positive sellable stock edge)", () => {
     // exercised by the integration test against a real database; here we
     // assert the service never sends to a null telegram id.
     expect(sendSpy).toHaveBeenCalledTimes(1);
-    expect(sendSpy).toHaveBeenCalledWith("333", expect.any(String));
+    expect(sendSpy).toHaveBeenCalledWith("333", expect.any(String), expect.anything());
   });
 
-  it("builds the restock message with brand emoji, MMK price and deep link", () => {
+  it("builds the restock message with brand emoji and MMK price without raw link clutter", () => {
     const text = telegramNotifier.buildRestockedMessage({
       productName: "Coursera Plus – 12 Months",
       priceMmk: 13450,
@@ -227,13 +228,24 @@ describe("RestockNotifier (0 -> positive sellable stock edge)", () => {
 
     // Brand map custom emoji for Coursera
     expect(text).toContain('<tg-emoji emoji-id="6307450973606389056"');
-    expect(text).toContain("<b>Restocked!</b>");
+    expect(text).toContain("Restocked!");
     expect(text).toContain("<b>Coursera Plus – 12 Months</b>");
     expect(text).not.toContain("Category:");
-    expect(text).toContain('<tg-emoji emoji-id="5409048419211682843"');
+    expect(text).toContain(`<tg-emoji emoji-id="${BOT_EMOJIS.PRICE}"`);
     expect(text).toContain("<b>13,450 Ks</b>");
     expect(text).toContain("In Stock</b>");
-    expect(text).toContain('href="https://t.me/arena_test_bot?start=restock_42"');
+    expect(text).not.toContain("href=");
+  });
+
+  it("builds the restock keyboard with deep-link buy button", () => {
+    const keyboard = telegramNotifier.buildRestockedKeyboard({
+      botUsername: "@arena_test_bot",
+      productId: 42,
+    });
+
+    expect(keyboard).toBeDefined();
+    expect(keyboard?.inline_keyboard[0][0].text).toBe("Buy Now");
+    expect(keyboard?.inline_keyboard[0][0].url).toBe("https://t.me/arena_test_bot?start=buy_42");
   });
 
   it("escapes HTML in product names", () => {
@@ -244,6 +256,6 @@ describe("RestockNotifier (0 -> positive sellable stock edge)", () => {
 
     expect(text).not.toContain("<script>");
     expect(text).toContain("&lt;script&gt;");
-    expect(text).not.toContain('href=');
+    expect(text).not.toContain("href=");
   });
 });

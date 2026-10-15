@@ -57,10 +57,10 @@ function restockFetchMock(): any {
   return fetchMock;
 }
 
-function sentMessages(fetchMock: any): Array<{ chatId: string; text: string }> {
+function sentMessages(fetchMock: any): Array<{ chatId: string; text: string; replyMarkup?: any }> {
   return fetchMock.mock.calls.map(([, init]: any[]) => {
     const body = JSON.parse(init.body);
-    return { chatId: String(body.chat_id), text: String(body.text) };
+    return { chatId: String(body.chat_id), text: String(body.text), replyMarkup: body.reply_markup };
   });
 }
 
@@ -110,7 +110,8 @@ describe("Restock broadcast (sync -> 0->positive edge -> customer fan-out)", () 
     expect(customerMsg!.text).toContain("Restocked!");
     expect(customerMsg!.text).toContain("Gemini AI 18 MONTH");
     expect(customerMsg!.text).toContain("In Stock</b>");
-    expect(customerMsg!.text).toContain("?start=restock_");
+    expect(customerMsg!.text).not.toContain("?start=");
+    expect(customerMsg!.replyMarkup?.inline_keyboard[0][0]?.url).toContain("?start=buy_");
     // Every active customer gets their own message; staff, suspended users,
     // and users without a telegram id never do.
     expect(messages.some((m) => m.chatId === ADMIN_TG)).toBe(false);

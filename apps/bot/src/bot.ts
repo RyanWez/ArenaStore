@@ -274,11 +274,11 @@ export function createBot(): Bot<BotContext> {
 
     if (!(await ensureChannelMember(ctx))) return;
 
-    // Deep-link support: /start restock_<productId>, /start prod_<productId>, or section deep links
+    // Deep-link support: /start restock_<productId>, /start prod_<productId>, /start buy_<productId>, or section deep links
     const deepLinkPayload = ctx.match?.trim();
     if (deepLinkPayload) {
-      // 1. Product detail deep-link: /start prod_<id>, /start restock_<id>, /start <id>
-      const prodMatch = deepLinkPayload.match(/^(?:restock_|prod_)?(\d+)$/);
+      // 1. Product detail deep-link: /start prod_<id>, /start restock_<id>, /start buy_<id>, /start <id>
+      const prodMatch = deepLinkPayload.match(/^(?:restock_|prod_|buy_)?(\d+)$/);
       if (prodMatch && !deepLinkPayload.startsWith("cat_")) {
         const productId = parseInt(prodMatch[1], 10);
         const product = await botCatalog.getProductById(productId);
@@ -391,6 +391,64 @@ export function createBot(): Bot<BotContext> {
     await ctx.reply(formatStartMessage(firstName), {
       parse_mode: "HTML",
       reply_markup: buildMainMenuKeyboard(supportUrl),
+    });
+  });
+
+  // Direct Buy command: /buy or /buy <productId> or /buy_<productId>
+  bot.command("buy", async (ctx) => {
+    ctx.session.awaitingCustomQuantity = false;
+    ctx.session.awaitingCustomTopUp = false;
+    if (!(await ensureChannelMember(ctx))) return;
+
+    const rawArg = ctx.match?.trim();
+    const match = rawArg?.match(/^(?:buy_|prod_|restock_)?(\d+)$/);
+    if (match) {
+      const productId = parseInt(match[1], 10);
+      const product = await botCatalog.getProductById(productId);
+      if (product) {
+        ctx.session.activeProductId = productId;
+        ctx.session.activeCategoryId = product.categoryId;
+        ctx.session.selectedQuantity = 1;
+
+        await ctx.reply(formatProductDetailMessage(product, 1), {
+          parse_mode: "HTML",
+          reply_markup: buildProductDetailKeyboard(product, 1),
+        });
+        return;
+      }
+    }
+
+    // Default: list all categories if no product ID provided
+    const categories = await botCatalog.getCategories();
+    await ctx.reply(formatCategoriesMessage(), {
+      parse_mode: "HTML",
+      reply_markup: buildCategoriesKeyboard(categories, 0),
+    });
+  });
+
+  bot.hears(/^\/buy_(\d+)$/, async (ctx) => {
+    ctx.session.awaitingCustomQuantity = false;
+    ctx.session.awaitingCustomTopUp = false;
+    if (!(await ensureChannelMember(ctx))) return;
+
+    const productId = parseInt(ctx.match[1], 10);
+    const product = await botCatalog.getProductById(productId);
+    if (product) {
+      ctx.session.activeProductId = productId;
+      ctx.session.activeCategoryId = product.categoryId;
+      ctx.session.selectedQuantity = 1;
+
+      await ctx.reply(formatProductDetailMessage(product, 1), {
+        parse_mode: "HTML",
+        reply_markup: buildProductDetailKeyboard(product, 1),
+      });
+      return;
+    }
+
+    const categories = await botCatalog.getCategories();
+    await ctx.reply(formatCategoriesMessage(), {
+      parse_mode: "HTML",
+      reply_markup: buildCategoriesKeyboard(categories, 0),
     });
   });
 
@@ -585,7 +643,7 @@ export function createBot(): Bot<BotContext> {
   });
 
   // 7. Product Selection -> Interactive Detail & Stepper (Screenshot 3)
-  bot.callbackQuery(/^prod_(\d+)$/, async (ctx) => {
+  bot.callbackQuery(/^(?:prod_|buy_)(\d+)$/, async (ctx) => {
     ctx.session.awaitingCustomQuantity = false;
     ctx.session.awaitingCustomTopUp = false;
     const productId = parseInt(ctx.match[1], 10);
@@ -599,10 +657,17 @@ export function createBot(): Bot<BotContext> {
     ctx.session.activeProductId = productId;
     ctx.session.selectedQuantity = 1;
 
-    await ctx.editMessageText(formatProductDetailMessage(product, 1), {
-      parse_mode: "HTML",
-      reply_markup: buildProductDetailKeyboard(product, 1),
-    });
+    try {
+      await ctx.editMessageText(formatProductDetailMessage(product, 1), {
+        parse_mode: "HTML",
+        reply_markup: buildProductDetailKeyboard(product, 1),
+      });
+    } catch {
+      await ctx.reply(formatProductDetailMessage(product, 1), {
+        parse_mode: "HTML",
+        reply_markup: buildProductDetailKeyboard(product, 1),
+      });
+    }
   });
 
   // 8. Quantity Stepper [-] [+]

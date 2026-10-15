@@ -49,29 +49,46 @@ export async function sendTelegramMessage(
   }
 }
 
+export interface SendTelegramMessageOptions {
+  replyMarkup?: any;
+  disableWebPagePreview?: boolean;
+}
+
 /**
  * sendMessage with Telegram flood handling for high-volume broadcast paths:
  * a 429 waits `retry_after` seconds and retries, transient network drops get
  * a short backoff retry. Single-recipient notifies keep sendTelegramMessage.
  */
-export async function sendTelegramMessageFloodAware(chatId: string, text: string): Promise<boolean> {
+export async function sendTelegramMessageFloodAware(
+  chatId: string,
+  text: string,
+  options?: SendTelegramMessageOptions
+): Promise<boolean> {
   if (!config.TELEGRAM_BOT_TOKEN) {
     console.warn("[Telegram Notifier] No TELEGRAM_BOT_TOKEN configured, skipped sending message to", chatId);
     return false;
   }
 
   const url = `https://api.telegram.org/bot${config.TELEGRAM_BOT_TOKEN}/sendMessage`;
+  const body: Record<string, any> = {
+    chat_id: chatId,
+    text,
+    parse_mode: "HTML",
+    disable_web_page_preview: options?.disableWebPagePreview ?? true,
+    link_preview_options: { is_disabled: options?.disableWebPagePreview ?? true },
+  };
+
+  if (options?.replyMarkup) {
+    body.reply_markup = options.replyMarkup;
+  }
+
   const MAX_ATTEMPTS = 3;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text,
-          parse_mode: "HTML",
-        }),
+        body: JSON.stringify(body),
       });
       if (res.ok) return true;
 
@@ -205,8 +222,8 @@ export async function sendTelegramBroadcastItem(
 
 /**
  * Builds the customer-facing "Restocked!" broadcast message in Burmese.
- * Product display mirrors the bot's product cards: custom brand emoji,
- * clear MMK pricing, in-stock status, and an engaging Burmese CTA with deep link.
+ * Clean, concise, and focused on essential product details without link clutter.
+ * Direct action is handled via the separate inline "Buy Now" button.
  */
 export function buildRestockedMessage(params: {
   productName: string;
@@ -219,29 +236,42 @@ export function buildRestockedMessage(params: {
   const emojiId = parsed.emojiId || findBrandEmojiId(displayName);
   const productEmoji = emojiId ? tgEmoji(emojiId, "🎁") : "🎁";
   const party = tgEmoji(BOT_EMOJIS.PARTY, "🎉");
-  const sparkles = tgEmoji(BOT_EMOJIS.SPARKLES, "✨");
   const price = tgEmoji(BOT_EMOJIS.PRICE, "💵");
-  const bags = tgEmoji(BOT_EMOJIS.BAGS, "🛍");
   const check = tgEmoji(BOT_EMOJIS.CHECK, "✅");
-  const downArrow = tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇");
-
-  let cta = `👉 Bot ထဲသို့ ဝင်ရောက်ပြီး ${bags} <b>[ ပစ္စည်း ဝယ်ယူရန် ]</b> ကို နှိပ်၍ အမြန်ဆုံး ဝယ်ယူလိုက်ပါခင်ဗျာ ${downArrow}`;
-  const botUsername = (params.botUsername || "").replace(/^@/, "");
-  if (botUsername && params.productId) {
-    cta =
-      `👉 အောက်ပါ ${bags} ` +
-      `<b><a href="https://t.me/${botUsername}?start=restock_${params.productId}">[ ပစ္စည်း ဝယ်ယူရန် ]</a></b> ကို နှိပ်ပြီး အမြန်ဆုံး ဝယ်ယူလိုက်ပါခင်ဗျာ ${downArrow}`;
-  }
 
   return (
-    `<blockquote>${party} <b>Restocked!</b> <b>စတော့ ပြန်လည်ရရှိပါပြီ</b> ❞\n` +
-    `ပစ္စည်း စတော့အသစ် ထပ်မံဖြည့်တင်းထားပါသည်ခင်ဗျာ ${sparkles}</blockquote>\n\n` +
+    `${party} <b>Restocked!</b>\n\n` +
     `${productEmoji} <b>${escapeHtml(displayName)}</b>\n` +
     `${price} <b>စျေးနှုန်း:</b> <b>${params.priceMmk.toLocaleString("en-US")} Ks</b>\n` +
-    `${check} <b>အခြေအနေ:</b> <b>In Stock</b> (အသင့်ဝယ်ယူနိုင်ပါသည်)\n\n` +
-    `💡 <i>စတော့အရေအတွက် ကန့်သတ်ချက်လေး ရှိတာကြောင့် စတော့ရှိတုန်းလေး ဆွဲထားလိုက်ဗျာ!</i>\n\n` +
-    cta
+    `${check} <b>အခြေအနေ:</b> <b>In Stock</b> (အသင့်ဝယ်ယူနိုင်ပါသည်)`
   );
+}
+
+/**
+ * Builds the inline keyboard for restock notifications with a clean "Buy Now" button.
+ * Clicking routes directly to the product detail screen via deep link (/start buy_<id>).
+ */
+export function buildRestockedKeyboard(params: {
+  botUsername?: string | null;
+  productId?: number;
+}): { inline_keyboard: Array<Array<Record<string, unknown>>> } | undefined {
+  if (!params.productId) return undefined;
+  const botUsername = (params.botUsername || "").replace(/^@/, "");
+
+  const button: Record<string, unknown> = {
+    text: "Buy Now",
+    icon_custom_emoji_id: BOT_EMOJIS.BUY_NOW,
+  };
+
+  if (botUsername) {
+    button.url = `https://t.me/${botUsername}?start=buy_${params.productId}`;
+  } else {
+    button.callback_data = `buy_${params.productId}`;
+  }
+
+  return {
+    inline_keyboard: [[button]],
+  };
 }
 
 /**
@@ -318,7 +348,7 @@ export async function notifyMmpayTopUpSuccess(params: {
     `အော်ဒါ အမှတ်: <b>${escapeHtml(reference)}</b>\n` +
     `ဖြည့်သွင်းငွေ: <b>+${amountMmk.toLocaleString("en-US")} MMK</b>\n` +
     `လက်ရှိ Wallet Balance: <b>${newBalanceMmk.toLocaleString("en-US")} MMK</b></blockquote>\n\n` +
-    `ကျေးဇူးတင်ရှိပါသည်ခင်ဗျာ! အခုပဲ ပစ္စည်းများကို ဆက်လက် ဝယ်ယူနိုင်ပါပြီ ${sparkles}`;
+    `ကျေးဇူးတင်ပါတယ် ခင်ဗျာ! အခုပဲ ပစ္စည်းများကို ဝယ်ယူနိုင်ပါပြီ ${sparkles}`;
 
   // Returns whether the success card actually reached Telegram, so the caller
   // can release the one-time notification claim and let the bot's "Refresh"

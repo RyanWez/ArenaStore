@@ -3,6 +3,7 @@ import {
   parseCustomEmoji,
   formatTelegramCustomEmoji,
   calculateRetailMmk,
+  BOT_EMOJIS,
 } from "@arena/shared";
 import {
   buildMainMenuKeyboard,
@@ -626,7 +627,7 @@ describe("Phase 4 Customer Telegram Bot", () => {
       );
       expect(deficitBtn).toBeDefined();
       expect((deficitBtn as any).callback_data).toBe("topup_deficit_10_2_4800");
-      expect((deficitBtn as any).icon_custom_emoji_id).toBe("5258204546391351475");
+      expect((deficitBtn as any).icon_custom_emoji_id).toBe(BOT_EMOJIS.PRICE);
     });
 
     it("Recommendation B: formats wallet dashboard and provides quick top-up preset options", async () => {
@@ -788,14 +789,15 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(typeof bot.start).toBe("function");
     });
 
-    it("parses restock_<productId> and prod_<productId> deep-link payloads", () => {
+    it("parses restock_<productId>, prod_<productId>, and buy_<productId> deep-link payloads", () => {
       const parseDeepLink = (payload?: string) => {
-        const match = payload?.trim().match(/^(?:restock_|prod_)?(\d+)$/);
+        const match = payload?.trim().match(/^(?:restock_|prod_|buy_)?(\d+)$/);
         return match ? parseInt(match[1], 10) : null;
       };
 
       expect(parseDeepLink("restock_42")).toBe(42);
       expect(parseDeepLink("prod_99")).toBe(99);
+      expect(parseDeepLink("buy_42")).toBe(42);
       expect(parseDeepLink("123")).toBe(123);
       expect(parseDeepLink("help")).toBeNull();
       expect(parseDeepLink("")).toBeNull();
@@ -805,7 +807,8 @@ describe("Phase 4 Customer Telegram Bot", () => {
     it("defines standard bot menu commands with Burmese descriptions", async () => {
       const { BOT_COMMANDS } = await import("../../apps/bot/src/bot");
       const cmdNames = BOT_COMMANDS.map((c) => c.command);
-      expect(cmdNames).toEqual(["start", "products", "orders", "wallet", "profile", "help"]);
+      expect(cmdNames).toEqual(["start", "buy", "products", "orders", "wallet", "profile", "help"]);
+      expect(BOT_COMMANDS.find((c) => c.command === "buy")?.description).toContain("ဝယ်ယူရန်");
       expect(BOT_COMMANDS.find((c) => c.command === "products")?.description).toContain("ပစ္စည်းများ");
       expect(BOT_COMMANDS.find((c) => c.command === "profile")?.description).toContain("အကောင့်");
     });

@@ -5,7 +5,7 @@ export const BOT_EMOJIS = {
   // Navigation & Greetings
   WAVE: "5458904472598095631",      // 👋
   SPARKLES: "5765017520612315383",  // ❤️
-  LIGHTNING: "5172425562634847208", // ⚡️ MMQR
+  LIGHTNING: "5172425562634847208", // ⚡️
   MMQR: "5422814644093868925",      // 🫆 MMQR
   DOWN_ARROW: "5231102735817918643",// 👇
   BAGS: "5346268255180834499",       // 🛍 Store / Catalog
@@ -34,7 +34,7 @@ export const BOT_EMOJIS = {
   DISABLED: "5872829476143894491",   // 🚫 Prohibited / Unavailable
 
   // Detail Card & Status
-  PRICE: "5409048419211682843",      // 💵
+  PRICE: "5967390100357648692",      // 💵
   GIFT: "5449800250032143374",       // 🎁
   ABACUS: "5472404950673791399",     // 🧮
   RECEIPT: "5444856076954520455",    // 🧾 Receipt / Slip

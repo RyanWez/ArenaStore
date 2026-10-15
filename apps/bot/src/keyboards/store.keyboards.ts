@@ -585,7 +585,7 @@ export function buildInsufficientBalanceKeyboard(params: {
     .add({
       text: `${params.deficitMmk.toLocaleString("en-US")} Ks အတိအကျ ငွေဖြည့်မည်`,
       callback_data: `topup_deficit_${params.productId}_${params.quantity}_${params.deficitMmk}`,
-      icon_custom_emoji_id: BOT_EMOJIS.WALLET,
+      icon_custom_emoji_id: BOT_EMOJIS.PRICE,
       style: "success",
     } as any)
     .row()
