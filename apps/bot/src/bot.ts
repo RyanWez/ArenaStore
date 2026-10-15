@@ -63,6 +63,7 @@ import { BOT_EMOJIS, tgEmoji, escapeHtml, TopUpStatus } from "@arena/shared";
  */
 export const BOT_COMMANDS = [
   { command: "start", description: "Bot ကိုစတင်ရန်" },
+  { command: "buy", description: "ပစ္စည်း တိုက်ရိုက်ဝယ်ယူရန် (/buy <id>)" },
   { command: "products", description: "ပစ္စည်းများ ကြည့်ရှုဝယ်ယူရန်" },
   { command: "orders", description: "မှာယူထားသည်များကို ကြည့်ရန်" },
   { command: "wallet", description: "Wallet လက်ကျန်ငွေ စစ်ဆေးရန်" },
@@ -999,13 +1000,15 @@ export function createBot(): Bot<BotContext> {
       });
 
       if (!res.ok || !res.qr || !res.reference || !res.expiresAt) {
-        await ctx.editMessageText(
-          `${tgEmoji(BOT_EMOJIS.WARNING, "⚠️")} <b>MMQR ဖန်တီးရာတွင် အဆင်မပြေဖြစ်သွားပါသည်:</b>\n<code>${escapeHtml(res.error || "Gateway error")}</code>\n\nကျေးဇူးပြု၍ ပြေစာ စလစ်တင်သည့် နည်းလမ်းဖြင့် ဆက်လက် ပေးချေပေးပါခင်ဗျာ။`,
-          {
-            parse_mode: "HTML",
-            reply_markup: buildPaymentMethodChoiceKeyboard(amount, intendedContext),
-          }
-        );
+        await ctx
+          .editMessageText(
+            `${tgEmoji(BOT_EMOJIS.WARNING, "⚠️")} <b>MMQR ဖန်တီးရာတွင် အဆင်မပြေဖြစ်သွားပါသည်:</b>\n<code>${escapeHtml(res.error || "Gateway error")}</code>\n\nကျေးဇူးပြု၍ ပြေစာ စလစ်တင်သည့် နည်းလမ်းဖြင့် ဆက်လက် ပေးချေပေးပါခင်ဗျာ။`,
+            {
+              parse_mode: "HTML",
+              reply_markup: buildPaymentMethodChoiceKeyboard(amount, intendedContext),
+            }
+          )
+          .catch(() => {});
         return;
       }
 

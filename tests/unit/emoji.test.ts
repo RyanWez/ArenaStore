@@ -86,6 +86,11 @@ describe("Telegram Custom Emoji & HTML Formatting", () => {
     expect(BOT_EMOJIS.PRICE).toBe("5967390100357648692");
     expect(BOT_EMOJIS.WALLET).toBe("5258204546391351475");
 
+    // Status, Notices & Info
+    expect(BOT_EMOJIS.HOURGLASS).toBe("5345809410939700735");
+    expect(BOT_EMOJIS.LIGHTBULB).toBe("5258216851472654189");
+    expect(BOT_EMOJIS.CLOCK).toBe("5348236797606379943");
+
     // Payment Emojis
     expect(BOT_EMOJIS.KBZPAY).toBe("6206487605421280759");
     expect(BOT_EMOJIS.WAVEPAY).toBe("6057728063049830775");

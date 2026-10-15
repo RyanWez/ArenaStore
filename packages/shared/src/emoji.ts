@@ -38,12 +38,14 @@ export const BOT_EMOJIS = {
   GIFT: "5449800250032143374",       // 🎁
   ABACUS: "5472404950673791399",     // 🧮
   RECEIPT: "5444856076954520455",    // 🧾 Receipt / Slip
-  HOURGLASS: "5255765065096774716",  // ⏳
+  HOURGLASS: "5345809410939700735",  // ⏳
   KEY: "6005570495603282482",        // 🔑 Key / Credentials
   WARNING: "5341498036868634459",    // ⚠️ Alert / Warning
   ALERT: "5341498036868634459",      // ⚠️ Alert / Warning
   CANCEL: "5985346521103604145",     // ❌ Cancel
   WRENCH: "5258023599419171861",     // 🔧
+  LIGHTBULB: "5258216851472654189",  // 💡 Tip / Note / Info
+  IDEA: "5258216851472654189",       // 💡 Alias
 
   // Payment Providers
   KBZPAY: "6206487605421280759",     // 🏧 KBZ Pay
@@ -51,8 +53,8 @@ export const BOT_EMOJIS = {
   UABPAY: "5391349017898656371",     // 💚 UAB Pay
   AYAPAY: "5282730523343474638",     // 🙂 AYA Pay
 
-  // Admin Group Notices
-  CLOCK: "5359535585251838264",      // 🕐
+  // Admin Group Notices & Timing
+  CLOCK: "5348236797606379943",      // 🕒 Time / Expiry
   BELL: "5346038654819123712",       // 🔔
 } as const;
 

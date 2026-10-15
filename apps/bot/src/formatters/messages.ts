@@ -474,17 +474,17 @@ export function formatMmpayQrInvoiceMessage(params: {
   const remainingMin = Math.max(0, Math.ceil(remainingMs / 60000));
   const countdownStr =
     remainingMin > 0
-      ? `⏳ <b>ကျန်ချိန်:</b> ~${remainingMin} မိနစ်`
-      : `⏳ <b>ကျန်ချိန်:</b> သက်တမ်းကုန်လုနီးပါပြီ`;
+      ? `${tgEmoji(BOT_EMOJIS.HOURGLASS, "⏳")} <b>ကျန်ချိန်:</b> ~${remainingMin} မိနစ်`
+      : `${tgEmoji(BOT_EMOJIS.HOURGLASS, "⏳")} <b>ကျန်ချိန်:</b> သက်တမ်းကုန်လုနီးပါပြီ`;
 
   return `<blockquote>${tgEmoji(BOT_EMOJIS.MMQR, "⚡")} <b>MMQR အလိုအလျောက် ငွေပေးချေလွှာ</b>
 ငွေပမာဏ: <b>${params.amountMmk.toLocaleString("en-US")} MMK</b> (၁၅ မိနစ်အတွင်း ပေးချေပါ)</blockquote>
 
 ${tgEmoji(BOT_EMOJIS.RECEIPT, "🧾")} <b>အော်ဒါ:</b> <code>${escapeHtml(params.reference)}</code>
-🕒 <b>နောက်ဆုံးအချိန်:</b> <b>${expiresTimeStr} MMT</b>
+${tgEmoji(BOT_EMOJIS.CLOCK, "🕒")} <b>နောက်ဆုံးအချိန်:</b> <b>${expiresTimeStr} MMT</b>
 ${countdownStr}
 
-💡 <i>KPay / WavePay စသည့် (MMQR ဖြင့် လက်ခံနိုင်သည့်) မည်သည့် E-Wallet ဖြင့်မဆို Scan ဖတ်ပြီးသည်နှင့် စက္ကန့်ပိုင်းအတွင်း အလိုအလျောက် ငွေဝင်ပါမည်။ (ပြေစာ စလစ် တင်ရန် မလိုပါ)</i>`;
+${tgEmoji(BOT_EMOJIS.LIGHTBULB, "💡")} <i>KPay / WavePay စသည့် (MMQR ဖြင့် လက်ခံနိုင်သည့်) မည်သည့် E-Wallet ဖြင့်မဆို Scan ဖတ်ပြီးသည်နှင့် စက္ကန့်ပိုင်းအတွင်း အလိုအလျောက် ငွေဝင်ပါမည်။ (ပြေစာ စလစ် တင်ရန် မလိုပါ)</i>`;
 }
 
 /**
