@@ -96,7 +96,7 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(buttons.some((b) => b.text.includes("Channel"))).toBe(true);
 
       const shopBtn = buttons.find((b) => b.text.includes("ပစ္စည်းများ ဝယ်ယူရန်"));
-      expect((shopBtn as any).icon_custom_emoji_id).toBe("5346268255180834499");
+      expect((shopBtn as any).icon_custom_emoji_id).toBe("4958714256343171878");
       expect((shopBtn as any).style).toBe("success");
 
       const profileBtn = buttons.find((b) => b.text.includes("ကျွန်ုပ်၏ အကောင့်"));
@@ -342,7 +342,7 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(msg).toContain("Aung Aung");
       expect(msg).toContain("Welcome Back, Aung Aung,");
       expect(msg).toContain("Premium AI Tools နှင့် Digital Accounts");
-      expect(msg).toContain("5346268255180834499"); // Store icon
+      expect(msg).toContain("5983399041197675256"); // Store icon
     });
 
     it("formats product detail card with expandable quote and price (matching Screenshot 3)", () => {

@@ -8,8 +8,8 @@ export const BOT_EMOJIS = {
   LIGHTNING: "5172425562634847208", // ⚡️
   MMQR: "5422814644093868925",      // 🫆 MMQR
   DOWN_ARROW: "5231102735817918643",// 👇
-  BAGS: "5346268255180834499",       // 🛍 Store / Catalog
-  STORE: "5346268255180834499",      // 🛍 Store / Catalog
+  BAGS: "5983399041197675256",       // 🛍 Store / Catalog
+  STORE: "4958714256343171878",      // 🛍 Arena Store
   BOX: "5348127061191967344",        // 📦 Orders
   ORDERS: "5348127061191967344",     // 📦 Orders
   MONEY: "5769403330761593044",      // 💰 Wallet / Balance
