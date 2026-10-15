@@ -3,8 +3,8 @@
  */
 export const BOT_EMOJIS = {
   // Navigation & Greetings
-  WAVE: "5215248074498128418",      // 👋
-  SPARKLES: "5325547803936572038",  // ✨
+  WAVE: "5458904472598095631",      // 👋
+  SPARKLES: "5765017520612315383",  // ❤️
   LIGHTNING: "5172425562634847208", // ⚡️ MMQR
   MMQR: "5422814644093868925",      // 🫆 MMQR
   DOWN_ARROW: "5231102735817918643",// 👇
@@ -12,7 +12,7 @@ export const BOT_EMOJIS = {
   STORE: "5346268255180834499",      // 🛍 Store / Catalog
   BOX: "5348127061191967344",        // 📦 Orders
   ORDERS: "5348127061191967344",     // 📦 Orders
-  MONEY: "5258204546391351475",      // 💰 Wallet / Balance
+  MONEY: "5769403330761593044",      // 💰 Wallet / Balance
   WALLET: "5258204546391351475",     // 💰 Wallet / Balance
   CHAT: "5348323259593014362",       // 💬 Support
   SPEAKER: "5771868281212245617",    // 📢 Channel
@@ -23,9 +23,9 @@ export const BOT_EMOJIS = {
   BUY_NOW: "5346227465876423936",    // 💳 Buy Now
   MINUS: "5346176879751612829",      // ➖ Minus
   PLUS: "5346004239246183111",       // ➕ Plus
-  COUNTER: "5226929552319594190",    // 🔢 Counter
+  COUNTER: "5226513232549664618",    // 🔢 Counter
   CHECK: "5260416304224936047",      // ✅ Checkmark
-  PARTY: "5420289585575904153",      // 🎉 Celebration
+  PARTY: "5994502837327892086",      // 🎉 Celebration
   BACK: "5258236805890710909",       // ⬅️ Back
   HOME: "5348064629547351986",       // 🏡 Home
   EDIT: "5985774024968379294",       // ✏️ Custom / Edit

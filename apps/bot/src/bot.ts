@@ -76,6 +76,7 @@ export function createBot(): Bot<BotContext> {
   // In-flight locks to prevent concurrent duplicate actions (double-taps / burst photos)
   const activeTopUpLocks = new Set<string>();
   const activePhotoUploadLocks = new Set<string>();
+  const activeMmpayCheckCooldowns = new Map<string, number>();
 
   // 0. Admin-Group Deposit Review Callbacks
   // Must be registered BEFORE the private-chat-only guard below: the guard
@@ -924,6 +925,7 @@ export function createBot(): Bot<BotContext> {
 
     try {
       await ctx.answerCallbackQuery({ text: "MMQR ဖန်တီးနေပါသည်..." }).catch(() => {});
+      await ctx.replyWithChatAction("upload_photo").catch(() => {});
 
       const res = await botOrderService.createMmpayTopUp({
         telegramId,
@@ -1024,6 +1026,7 @@ export function createBot(): Bot<BotContext> {
     }
 
     await ctx.answerCallbackQuery({ text: "QR ကုဒ်ကို ပြသနေပါသည်..." }).catch(() => {});
+    await ctx.replyWithChatAction("upload_photo").catch(() => {});
     const qrBuffer = await generateQrImageBuffer(active.qr);
     await ctx.deleteMessage().catch(() => {});
 
@@ -1087,6 +1090,7 @@ export function createBot(): Bot<BotContext> {
       return;
     }
 
+    activeMmpayCheckCooldowns.delete(reference);
     await ctx.answerCallbackQuery({ text: "ငွေပေးချေမှုကို ဖျက်သိမ်းပြီးပါပြီ!" });
     await ctx.deleteMessage().catch(() => {});
 
@@ -1138,6 +1142,19 @@ export function createBot(): Bot<BotContext> {
     const reference = ctx.match[1];
     const telegramId = String(ctx.from?.id || "");
 
+    const lastCheck = activeMmpayCheckCooldowns.get(reference) || 0;
+    const now = Date.now();
+    const diffMs = now - lastCheck;
+
+    if (diffMs < 5000) {
+      const remainingSeconds = Math.ceil((5000 - diffMs) / 1000);
+      await ctx.answerCallbackQuery({
+        text: `⏳ ခေတ္တစောင့်ပေးပါခင်ဗျာ... နောက်ထပ် ${remainingSeconds} စက္ကန့် စောင့်ပြီးမှ ထပ်မံ စစ်ဆေးနိုင်ပါမည်။`,
+        show_alert: true,
+      });
+      return;
+    }
+
     const statusRes = await botOrderService.checkMmpayStatus(reference);
     if (!statusRes) {
       await ctx.answerCallbackQuery({ text: "အော်ဒါ အချက်အလက် စစ်ဆေးမရသေးပါ ခင်ဗျာ။", show_alert: true });
@@ -1153,6 +1170,7 @@ export function createBot(): Bot<BotContext> {
     // did not deliver), posts the single success card itself. The shared claim
     // guarantees the customer never sees two cards.
     if (statusRes.status === TopUpStatus.COMPLETED || statusRes.status === TopUpStatus.APPROVED) {
+      activeMmpayCheckCooldowns.delete(reference);
       const claimed = await botOrderService.claimMmpaySuccessNotification(reference);
       await ctx.answerCallbackQuery({
         text: "✅ ငွေဝင်ပြီးပါပြီ! Wallet Balance ကို စစ်ကြည့်နိုင်ပါပြီခင်ဗျာ။",
@@ -1180,6 +1198,7 @@ export function createBot(): Bot<BotContext> {
         }
       }
     } else if (statusRes.status === TopUpStatus.EXPIRED) {
+      activeMmpayCheckCooldowns.delete(reference);
       // Claim the one-time cleanup so the background sweep does not also post an
       // expired notice for the same invoice (dedup via nulling the QR id).
       const owns = await botOrderService.claimMmpayInvoiceCleanup(reference);
@@ -1195,6 +1214,7 @@ export function createBot(): Bot<BotContext> {
         );
       }
     } else if (statusRes.status === TopUpStatus.CANCELLED) {
+      activeMmpayCheckCooldowns.delete(reference);
       await ctx.answerCallbackQuery({ text: "ဤအော်ဒါကို ဖျက်သိမ်းထားပြီးဖြစ်ပါသည်။", show_alert: true });
       await ctx.deleteMessage().catch(() => {});
       await ctx.reply("❌ <b>ဤအော်ဒါကို ဖျက်သိမ်းထားပြီးဖြစ်ပါသည်။</b>", {
@@ -1202,6 +1222,7 @@ export function createBot(): Bot<BotContext> {
         reply_markup: buildWalletKeyboard(),
       });
     } else if (statusRes.status === TopUpStatus.FAILED) {
+      activeMmpayCheckCooldowns.delete(reference);
       // The gateway reported the payment as failed. Like the success path, the
       // webhook normally posts this card and clears the QR, but Refresh is the
       // recovery when that push was dropped — the shared one-time claim keeps
@@ -1223,6 +1244,7 @@ export function createBot(): Bot<BotContext> {
         }
       }
     } else {
+      activeMmpayCheckCooldowns.set(reference, Date.now());
       await ctx.answerCallbackQuery({
         text: "⏳ ငွေပေးချေမှုကို စောင့်ဆိုင်းနေဆဲဖြစ်ပါသည်။ Mobile Banking App (KPay / WavePay) တွင် Scan ဖတ်၍ ပေးချေပေးပါခင်ဗျာ။",
         show_alert: true,
