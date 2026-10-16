@@ -1873,6 +1873,39 @@ export function createBot(): Bot<BotContext> {
     });
   });
 
+  // 24. Inline Query handler for Telegram Inline Sharing with [Start] button
+  bot.on("inline_query", async (ctx) => {
+    const telegramId = String(ctx.from.id);
+    const botUsername = ctx.me?.username || "ArenaStoreBot";
+    const inviteLink = `https://t.me/${botUsername}?start=ref_${telegramId}`;
+    const shareText = "Arena Store Bot မှာ Game Items နှင့် Digital Products မျိုးစုံကို ဈေးနှုန်း သက်သာစွာဖြင့် ဝယ်ယူနိုင်ပါတယ်။ အခုပဲ Start ကို နှိပ်ပြီး ကြိုဆိုလက်ဆောင် 200 ကျပ်ကို ရယူလိုက်နော်";
+
+    await ctx.answerInlineQuery(
+      [
+        {
+          type: "article",
+          id: `ref_${telegramId}`,
+          title: "🎁 Arena Store သို့ ဖိတ်ခေါ်ရန်",
+          description: "200 Ks ကြိုဆိုလက်ဆောင် + Lifetime 3% ကော်မရှင်",
+          input_message_content: {
+            message_text: `🛍️ <b>Arena Store</b>\n\n${shareText}`,
+            parse_mode: "HTML",
+          },
+          reply_markup: new InlineKeyboard().add({
+            text: "💬 Start",
+            url: inviteLink,
+            icon_custom_emoji_id: BOT_EMOJIS.CHAT,
+            style: "success",
+          } as any),
+        },
+      ],
+      {
+        cache_time: 1,
+        is_personal: true,
+      }
+    );
+  });
+
   return bot;
 }
 

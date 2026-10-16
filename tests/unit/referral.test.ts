@@ -281,8 +281,8 @@ describe("Referral & Affiliate Reward System", () => {
 
       expect(rows.length).toBe(2);
       expect(rows[0][0].text).toBe("သူငယ်ချင်းများသို့ မျှဝေရန်");
-      expect((rows[0][0] as any).url).toContain("https://t.me/share/url");
-      expect((rows[0][0] as any).url).toContain(encodeURIComponent(link));
+      expect((rows[0][0] as any).switch_inline_query).toBe("");
+      expect((rows[0][0] as any).icon_custom_emoji_id).toBe("5886334622849044906");
       expect(rows[1][0].text).toBe("နောက်သို့");
       expect((rows[1][0] as any).callback_data).toBe("menu_profile");
       expect(rows[1][1].text).toBe("ပင်မစာမျက်နှာ");

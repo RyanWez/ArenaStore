@@ -121,16 +121,13 @@ export function buildProfileKeyboard(): InlineKeyboard {
 }
 
 /**
- * Builds Referral details keyboard with Telegram Share intent and back navigation.
+ * Builds Referral details keyboard with Telegram Inline Share (with Start button) and back navigation.
  */
 export function buildReferralKeyboard(inviteLink: string): InlineKeyboard {
-  const shareText = "Game Items နှင့် Digital Products မျိုးစုံကို ဈေးနှုန်း သက်သာစွာဖြင့် ဝယ်ယူလိုက်ပါ။ အခုပဲ အကောင့်ဖွင့်ပြီး 200 ကျပ် လက်ဆောင် ရယူလိုက်ပါ!";
-  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent(shareText)}`;
-
   return new InlineKeyboard()
     .add({
       text: "သူငယ်ချင်းများသို့ မျှဝေရန်",
-      url: shareUrl,
+      switch_inline_query: "",
       icon_custom_emoji_id: BOT_EMOJIS.SHARE,
     })
     .row()

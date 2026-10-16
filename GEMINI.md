@@ -39,16 +39,27 @@
 - `VERIFIED`: `"5357069174512303778"` (✅ Active Referrals)
 - `SHARE`: `"5886334622849044906"` (📲 Share button)
 - `LINK`: `"5348498159251244132"` (🔗 Invite link)
+- `STATS`: `"5875291072225087249"` (📊 Referral stats / chart)
+- `SPARKLES`: `"5765017520612315383"` (✨ Benefits)
 - Emojis in HTML mode must use `tgEmoji(BOT_EMOJIS.<NAME>, "<fallback>")` which outputs `<tg-emoji emoji-id="...">fallback</tg-emoji>`.
 
 ## 5. Referral & Affiliate Reward System Architecture
 - **Invite Link Format**: `https://t.me/<BotUsername>?start=ref_<telegramId>` (also accepts plain `start=<telegramId>` when length >= 6).
-- **New Referred Customer**: Immediately gets **200 MMK Welcome Bonus** credited directly to their wallet upon registration.
+- **New Referred Customer**: Immediately gets **200 MMK Welcome Bonus** credited directly to their wallet upon registration with greeting:
+  `သူငယ်ချင်း ဖိတ်ခေါ်သော Link မှ လာခြင်း ဖြစ်သောကြောင့် ကြိုဆိုလက်ဆောင် <b>200 ကျပ်</b> ကို Wallet ထဲသို့ ထည့်သွင်းပေးလိုက်ပါပြီခင်ဗျာ!`
 - **Qualified Anti-Abuse Referrer Reward**:
   - Referrer's **200 MMK Bonus** remains `PENDING` until the friend completes their **FIRST purchase** (`DELIVERED`), which unlocks the reward and flips status to `QUALIFIED`.
   - Self-referrals rejected. Users cannot be referred twice. Existing customers with prior orders cannot claim retroactively.
 - **Lifetime 3% Commission**: Every time a referred customer buys any product (`DELIVERED`), referrer automatically earns **3% of order total MMK** (`Math.floor(totalMmk * 0.03)`).
+- **Telegram Inline Mode Sharing**:
+  - Activated via `switch_inline_query: ""` on "📲 သူငယ်ချင်းများသို့ မျှဝေရန်" in [`apps/bot/src/keyboards/store.keyboards.ts`](file:///home/zixuan/Projects/ArenaStore/apps/bot/src/keyboards/store.keyboards.ts).
+  - Handled in [`apps/bot/src/bot.ts`](file:///home/zixuan/Projects/ArenaStore/apps/bot/src/bot.ts) via `bot.on("inline_query", ...)`.
+  - Attaches `[ 💬 Start ]` URL button with `style: "success"` (green background in Nagram/modern clients), `icon_custom_emoji_id: BOT_EMOJIS.CHAT`, and `is_personal: true` (prevents cross-user caching of user referral IDs).
 - **Service & Schemas**:
   - Service: [`apps/bot/src/services/referral.service.ts`](file:///home/zixuan/Projects/ArenaStore/apps/bot/src/services/referral.service.ts)
   - Schema: [`packages/db/src/schema/referrals.ts`](file:///home/zixuan/Projects/ArenaStore/packages/db/src/schema/referrals.ts)
   - Tests: [`tests/unit/referral.test.ts`](file:///home/zixuan/Projects/ArenaStore/tests/unit/referral.test.ts)
+
+## 6. Git Push Policy
+- **CRITICAL**: NEVER execute `git push` without explicit user permission/approval. Only run `git commit` when requested.
+
