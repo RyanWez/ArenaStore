@@ -59,7 +59,7 @@ import { channelVerificationService } from "./services/channel-verification.serv
 import { notifyAdminGroupDepositSlip } from "./services/admin-group.service";
 import { registerAdminDepositReviewHandlers } from "./handlers/admin-deposit-review";
 import { referralService } from "./services/referral.service";
-import { BOT_EMOJIS, tgEmoji, escapeHtml, TopUpStatus } from "@arena/shared";
+import { BOT_EMOJIS, tgEmoji, escapeHtml, TopUpStatus, isMessageNotModified } from "@arena/shared";
 
 /**
  * Bot commands registered in the Telegram Bot menu (☰ button).
@@ -77,6 +77,24 @@ export const BOT_COMMANDS = [
 
 export function createBot(): Bot<BotContext> {
   const bot = new Bot<BotContext>(botConfig.TELEGRAM_BOT_TOKEN);
+
+  // Global API Transformer: Treat "message is not modified" as a successful idempotent no-op
+  bot.api.config.use(async (prev, method, payload, signal) => {
+    try {
+      return await prev(method, payload, signal);
+    } catch (err: unknown) {
+      if (
+        (method === "editMessageText" ||
+          method === "editMessageCaption" ||
+          method === "editMessageReplyMarkup" ||
+          method === "editMessageMedia") &&
+        isMessageNotModified(err)
+      ) {
+        return true as any;
+      }
+      throw err;
+    }
+  });
 
   // In-flight locks to prevent concurrent duplicate actions (double-taps / burst photos)
   const activeTopUpLocks = new Set<string>();
@@ -740,10 +758,33 @@ export function createBot(): Bot<BotContext> {
     const page = ctx.match[1] ? parseInt(ctx.match[1], 10) : 0;
     const categories = await botCatalog.getCategories();
 
+    if (categories.length === 0) {
+      await ctx.editMessageText(
+        `${tgEmoji(BOT_EMOJIS.STORE, "🛍")} <b>ပစ္စည်း အမျိုးအစားများ</b>\n\n⚠️ လက်ရှိတွင် ပစ္စည်းစာရင်း ရယူ၍ မရနိုင်သေးပါခင်ဗျာ။ ခေတ္တစောင့်ပြီး ပြန်လည်ကြိုးစားပေးပါ။`,
+        {
+          parse_mode: "HTML",
+          reply_markup: new InlineKeyboard()
+            .add({
+              text: "🔄 ပြန်လည်ကြိုးစားမည်",
+              callback_data: "menu_categories",
+            })
+            .row()
+            .add({
+              text: "ပင်မစာမျက်နှာ",
+              callback_data: "menu_start",
+              icon_custom_emoji_id: BOT_EMOJIS.HOME,
+            }),
+        }
+      );
+      await ctx.answerCallbackQuery().catch(() => {});
+      return;
+    }
+
     await ctx.editMessageText(formatCategoriesMessage(), {
       parse_mode: "HTML",
       reply_markup: buildCategoriesKeyboard(categories, page),
     });
+    await ctx.answerCallbackQuery().catch(() => {});
   });
 
   // 6. Category Selection -> Products List (Screenshot 2)
@@ -762,6 +803,7 @@ export function createBot(): Bot<BotContext> {
       parse_mode: "HTML",
       reply_markup: buildProductsKeyboard(categoryId, products, page),
     });
+    await ctx.answerCallbackQuery().catch(() => {});
   });
 
   // 7. Product Selection -> Interactive Detail & Stepper (Screenshot 3)
@@ -784,12 +826,17 @@ export function createBot(): Bot<BotContext> {
         parse_mode: "HTML",
         reply_markup: buildProductDetailKeyboard(product, 1),
       });
-    } catch {
+    } catch (err: unknown) {
+      if (isMessageNotModified(err)) {
+        await ctx.answerCallbackQuery().catch(() => {});
+        return;
+      }
       await ctx.reply(formatProductDetailMessage(product, 1), {
         parse_mode: "HTML",
         reply_markup: buildProductDetailKeyboard(product, 1),
       });
     }
+    await ctx.answerCallbackQuery().catch(() => {});
   });
 
   // 8. Quantity Stepper [-] [+]
@@ -798,16 +845,25 @@ export function createBot(): Bot<BotContext> {
     const targetQty = parseInt(ctx.match[2], 10);
     const product = await botCatalog.getProductById(productId);
 
-    if (!product) return;
+    if (!product) {
+      await ctx.answerCallbackQuery().catch(() => {});
+      return;
+    }
 
     // Clamp between 1 and available stock
     const newQty = Math.max(1, Math.min(targetQty, product.stock));
+    if (ctx.session.selectedQuantity === newQty) {
+      // Already at the boundary (e.g. min 1 or max stock); answer immediately
+      await ctx.answerCallbackQuery().catch(() => {});
+      return;
+    }
     ctx.session.selectedQuantity = newQty;
 
     await ctx.editMessageText(formatProductDetailMessage(product, newQty), {
       parse_mode: "HTML",
       reply_markup: buildProductDetailKeyboard(product, newQty),
     });
+    await ctx.answerCallbackQuery().catch(() => {});
   });
 
   // 9. Quick Preset Selection [1, 5, 10, 20, 30, 50]
@@ -816,14 +872,23 @@ export function createBot(): Bot<BotContext> {
     const preset = parseInt(ctx.match[2], 10);
     const product = await botCatalog.getProductById(productId);
 
-    if (!product) return;
+    if (!product) {
+      await ctx.answerCallbackQuery().catch(() => {});
+      return;
+    }
 
+    if (ctx.session.selectedQuantity === preset) {
+      // Already selected this preset; answer immediately
+      await ctx.answerCallbackQuery().catch(() => {});
+      return;
+    }
     ctx.session.selectedQuantity = preset;
 
     await ctx.editMessageText(formatProductDetailMessage(product, preset), {
       parse_mode: "HTML",
       reply_markup: buildProductDetailKeyboard(product, preset),
     });
+    await ctx.answerCallbackQuery().catch(() => {});
   });
 
   // 10. Custom Quantity Prompt

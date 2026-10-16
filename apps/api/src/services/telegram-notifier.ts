@@ -6,6 +6,7 @@ import {
   parseCustomEmoji,
   findBrandEmojiId,
   buildReviewOutcomeCaption,
+  isMessageNotModified,
 } from "@arena/shared";
 import { formatCredentialsText } from "./encryption";
 import { getDb, appSettings } from "@arena/db";
@@ -503,8 +504,15 @@ export async function syncTelegramDepositReviewOutcome(params: SyncDepositReview
       }
 
       const errJson = await res.json().catch(() => ({}));
+      if (isMessageNotModified(errJson)) {
+        // Message already bears this exact outcome caption & markup. Treat as successful sync.
+        return true;
+      }
       console.warn(`[Telegram Notifier] editMessageCaption failed for message ${params.messageId}:`, errJson);
     } catch (err: any) {
+      if (isMessageNotModified(err)) {
+        return true;
+      }
       console.warn(`[Telegram Notifier] Network error during editMessageCaption:`, err.message);
     }
   }

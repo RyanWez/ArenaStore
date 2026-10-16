@@ -534,6 +534,28 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(geminiProd?.cleanName).toContain("Gemini AI");
     });
 
+    it("refuses to inject fake demo fallback products in production environment when upstream and DB fail", async () => {
+      const origEnv = process.env.NODE_ENV;
+      const origVitest = process.env.VITEST;
+      try {
+        process.env.NODE_ENV = "production";
+        delete process.env.VITEST;
+
+        global.fetch = vi.fn().mockRejectedValue(new Error("Upstream partner 503 Service Unavailable"));
+        const { BotCatalogService } = await import("../../apps/bot/src/services/catalog.service");
+        const prodCatalog = new BotCatalogService();
+
+        const cats = await prodCatalog.getCategories();
+        expect(cats).toEqual([]);
+
+        const prod = await prodCatalog.getProductById(10);
+        expect(prod).toBeNull();
+      } finally {
+        process.env.NODE_ENV = origEnv;
+        if (origVitest !== undefined) process.env.VITEST = origVitest;
+      }
+    });
+
     it("handles out of stock products in keyboard gracefully", () => {
       const outOfStockProd: BotProduct = {
         ...sampleProduct,

@@ -11,6 +11,7 @@ import {
   EMPTY_KEYBOARD,
   DepositReviewCbAction,
 } from "../services/admin-group.service";
+import { isMessageNotModified } from "@arena/shared";
 
 /**
  * Checks whether a Telegram user is authorized to approve/reject deposit slips.
@@ -104,7 +105,11 @@ export function registerAdminDepositReviewHandlers(bot: Bot<BotContext>) {
           .editMessageReplyMarkup(msg.chat.id, msg.message_id, {
             reply_markup: buildDepositRejectConfirmKeyboard(topUpId),
           })
-          .catch(() => {});
+          .catch((err: any) => {
+            if (!isMessageNotModified(err)) {
+              console.warn(`[AdminDepositReview] Could not arm reject keyboard:`, err?.message || err);
+            }
+          });
         await answer("⚠️ Customer က အသိပေးစာ ရမည် — ပယ်ဖျက်မှာ အတည်ပြုပါ");
         return;
       }
@@ -114,7 +119,11 @@ export function registerAdminDepositReviewHandlers(bot: Bot<BotContext>) {
           .editMessageReplyMarkup(msg.chat.id, msg.message_id, {
             reply_markup: buildDepositReviewKeyboard(topUpId),
           })
-          .catch(() => {});
+          .catch((err: any) => {
+            if (!isMessageNotModified(err)) {
+              console.warn(`[AdminDepositReview] Could not disarm reject keyboard:`, err?.message || err);
+            }
+          });
         await answer("↩️ မပယ်ဖျက်တော့ပါ");
         return;
       }
@@ -159,11 +168,14 @@ export function registerAdminDepositReviewHandlers(bot: Bot<BotContext>) {
               reply_markup: EMPTY_KEYBOARD,
             })
             .catch((err: any) => {
+              if (isMessageNotModified(err)) {
+                return;
+              }
               // Telegram refuses to edit messages older than ~48h; the toast
               // below still carries the result.
               console.warn(
                 `[AdminDepositReview] Could not edit slip message ${msg.message_id}:`,
-                err?.message
+                err?.message || err
               );
             });
         }

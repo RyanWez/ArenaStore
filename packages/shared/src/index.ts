@@ -4,6 +4,7 @@ export * from "./stock";
 export * from "./emoji";
 export * from "./schemas";
 export * from "./deposit-caption";
+export * from "./telegram";
 
 export const APP_NAME = "Arena Store";
 

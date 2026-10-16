@@ -40,11 +40,12 @@ export interface BotProduct {
   inStock: boolean;
 }
 
-class BotCatalogService {
+export class BotCatalogService {
   private categoriesCache: BotCategory[] | null = null;
   private productsCache: BotProduct[] | null = null;
   private lastFetchedAt: number = 0;
   private readonly CACHE_TTL_MS = 15 * 1000; // 15 seconds cache
+  private readonly MAX_STALE_TTL_MS = 30 * 60 * 1000; // 30 minutes max stale tolerance during outages
 
   /**
    * Formats MMK amount according to Option A requested by user: "<amount> Ks"
@@ -370,7 +371,12 @@ class BotCatalogService {
    */
   private async ensureFreshCache(): Promise<void> {
     const now = Date.now();
-    if (this.categoriesCache && this.productsCache && now - this.lastFetchedAt < this.CACHE_TTL_MS) {
+    const isCacheFresh =
+      this.categoriesCache &&
+      this.productsCache &&
+      now - this.lastFetchedAt < this.CACHE_TTL_MS;
+
+    if (isCacheFresh) {
       return;
     }
 
@@ -402,11 +408,40 @@ class BotCatalogService {
         }
       } catch (err: any) {
         console.error("[BotCatalogService] Failed to refresh catalog cache:", err.message);
-        // If we don't have cache at all, provide safe fallback
-        if (!this.categoriesCache || !this.productsCache || this.productsCache.length === 0) {
-          this.categoriesCache = this.getFallbackCategories();
-          this.productsCache = this.getFallbackProducts();
-          this.lastFetchedAt = Date.now();
+
+        const isDevOrTest =
+          process.env.NODE_ENV === "development" ||
+          process.env.NODE_ENV === "test" ||
+          Boolean(process.env.VITEST);
+
+        const hasValidCache =
+          this.categoriesCache !== null &&
+          this.productsCache !== null &&
+          this.productsCache.length > 0;
+
+        const isWithinStaleGrace =
+          hasValidCache && Date.now() - this.lastFetchedAt < this.MAX_STALE_TTL_MS;
+
+        if (isWithinStaleGrace) {
+          // Serve previous cache during temporary short-lived network glitches
+          console.warn(
+            `[BotCatalogService] Serving stale cache during upstream outage (age: ${Math.round((Date.now() - this.lastFetchedAt) / 1000)}s)`
+          );
+        } else if (isDevOrTest) {
+          // In local dev/unit test environment only: provide mock fallback if no cache exists
+          if (!hasValidCache) {
+            this.categoriesCache = this.getFallbackCategories();
+            this.productsCache = this.getFallbackProducts();
+            this.lastFetchedAt = Date.now();
+          }
+        } else {
+          // In Production with NO cache or EXPIRED cache (> 30m stale):
+          // Refuse to inject fake saleable demo products!
+          console.error(
+            "[BotCatalogService] CRITICAL: Catalog unavailable in production. Refusing to inject demo products or serve expired cache."
+          );
+          this.categoriesCache = [];
+          this.productsCache = [];
         }
       } finally {
         this.activeRefreshPromise = null;

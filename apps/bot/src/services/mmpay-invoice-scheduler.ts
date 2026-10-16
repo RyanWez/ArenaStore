@@ -6,6 +6,7 @@ import {
   formatMmpayExpiredMessage,
 } from "../formatters/messages";
 import { buildMmpayInvoiceKeyboard, buildWalletKeyboard } from "../keyboards/store.keyboards";
+import { isMessageNotModified } from "@arena/shared";
 import type { BotContext } from "../types";
 
 const TICK_MS = 30 * 1000; // run every 30s to catch milestones accurately without missing any window
@@ -103,7 +104,11 @@ export function startMmpayInvoiceScheduler(bot: Bot<BotContext>): { stop: () => 
             reply_markup: buildMmpayInvoiceKeyboard(row.reference),
           }),
           API_TIMEOUT_MS
-        ).catch(() => {});
+        ).catch((err: any) => {
+          if (!isMessageNotModified(err)) {
+            console.warn(`[MmpayInvoiceScheduler] Could not edit countdown caption for ${row.reference}:`, err?.message || err);
+          }
+        });
       }
       return;
     }

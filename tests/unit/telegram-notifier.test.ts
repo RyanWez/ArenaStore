@@ -289,5 +289,39 @@ describe("Telegram Notifier Service", () => {
       expect(body.text).toContain("Arena Superadmin (Dashboard)");
       expect(body.text).toContain("က အတည်ပြုပြီး");
     });
+
+    it("treats 'message is not modified' as success and skips duplicate fallback notice", async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          error_code: 400,
+          description: "Bad Request: message is not modified: specified new message content and reply markup are exactly the same",
+        }),
+      } as any);
+
+      config.TELEGRAM_GROUP_CHAT_ID = "-1001234567890";
+
+      const res = await syncTelegramDepositReviewOutcome({
+        outcome: "APPROVED",
+        actorLabel: "Arena Superadmin (Dashboard)",
+        reference: "TOP-112233",
+        amountMmk: 5000,
+        customerLabel: "@customer",
+        postedAt: new Date(),
+        chatId: "-1001234567890",
+        messageId: 888,
+        topicId: "14",
+      });
+
+      expect(res).toBe(true);
+      // Only editMessageCaption was called, sendMessage was NOT called!
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledWith(
+        `https://api.telegram.org/bot${TEST_TOKEN}/editMessageCaption`,
+        expect.anything()
+      );
+    });
   });
 });
+
