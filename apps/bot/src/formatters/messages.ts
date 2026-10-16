@@ -200,12 +200,20 @@ export function formatProfileMessage(params: {
   totalDepositsMmk?: number;
   totalSpentMmk?: number;
   ordersCount?: number;
+  referralsCount?: number;
+  activeReferralsCount?: number;
+  referralEarningsMmk?: number;
+  inviteLink?: string;
 }): string {
   const name = params.fullName || "Customer";
   const usernameText = params.username ? `@${escapeHtml(params.username)}` : "<i>မရှိပါ</i>";
   const walletBalance = (params.walletBalanceMmk ?? 0).toLocaleString("en-US");
   const totalSpent = (params.totalSpentMmk ?? 0).toLocaleString("en-US");
   const orders = params.ordersCount ?? 0;
+  const referrals = params.referralsCount ?? 0;
+  const activeReferrals = params.activeReferralsCount ?? 0;
+  const referralEarnings = (params.referralEarningsMmk ?? 0).toLocaleString("en-US");
+  const inviteLink = params.inviteLink || `https://t.me/ArenaStoreBot?start=ref_${params.telegramId}`;
 
   return `${tgEmoji(BOT_EMOJIS.PROFILE, "👤")} <b>ကျွန်ုပ်၏ အကောင့်</b>
 
@@ -214,8 +222,49 @@ User ID: <code>${params.telegramId}</code>
 
 Wallet လက်ကျန်ငွေ: <b>${walletBalance} Ks</b>
 ဝယ်ယူခဲ့သည့် ပမာဏ: <b>${totalSpent} Ks</b>
-အော်ဒါ အရေအတွက်: <b>${orders} ခု</b>`;
+အော်ဒါ အရေအတွက်: <b>${orders} ခု</b>
+
+${tgEmoji(BOT_EMOJIS.GIFT, "🎁")} <b>Referral အချက်အလက်များ</b>
+• ဖိတ်ခေါ်ထားသူ: <b>${referrals} ဦး</b>
+• အော်ဒါဝယ်ယူသူ: <b>${activeReferrals} ဦး</b>
+• စုစုပေါင်း ရရှိငွေ: <b>${referralEarnings} Ks</b>
+
+${tgEmoji(BOT_EMOJIS.LINK, "🔗")} ဖိတ်ခေါ်ရန် လင့်ခ်:
+<code>${inviteLink}</code>`;
 }
+
+/**
+ * Formats dedicated Referral details card matching the supplier UI.
+ */
+export function formatReferralDetailsMessage(params: {
+  telegramId: string;
+  totalReferrals: number;
+  activeReferrals: number;
+  totalEarningsMmk: number;
+  inviteLink: string;
+}): string {
+  const totalInvited = params.totalReferrals.toLocaleString("en-US");
+  const activeCount = params.activeReferrals.toLocaleString("en-US");
+  const totalEarned = params.totalEarningsMmk.toLocaleString("en-US");
+
+  return `${tgEmoji(BOT_EMOJIS.GIFT, "🎁")} <b>သူငယ်ချင်း ဖိတ်ခေါ်ပြီး ဆုကြေးရယူပါ</b>
+
+သူငယ်ချင်းများကို Arena Store သို့ ဖိတ်ခေါ်ပြီး ဆုကြေးများနှင့် Lifetime ကော်မရှင်များ ရယူလိုက်ပါ!
+
+✨ <b>ရရှိမည့် အကျိုးခံစားခွင့်များ:</b>
+• မိတ်ဆွေသစ်အတွက်: <b>၂၀၀ ကျပ်</b> ကြိုဆိုလက်ဆောင် (Wallet သို့ တိုက်ရိုက်)
+• မိတ်ဆက်သူအတွက်: မိတ်ဆွေ၏ ပထမဆုံး အော်ဒါတွင် <b>၂၀၀ ကျပ်</b> ဘောနပ်စ်
+• <b>Lifetime 3% ကော်မရှင်:</b> မိတ်ဆွေ အော်ဒါဝယ်ယူတိုင်း ၃% အမြဲတမ်း ရရှိမည်
+
+📊 <b>သင့် Referral မှတ်တမ်း:</b>
+• ${tgEmoji(BOT_EMOJIS.USERS, "👥")} ဖိတ်ခေါ်ထားသူ: <b>${totalInvited} ဦး</b>
+• ${tgEmoji(BOT_EMOJIS.VERIFIED, "✅")} အော်ဒါဝယ်ယူသူ: <b>${activeCount} ဦး</b>
+• ${tgEmoji(BOT_EMOJIS.PRICE, "💵")} စုစုပေါင်း ရရှိငွေ: <b>${totalEarned} Ks</b>
+
+${tgEmoji(BOT_EMOJIS.LINK, "🔗")} <b>သင့် ဖိတ်ခေါ် လင့်ခ်:</b>
+<code>${params.inviteLink}</code>`;
+}
+
 
 /**
  * Formats the Wallet Dashboard message with live balance and prompt.

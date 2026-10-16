@@ -36,7 +36,7 @@ export const BOT_EMOJIS = {
 
   // Detail Card & Status
   PRICE: "5967390100357648692",      // 💵
-  GIFT: "5449800250032143374",       // 🎁
+  GIFT: "5985472565508838112",       // 🎁
   ABACUS: "5472404950673791399",     // 🧮
   RECEIPT: "5444856076954520455",    // 🧾 Receipt / Slip
   HOURGLASS: "5345809410939700735",  // ⏳
@@ -57,6 +57,12 @@ export const BOT_EMOJIS = {
   // Admin Group Notices & Timing
   CLOCK: "5348236797606379943",      // 🕒 Time / Expiry
   BELL: "5346038654819123712",       // 🔔
+
+  // Referral & Marketing
+  USERS: "5258513401784573443",       // 👥 Total Referrals
+  VERIFIED: "5357069174512303778",    // ✅ Active / Qualified Referrals
+  SHARE: "5886334622849044906",       // 📲 Share button
+  LINK: "5348498159251244132",        // 🔗 Invite link
 } as const;
 
 /**

@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, varchar, boolean, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, varchar, boolean, timestamp, index, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { roles } from "./roles";
 
 export const users = pgTable(
@@ -13,6 +13,7 @@ export const users = pgTable(
     lastName: varchar("last_name", { length: 255 }),
     role: varchar("role", { length: 32 }).notNull().default("CUSTOMER"), // CUSTOMER, ADMIN, SUPERADMIN
     roleId: integer("role_id").references(() => roles.id), // staff-only: FK to custom role
+    referredBy: integer("referred_by").references((): AnyPgColumn => users.id, { onDelete: "set null" }),
     mustChangePassword: boolean("must_change_password").notNull().default(false),
     status: varchar("status", { length: 32 }).notNull().default("ACTIVE"),
     lastActiveAt: timestamp("last_active_at", { withTimezone: true }),
@@ -24,6 +25,7 @@ export const users = pgTable(
     index("idx_users_email").on(table.email),
     index("idx_users_role").on(table.role),
     index("idx_users_last_active_at").on(table.lastActiveAt),
+    index("idx_users_referred_by").on(table.referredBy),
   ]
 );
 

@@ -12,6 +12,7 @@ export const wallets = pgTable(
     balanceMmk: integer("balance_mmk").notNull().default(0),
     totalDepositedMmk: integer("total_deposited_mmk").notNull().default(0),
     totalSpentMmk: integer("total_spent_mmk").notNull().default(0),
+    totalReferralEarningsMmk: integer("total_referral_earnings_mmk").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },

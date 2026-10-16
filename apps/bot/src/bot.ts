@@ -13,6 +13,7 @@ import {
   buildCheckoutKeyboard,
   buildOrderListKeyboard,
   buildProfileKeyboard,
+  buildReferralKeyboard,
   buildWalletKeyboard,
   buildTopUpInvoiceKeyboard,
   buildTopUpCancelConfirmKeyboard,
@@ -36,6 +37,7 @@ import {
   formatCheckoutMessage,
   formatSlipReceivedMessage,
   formatProfileMessage,
+  formatReferralDetailsMessage,
   formatWalletMessage,
   formatTopUpInvoiceMessage,
   formatMmpayQrInvoiceMessage,
@@ -56,6 +58,7 @@ import {
 import { channelVerificationService } from "./services/channel-verification.service";
 import { notifyAdminGroupDepositSlip } from "./services/admin-group.service";
 import { registerAdminDepositReviewHandlers } from "./handlers/admin-deposit-review";
+import { referralService } from "./services/referral.service";
 import { BOT_EMOJIS, tgEmoji, escapeHtml, TopUpStatus } from "@arena/shared";
 
 /**
@@ -68,6 +71,7 @@ export const BOT_COMMANDS = [
   { command: "orders", description: "မှာယူထားသည်များကို ကြည့်ရန်" },
   { command: "wallet", description: "Wallet လက်ကျန်ငွေ စစ်ဆေးရန်" },
   { command: "profile", description: "မိမိ၏ အကောင့်အချက်အလက်" },
+  { command: "ref", description: "သူငယ်ချင်း ဖိတ်ခေါ်ပြီး ဆုကြေးရယူရန်" },
   { command: "help", description: "Customer Support & အကူအညီ" },
 ] as const;
 
@@ -278,9 +282,31 @@ export function createBot(): Bot<BotContext> {
     // Deep-link support: /start restock_<productId>, /start prod_<productId>, /start buy_<productId>, or section deep links
     const deepLinkPayload = ctx.match?.trim();
     if (deepLinkPayload) {
+      // 0. Explicit Referral deep-link: /start ref_<referrerId> or /start r_<referrerId>
+      const refMatch = deepLinkPayload.match(/^(?:ref_|r_)(\d+)$/);
+      if (refMatch) {
+        const referrerTelegramId = refMatch[1];
+        const bindRes = await referralService.bindReferralIfEligible({
+          newUserTelegramId: telegramId,
+          referrerTelegramId,
+          firstName: ctx.from?.first_name,
+          lastName: ctx.from?.last_name,
+          username: ctx.from?.username,
+        });
+
+        if (bindRes.welcomeCredited) {
+          botOrderService.updateMemoryWallet(telegramId, 200);
+          await ctx.reply(
+            `${tgEmoji(BOT_EMOJIS.PARTY, "🎉")} <b>ကြိုဆိုပါတယ်ခင်ဗျာ!</b>\n\n` +
+            `သူငယ်ချင်း ဖိတ်ခေါ်မှုမှတစ်ဆင့် လာရောက်သဖြင့် ကြိုဆိုသောအားဖြင့် <b>၂၀၀ ကျပ်</b> လက်ဆောင်ကို သင့် Wallet ထဲသို့ ထည့်သွင်းပေးလိုက်ပါပြီခင်ဗျာ!`,
+            { parse_mode: "HTML" }
+          );
+        }
+      }
+
       // 1. Product detail deep-link: /start prod_<id>, /start restock_<id>, /start buy_<id>, /start <id>
       const prodMatch = deepLinkPayload.match(/^(?:restock_|prod_|buy_)?(\d+)$/);
-      if (prodMatch && !deepLinkPayload.startsWith("cat_")) {
+      if (prodMatch && !deepLinkPayload.startsWith("cat_") && !deepLinkPayload.startsWith("ref_") && !deepLinkPayload.startsWith("r_")) {
         const productId = parseInt(prodMatch[1], 10);
         const product = await botCatalog.getProductById(productId);
 
@@ -294,6 +320,25 @@ export function createBot(): Bot<BotContext> {
             reply_markup: buildProductDetailKeyboard(product, 1),
           });
           return;
+        } else if (prodMatch[1].length >= 6) {
+          // If not a product and ID is 6+ digits, handle as referral invite
+          const referrerTelegramId = prodMatch[1];
+          const bindRes = await referralService.bindReferralIfEligible({
+            newUserTelegramId: telegramId,
+            referrerTelegramId,
+            firstName: ctx.from?.first_name,
+            lastName: ctx.from?.last_name,
+            username: ctx.from?.username,
+          });
+
+          if (bindRes.welcomeCredited) {
+            botOrderService.updateMemoryWallet(telegramId, 200);
+            await ctx.reply(
+              `${tgEmoji(BOT_EMOJIS.PARTY, "🎉")} <b>ကြိုဆိုပါတယ်ခင်ဗျာ!</b>\n\n` +
+              `သူငယ်ချင်း ဖိတ်ခေါ်မှုမှတစ်ဆင့် လာရောက်သဖြင့် ကြိုဆိုသောအားဖြင့် <b>၂၀၀ ကျပ်</b> လက်ဆောင်ကို သင့် Wallet ထဲသို့ ထည့်သွင်းပေးလိုက်ပါပြီခင်ဗျာ!`,
+              { parse_mode: "HTML" }
+            );
+          }
         }
       }
 
@@ -324,7 +369,7 @@ export function createBot(): Bot<BotContext> {
       // 4. Wallet dashboard deep-link: /start wallet
       if (deepLinkPayload === "wallet") {
         const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || "Customer";
-        const stats = await botOrderService.getUserProfile(telegramId);
+        const stats = await botOrderService.getUserProfile(telegramId, ctx.me.username);
         await ctx.reply(
           formatWalletMessage({
             fullName,
@@ -352,7 +397,7 @@ export function createBot(): Bot<BotContext> {
       // 6. Profile deep-link: /start profile
       if (deepLinkPayload === "profile") {
         const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || "Customer";
-        const stats = await botOrderService.getUserProfile(telegramId);
+        const stats = await botOrderService.getUserProfile(telegramId, ctx.me.username);
         await ctx.reply(
           formatProfileMessage({
             fullName,
@@ -363,10 +408,33 @@ export function createBot(): Bot<BotContext> {
             totalDepositsMmk: stats.totalDepositsMmk,
             totalSpentMmk: stats.totalSpentMmk,
             ordersCount: stats.ordersCount,
+            referralsCount: stats.referralsCount,
+            activeReferralsCount: stats.activeReferralsCount,
+            referralEarningsMmk: stats.referralEarningsMmk,
+            inviteLink: stats.inviteLink,
           }),
           {
             parse_mode: "HTML",
             reply_markup: buildProfileKeyboard(),
+          }
+        );
+        return;
+      }
+
+      // 6.1 Dedicated Referral deep-link: /start ref, /start referral, /start invite
+      if (["ref", "referral", "invite"].includes(deepLinkPayload)) {
+        const stats = await botOrderService.getUserProfile(telegramId, ctx.me.username);
+        await ctx.reply(
+          formatReferralDetailsMessage({
+            telegramId,
+            totalReferrals: stats.referralsCount,
+            activeReferrals: stats.activeReferralsCount,
+            totalEarningsMmk: stats.referralEarningsMmk,
+            inviteLink: stats.inviteLink,
+          }),
+          {
+            parse_mode: "HTML",
+            reply_markup: buildReferralKeyboard(stats.inviteLink),
           }
         );
         return;
@@ -531,7 +599,7 @@ export function createBot(): Bot<BotContext> {
     const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || "Customer";
     const username = ctx.from?.username;
 
-    const stats = await botOrderService.getUserProfile(telegramId);
+    const stats = await botOrderService.getUserProfile(telegramId, ctx.me.username);
 
     await ctx.reply(
       formatProfileMessage({
@@ -543,10 +611,37 @@ export function createBot(): Bot<BotContext> {
         totalDepositsMmk: stats.totalDepositsMmk,
         totalSpentMmk: stats.totalSpentMmk,
         ordersCount: stats.ordersCount,
+        referralsCount: stats.referralsCount,
+        activeReferralsCount: stats.activeReferralsCount,
+        referralEarningsMmk: stats.referralEarningsMmk,
+        inviteLink: stats.inviteLink,
       }),
       {
         parse_mode: "HTML",
         reply_markup: buildProfileKeyboard(),
+      }
+    );
+  });
+
+  bot.command(["ref", "referral", "invite"], async (ctx) => {
+    ctx.session.awaitingCustomQuantity = false;
+    ctx.session.awaitingCustomTopUp = false;
+    if (!(await ensureChannelMember(ctx))) return;
+    const telegramId = String(ctx.from?.id || "");
+
+    const stats = await botOrderService.getUserProfile(telegramId, ctx.me.username);
+
+    await ctx.reply(
+      formatReferralDetailsMessage({
+        telegramId,
+        totalReferrals: stats.referralsCount,
+        activeReferrals: stats.activeReferralsCount,
+        totalEarningsMmk: stats.referralEarningsMmk,
+        inviteLink: stats.inviteLink,
+      }),
+      {
+        parse_mode: "HTML",
+        reply_markup: buildReferralKeyboard(stats.inviteLink),
       }
     );
   });
@@ -832,6 +927,7 @@ export function createBot(): Bot<BotContext> {
       telegramUsername,
       productId,
       quantity,
+      botApi: ctx.api,
     });
 
     if (!result.success) {
@@ -1479,7 +1575,7 @@ export function createBot(): Bot<BotContext> {
     const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(" ") || "Customer";
     const username = ctx.from?.username;
 
-    const stats = await botOrderService.getUserProfile(telegramId);
+    const stats = await botOrderService.getUserProfile(telegramId, ctx.me.username);
 
     await ctx.editMessageText(
       formatProfileMessage({
@@ -1491,10 +1587,37 @@ export function createBot(): Bot<BotContext> {
         totalDepositsMmk: stats.totalDepositsMmk,
         totalSpentMmk: stats.totalSpentMmk,
         ordersCount: stats.ordersCount,
+        referralsCount: stats.referralsCount,
+        activeReferralsCount: stats.activeReferralsCount,
+        referralEarningsMmk: stats.referralEarningsMmk,
+        inviteLink: stats.inviteLink,
       }),
       {
         parse_mode: "HTML",
         reply_markup: buildProfileKeyboard(),
+      }
+    );
+  });
+
+  // 20.1 Dedicated Referral Details Screen
+  bot.callbackQuery("menu_referral", async (ctx) => {
+    ctx.session.awaitingCustomQuantity = false;
+    ctx.session.awaitingCustomTopUp = false;
+    const telegramId = String(ctx.from?.id || "");
+
+    const stats = await botOrderService.getUserProfile(telegramId, ctx.me.username);
+
+    await ctx.editMessageText(
+      formatReferralDetailsMessage({
+        telegramId,
+        totalReferrals: stats.referralsCount,
+        activeReferrals: stats.activeReferralsCount,
+        totalEarningsMmk: stats.referralEarningsMmk,
+        inviteLink: stats.inviteLink,
+      }),
+      {
+        parse_mode: "HTML",
+        reply_markup: buildReferralKeyboard(stats.inviteLink),
       }
     );
   });

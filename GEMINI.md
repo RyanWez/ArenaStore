@@ -34,4 +34,21 @@
 - `CLOCK`: `"5348236797606379943"` (🕒 Time / Expiry)
 - `LIGHTBULB`: `"5258216851472654189"` (💡 Tip / Guidance)
 - `PRICE`: `"5967390100357648692"` (💵 Price / Deficit top-up)
+- `GIFT`: `"5985472565508838112"` (🎁 Header & Button)
+- `USERS`: `"5258513401784573443"` (👥 Total Referrals)
+- `VERIFIED`: `"5357069174512303778"` (✅ Active Referrals)
+- `SHARE`: `"5886334622849044906"` (📲 Share button)
+- `LINK`: `"5348498159251244132"` (🔗 Invite link)
 - Emojis in HTML mode must use `tgEmoji(BOT_EMOJIS.<NAME>, "<fallback>")` which outputs `<tg-emoji emoji-id="...">fallback</tg-emoji>`.
+
+## 5. Referral & Affiliate Reward System Architecture
+- **Invite Link Format**: `https://t.me/<BotUsername>?start=ref_<telegramId>` (also accepts plain `start=<telegramId>` when length >= 6).
+- **New Referred Customer**: Immediately gets **200 MMK Welcome Bonus** credited directly to their wallet upon registration.
+- **Qualified Anti-Abuse Referrer Reward**:
+  - Referrer's **200 MMK Bonus** remains `PENDING` until the friend completes their **FIRST purchase** (`DELIVERED`), which unlocks the reward and flips status to `QUALIFIED`.
+  - Self-referrals rejected. Users cannot be referred twice. Existing customers with prior orders cannot claim retroactively.
+- **Lifetime 3% Commission**: Every time a referred customer buys any product (`DELIVERED`), referrer automatically earns **3% of order total MMK** (`Math.floor(totalMmk * 0.03)`).
+- **Service & Schemas**:
+  - Service: [`apps/bot/src/services/referral.service.ts`](file:///home/zixuan/Projects/ArenaStore/apps/bot/src/services/referral.service.ts)
+  - Schema: [`packages/db/src/schema/referrals.ts`](file:///home/zixuan/Projects/ArenaStore/packages/db/src/schema/referrals.ts)
+  - Tests: [`tests/unit/referral.test.ts`](file:///home/zixuan/Projects/ArenaStore/tests/unit/referral.test.ts)

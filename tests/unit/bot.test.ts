@@ -111,12 +111,16 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(keyboard.inline_keyboard[2].length).toBe(2); // Row 3: Support & Channel
     });
 
-    it("builds profile keyboard with a home button", () => {
+    it("builds profile keyboard with referral details, wallet topup, and a home button", () => {
       const keyboard = buildProfileKeyboard();
       const rows = keyboard.inline_keyboard;
-      expect(rows[0][0].text).toBe("ပင်မစာမျက်နှာ");
-      expect((rows[0][0] as any).icon_custom_emoji_id).toBe("5348064629547351986");
-      expect((rows[0][0] as any).callback_data).toBe("menu_start");
+      expect(rows[0][0].text).toBe("Referral အချက်အလက်");
+      expect((rows[0][0] as any).callback_data).toBe("menu_referral");
+      expect(rows[1][0].text).toBe("Wallet ထဲငွေဖြည့်မည်");
+      expect((rows[1][0] as any).callback_data).toBe("menu_topup");
+      expect(rows[2][0].text).toBe("ပင်မစာမျက်နှာ");
+      expect((rows[2][0] as any).icon_custom_emoji_id).toBe("5348064629547351986");
+      expect((rows[2][0] as any).callback_data).toBe("menu_start");
     });
 
     it("uses dynamic support URL in main menu and checkout keyboards matching admin settings", () => {
@@ -815,10 +819,11 @@ describe("Phase 4 Customer Telegram Bot", () => {
     it("defines standard bot menu commands with Burmese descriptions", async () => {
       const { BOT_COMMANDS } = await import("../../apps/bot/src/bot");
       const cmdNames = BOT_COMMANDS.map((c) => c.command);
-      expect(cmdNames).toEqual(["start", "buy", "products", "orders", "wallet", "profile", "help"]);
+      expect(cmdNames).toEqual(["start", "buy", "products", "orders", "wallet", "profile", "ref", "help"]);
       expect(BOT_COMMANDS.find((c) => c.command === "buy")?.description).toContain("ဝယ်ယူရန်");
       expect(BOT_COMMANDS.find((c) => c.command === "products")?.description).toContain("ပစ္စည်းများ");
       expect(BOT_COMMANDS.find((c) => c.command === "profile")?.description).toContain("အကောင့်");
+      expect(BOT_COMMANDS.find((c) => c.command === "ref")?.description).toContain("ဖိတ်ခေါ်");
     });
   });
 });

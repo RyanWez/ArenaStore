@@ -22,6 +22,7 @@ import {
   orderDeliveries,
 } from "@arena/db";
 import { eq, desc, or, and, sql, gte, ne, isNull, isNotNull } from "drizzle-orm";
+import { referralService } from "./referral.service";
 
 async function sendAdminTelegramAlert(text: string): Promise<boolean> {
   try {
@@ -389,6 +390,13 @@ export class BotOrderService {
       console.warn("[BotOrderService] getWalletBalance DB fallback:", err.message);
     }
     return this.memoryWallets.get(telegramId) || 0;
+  }
+
+  /**
+   * Sets or synchronizes the in-memory wallet balance for a user.
+   */
+  updateMemoryWallet(telegramId: string, balanceMmk: number) {
+    this.memoryWallets.set(telegramId, balanceMmk);
   }
 
   /**
@@ -1014,6 +1022,7 @@ export class BotOrderService {
     telegramUsername?: string;
     productId: number;
     quantity: number;
+    botApi?: any;
   }): Promise<{
     success: boolean;
     orderId?: string;
@@ -1417,6 +1426,7 @@ export class BotOrderService {
       // credentials shown in chat while an admin recreates the order record.
       if (user && debitedWalletId !== null) {
         const orderUserId = user.id;
+        let persistedOrderId: string | null = null;
         const persistOrderRecord = async () => {
           const db = getDb();
           await db.transaction(async (tx) => {
@@ -1433,6 +1443,9 @@ export class BotOrderService {
                 notes: `Telegram purchase by @${params.telegramUsername || params.customerName}`,
               })
               .returning();
+            if (insertedOrder) {
+              persistedOrderId = insertedOrder.id;
+            }
 
             // B. Insert order item
             await tx.insert(orderItems).values({
@@ -1458,6 +1471,18 @@ export class BotOrderService {
 
         try {
           await persistOrderRecord();
+          if (persistedOrderId) {
+            void referralService
+              .processOrderReferralCommission({
+                orderId: persistedOrderId,
+                customerUserId: orderUserId,
+                totalMmk,
+                botApi: params.botApi,
+              })
+              .catch((err) => {
+                console.warn("[BotOrderService] Referral commission processing error:", err?.message || err);
+              });
+          }
         } catch (firstErr: any) {
           console.error(
             "[BotOrderService] Order-record transaction failed; retrying once:",
@@ -1465,6 +1490,18 @@ export class BotOrderService {
           );
           try {
             await persistOrderRecord();
+            if (persistedOrderId) {
+              void referralService
+                .processOrderReferralCommission({
+                  orderId: persistedOrderId,
+                  customerUserId: orderUserId,
+                  totalMmk,
+                  botApi: params.botApi,
+                })
+                .catch((err) => {
+                  console.warn("[BotOrderService] Referral commission processing error:", err?.message || err);
+                });
+            }
           } catch (dbErr: any) {
             console.error(
               "[BotOrderService] CRITICAL: order record persist failed after retry:",
@@ -1544,13 +1581,18 @@ export class BotOrderService {
   /**
    * Fetches customer purchasing stats and profile details from Neon DB.
    */
-  async getUserProfile(telegramId: string): Promise<{
+  async getUserProfile(telegramId: string, botUsername?: string): Promise<{
     joinedDate: string;
     ordersCount: number;
     totalSpentMmk: number;
     walletBalanceMmk: number;
     totalDepositsMmk: number;
+    referralsCount: number;
+    activeReferralsCount: number;
+    referralEarningsMmk: number;
+    inviteLink: string;
   }> {
+    const refStats = await referralService.getReferralStats(telegramId, botUsername);
     try {
       const userRecord = await this.getOrCreateUser({ telegramId });
       if (userRecord?.user && userRecord.wallet) {
@@ -1567,6 +1609,10 @@ export class BotOrderService {
           totalSpentMmk: wallet.totalSpentMmk,
           walletBalanceMmk: wallet.balanceMmk,
           totalDepositsMmk: wallet.totalDepositedMmk,
+          referralsCount: refStats.totalReferrals,
+          activeReferralsCount: refStats.activeReferrals,
+          referralEarningsMmk: refStats.totalEarningsMmk,
+          inviteLink: refStats.inviteLink,
         };
       }
     } catch (err: any) {
@@ -1586,6 +1632,10 @@ export class BotOrderService {
       totalSpentMmk: localSpent,
       walletBalanceMmk: localBalance,
       totalDepositsMmk: localBalance + localSpent,
+      referralsCount: refStats.totalReferrals,
+      activeReferralsCount: refStats.activeReferrals,
+      referralEarningsMmk: refStats.totalEarningsMmk,
+      inviteLink: refStats.inviteLink,
     };
   }
 
