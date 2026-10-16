@@ -255,7 +255,7 @@ describe("Referral & Affiliate Reward System", () => {
       });
 
       expect(msg).toContain("သူငယ်ချင်း ဖိတ်ခေါ်ပြီး ဆုကြေးရယူပါ");
-      expect(msg).toContain("၂၀၀ ကျပ်");
+      expect(msg).toContain("200 ကျပ်");
       expect(msg).toContain("Lifetime 3% ကော်မရှင်");
       expect(msg).toContain("ဖိတ်ခေါ်ထားသူ: <b>15 ဦး</b>");
       expect(msg).toContain("အော်ဒါဝယ်ယူသူ: <b>5 ဦး</b>");
@@ -270,7 +270,7 @@ describe("Referral & Affiliate Reward System", () => {
       expect(rows[0][0].text).toBe("Referral အချက်အလက်");
       expect((rows[0][0] as any).callback_data).toBe("menu_referral");
       expect(rows[1][0].text).toBe("Wallet ထဲငွေဖြည့်မည်");
-      expect((rows[1][0] as any).callback_data).toBe("menu_topup");
+      expect((rows[1][0] as any).callback_data).toBe("menu_wallet");
       expect(rows[2][0].text).toBe("ပင်မစာမျက်နှာ");
     });
 

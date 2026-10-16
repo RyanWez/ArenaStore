@@ -117,7 +117,7 @@ describe("Phase 4 Customer Telegram Bot", () => {
       expect(rows[0][0].text).toBe("Referral အချက်အလက်");
       expect((rows[0][0] as any).callback_data).toBe("menu_referral");
       expect(rows[1][0].text).toBe("Wallet ထဲငွေဖြည့်မည်");
-      expect((rows[1][0] as any).callback_data).toBe("menu_topup");
+      expect((rows[1][0] as any).callback_data).toBe("menu_wallet");
       expect(rows[2][0].text).toBe("ပင်မစာမျက်နှာ");
       expect((rows[2][0] as any).icon_custom_emoji_id).toBe("5348064629547351986");
       expect((rows[2][0] as any).callback_data).toBe("menu_start");

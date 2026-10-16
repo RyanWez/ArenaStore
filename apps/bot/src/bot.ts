@@ -298,7 +298,7 @@ export function createBot(): Bot<BotContext> {
           botOrderService.updateMemoryWallet(telegramId, 200);
           await ctx.reply(
             `${tgEmoji(BOT_EMOJIS.PARTY, "🎉")} <b>ကြိုဆိုပါတယ်ခင်ဗျာ!</b>\n\n` +
-            `သူငယ်ချင်း ဖိတ်ခေါ်မှုမှတစ်ဆင့် လာရောက်သဖြင့် ကြိုဆိုသောအားဖြင့် <b>၂၀၀ ကျပ်</b> လက်ဆောင်ကို သင့် Wallet ထဲသို့ ထည့်သွင်းပေးလိုက်ပါပြီခင်ဗျာ!`,
+            `သူငယ်ချင်း ဖိတ်ခေါ်သော Link မှ လာခြင်း ဖြစ်သောကြောင့် ကြိုဆိုလက်ဆောင် <b>200 ကျပ်</b> ကို Wallet ထဲသို့ ထည့်သွင်းပေးလိုက်ပါပြီခင်ဗျာ!`,
             { parse_mode: "HTML" }
           );
         }
@@ -335,7 +335,7 @@ export function createBot(): Bot<BotContext> {
             botOrderService.updateMemoryWallet(telegramId, 200);
             await ctx.reply(
               `${tgEmoji(BOT_EMOJIS.PARTY, "🎉")} <b>ကြိုဆိုပါတယ်ခင်ဗျာ!</b>\n\n` +
-              `သူငယ်ချင်း ဖိတ်ခေါ်မှုမှတစ်ဆင့် လာရောက်သဖြင့် ကြိုဆိုသောအားဖြင့် <b>၂၀၀ ကျပ်</b> လက်ဆောင်ကို သင့် Wallet ထဲသို့ ထည့်သွင်းပေးလိုက်ပါပြီခင်ဗျာ!`,
+              `သူငယ်ချင်း ဖိတ်ခေါ်သော Link မှ လာခြင်း ဖြစ်သောကြောင့် ကြိုဆိုလက်ဆောင် <b>200 ကျပ်</b> ကို Wallet ထဲသို့ ထည့်သွင်းပေးလိုက်ပါပြီခင်ဗျာ!`,
               { parse_mode: "HTML" }
             );
           }
@@ -1513,8 +1513,9 @@ export function createBot(): Bot<BotContext> {
     );
   });
 
-  // 17. Wallet Dashboard (Recommendation B)
-  bot.callbackQuery("menu_wallet", async (ctx) => {
+  // 17. Wallet Dashboard (supports both menu_wallet and legacy menu_topup)
+  bot.callbackQuery(["menu_wallet", "menu_topup"], async (ctx) => {
+    await ctx.answerCallbackQuery().catch(() => {});
     ctx.session.awaitingCustomQuantity = false;
     ctx.session.awaitingCustomTopUp = false;
     const telegramId = String(ctx.from?.id || "");

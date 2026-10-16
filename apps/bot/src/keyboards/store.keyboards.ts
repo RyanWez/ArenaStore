@@ -113,7 +113,7 @@ export function buildProfileKeyboard(): InlineKeyboard {
     .row()
     .add({
       text: "Wallet ထဲငွေဖြည့်မည်",
-      callback_data: "menu_topup",
+      callback_data: "menu_wallet",
       icon_custom_emoji_id: BOT_EMOJIS.WALLET,
     })
     .row()
@@ -124,7 +124,7 @@ export function buildProfileKeyboard(): InlineKeyboard {
  * Builds Referral details keyboard with Telegram Share intent and back navigation.
  */
 export function buildReferralKeyboard(inviteLink: string): InlineKeyboard {
-  const shareText = "Arena Store Bot တွင် ဂိမ်းနှင့် အကောင့်ပစ္စည်းများကို ဈေးနှုန်းချိုသာစွာ ဝယ်ယူလိုက်ပါ။ အခုပဲ အကောင့်ဖွင့်ပြီး ၂၀၀ ကျပ် လက်ဆောင် ရယူလိုက်ပါ!";
+  const shareText = "Game Items နှင့် Digital Products မျိုးစုံကို ဈေးနှုန်း သက်သာစွာဖြင့် ဝယ်ယူလိုက်ပါ။ အခုပဲ အကောင့်ဖွင့်ပြီး 200 ကျပ် လက်ဆောင် ရယူလိုက်ပါ!";
   const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${encodeURIComponent(shareText)}`;
 
   return new InlineKeyboard()

@@ -63,6 +63,8 @@ export const BOT_EMOJIS = {
   VERIFIED: "5357069174512303778",    // ✅ Active / Qualified Referrals
   SHARE: "5886334622849044906",       // 📲 Share button
   LINK: "5348498159251244132",        // 🔗 Invite link
+  STATS: "5875291072225087249",       // 📊 Referral stats
+  CHART: "5875291072225087249",       // 📊 Alias
 } as const;
 
 /**
