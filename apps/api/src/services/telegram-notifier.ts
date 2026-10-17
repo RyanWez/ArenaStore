@@ -568,6 +568,28 @@ export async function notifyOrderRefunded(params: {
 }
 
 /**
+ * Sends a notification to the referrer when an order commission is reversed due to a customer refund.
+ */
+export async function notifyReferralCommissionReversed(params: {
+  telegramId: string;
+  publicOrderNo: string;
+  commissionAmountMmk: number;
+  newBalanceMmk: number;
+}): Promise<boolean> {
+  const { telegramId, publicOrderNo, commissionAmountMmk, newBalanceMmk } = params;
+  const alert = tgEmoji(BOT_EMOJIS.ALERT, "⚠️");
+  const money = tgEmoji(BOT_EMOJIS.MONEY, "💰");
+
+  const text =
+    `<blockquote>${alert} <b>Referral ကော်မရှင် ပြန်လည်ညှိနှိုင်းခြင်း</b> ❞\n` +
+    `မိတ်ဆွေ၏ အော်ဒါအမှတ်: <b>${escapeHtml(publicOrderNo)}</b> အား ငွေပြန်အမ်း (Refund) ခဲ့သဖြင့် ` +
+    `ရရှိထားသော 3% ကော်မရှင် <b>-${commissionAmountMmk.toLocaleString("en-US")} Ks</b> အား Wallet ထဲမှ ပြန်လည်နုတ်ယူပြီးဖြစ်ပါသည်။\n\n` +
+    `${money} လက်ကျန် Wallet: <b>${newBalanceMmk.toLocaleString("en-US")} Ks</b></blockquote>`;
+
+  return sendTelegramMessage(telegramId, text);
+}
+
+/**
  * Re-sends digital account / key credentials to the customer on Telegram.
  */
 export async function notifyOrderCredentialsResent(params: {

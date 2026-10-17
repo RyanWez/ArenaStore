@@ -45,7 +45,7 @@ export const referralRewards = pgTable(
   },
   (table) => [
     index("idx_referral_rewards_referrer_id").on(table.referrerId),
-    index("idx_referral_rewards_order_id").on(table.orderId),
+    uniqueIndex("idx_referral_rewards_order_id_reward_type").on(table.orderId, table.rewardType),
   ]
 );
 

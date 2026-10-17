@@ -23,6 +23,8 @@ import {
   walletLedger,
   productSupplierSnapshots,
   auditLogs,
+  referrals,
+  referralRewards,
 } from "@arena/db";
 import { and, asc, desc, eq, ilike, inArray, or, ne, sql, gte } from "drizzle-orm";
 import { z } from "zod";
@@ -34,6 +36,7 @@ import {
   notifyOrderRefunded,
   notifyOrderCredentialsResent,
   notifyBalanceAdjusted,
+  notifyReferralCommissionReversed,
 } from "../services/telegram-notifier";
 import { reviewDeposit, buildCustomerDisplayName } from "../services/deposit-review.service";
 import { decryptPayload, formatCredentialsText } from "../services/encryption";
@@ -1394,6 +1397,13 @@ export async function adminRoutes(server: FastifyInstance) {
     //    entry in a single transaction.
     let newBalance = wallet.balanceMmk + order.totalAmountMmk;
     let alreadyRefunded = false;
+    let reversedCommissionMmk = 0;
+    let referrerNotification: {
+      telegramId: string;
+      publicOrderNo: string;
+      commissionAmountMmk: number;
+      newBalanceMmk: number;
+    } | null = null;
 
     const runTransaction =
       typeof (db as any).transaction === "function"
@@ -1441,6 +1451,106 @@ export async function adminRoutes(server: FastifyInstance) {
         referenceId: order.publicOrderNo,
         notes: `Refund for ${order.publicOrderNo}: ${reason}`,
       });
+
+      // --- Referral Commission Reversal (Policy Option B) ---
+      // 1. Preserves FIRST_PURCHASE_BONUS (200 MMK) and QUALIFIED status.
+      // 2. Only claws back 3% ORDER_COMMISSION awarded on this order.
+      // 3. Protects against negative balance: GREATEST(0, balanceMmk - commissionAmount).
+      // 4. Idempotently skips if already reversed or no commission was awarded.
+      const [commissionReward] = await tx
+        .select()
+        .from(referralRewards)
+        .where(
+          and(
+            eq(referralRewards.orderId, order.id),
+            eq(referralRewards.rewardType, "ORDER_COMMISSION")
+          )
+        )
+        .limit(1);
+
+      if (commissionReward && commissionReward.amountMmk > 0) {
+        const [alreadyReversed] = await tx
+          .select()
+          .from(referralRewards)
+          .where(
+            and(
+              eq(referralRewards.orderId, order.id),
+              eq(referralRewards.rewardType, "COMMISSION_REVERSED")
+            )
+          )
+          .limit(1);
+
+        if (!alreadyReversed) {
+          const commissionAmount = commissionReward.amountMmk;
+          const referrerId = commissionReward.referrerId;
+
+          const [referrer] = await tx
+            .select()
+            .from(users)
+            .where(eq(users.id, referrerId))
+            .limit(1);
+
+          const [referrerWallet] = await tx
+            .select()
+            .from(wallets)
+            .where(eq(wallets.userId, referrerId))
+            .limit(1);
+
+          if (referrerWallet) {
+            const [updatedRefWallet] = await tx
+              .update(wallets)
+              .set({
+                balanceMmk: sql`GREATEST(0, ${wallets.balanceMmk} - ${commissionAmount})`,
+                totalReferralEarningsMmk: sql`GREATEST(0, ${wallets.totalReferralEarningsMmk} - ${commissionAmount})`,
+                updatedAt: new Date(),
+              })
+              .where(eq(wallets.id, referrerWallet.id))
+              .returning();
+
+            await tx
+              .update(referrals)
+              .set({
+                totalCommissionMmk: sql`GREATEST(0, ${referrals.totalCommissionMmk} - ${commissionAmount})`,
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(referrals.referrerId, referrerId),
+                  eq(referrals.referredUserId, commissionReward.referredUserId)
+                )
+              );
+
+            await tx.insert(referralRewards).values({
+              referrerId,
+              referredUserId: commissionReward.referredUserId,
+              orderId: order.id,
+              rewardType: "COMMISSION_REVERSED",
+              amountMmk: -commissionAmount,
+            });
+
+            await tx.insert(walletLedger).values({
+              walletId: referrerWallet.id,
+              amountMmk: -commissionAmount,
+              type: "REFERRAL_REVERSAL",
+              referenceId: `REF-REV-${order.id}`,
+              notes: `Referral commission reversed for refunded order ${order.publicOrderNo}`,
+            });
+
+            reversedCommissionMmk = commissionAmount;
+
+            if (referrer?.telegramId) {
+              referrerNotification = {
+                telegramId: referrer.telegramId,
+                publicOrderNo: order.publicOrderNo,
+                commissionAmountMmk: commissionAmount,
+                newBalanceMmk:
+                  updatedRefWallet?.balanceMmk ??
+                  Math.max(0, referrerWallet.balanceMmk - commissionAmount),
+              };
+            }
+          }
+        }
+      }
     });
 
     if (alreadyRefunded) {
@@ -1458,6 +1568,19 @@ export async function adminRoutes(server: FastifyInstance) {
       });
     }
 
+    // 5. Send Telegram instant notification to referrer if commission was reversed
+    const refNotification = referrerNotification as {
+      telegramId: string;
+      publicOrderNo: string;
+      commissionAmountMmk: number;
+      newBalanceMmk: number;
+    } | null;
+    if (refNotification) {
+      notifyReferralCommissionReversed(refNotification).catch((err) => {
+        console.warn("[AdminRefund] Failed to notify referrer of commission reversal:", err?.message || err);
+      });
+    }
+
     await writeAudit({
       actorId: getRbac(request)?.userId ?? null,
       action: "ORDER_REFUND",
@@ -1468,6 +1591,7 @@ export async function adminRoutes(server: FastifyInstance) {
         refundedAmountMmk: order.totalAmountMmk,
         newBalanceMmk: newBalance,
         reason,
+        referralCommissionReversedMmk: reversedCommissionMmk,
       },
     });
 
@@ -1483,6 +1607,7 @@ export async function adminRoutes(server: FastifyInstance) {
       refundedAmountMmk: order.totalAmountMmk,
       newBalanceMmk: newBalance,
       customerName: order.customerName,
+      referralCommissionReversedMmk: reversedCommissionMmk,
     };
   });
 

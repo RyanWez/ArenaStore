@@ -230,6 +230,17 @@ export class ReferralService {
         return { processed: false, bonusUnlocked: false, commissionAmount: 0 };
       }
 
+      // Idempotency: verify if this order was already rewarded
+      const [existingReward] = await db
+        .select()
+        .from(referralRewards)
+        .where(eq(referralRewards.orderId, orderId))
+        .limit(1);
+
+      if (existingReward) {
+        return { processed: false, bonusUnlocked: false, commissionAmount: 0 };
+      }
+
       // 2. Fetch referrer and their wallet
       const [referrer] = await db
         .select()
@@ -261,41 +272,48 @@ export class ReferralService {
         referrerWallet = newWallet;
       }
 
-      // 3. Compute rewards
-      const isFirstPurchase = referral.status === "PENDING";
-      const bonusMmk = isFirstPurchase ? referral.referrerBonusMmk : 0;
-      const commissionMmk = Math.floor(totalMmk * 0.03); // 3% commission
-      const totalRewardMmk = bonusMmk + commissionMmk;
-
-      if (totalRewardMmk <= 0) {
-        return { processed: false, bonusUnlocked: false, commissionAmount: 0 };
-      }
-
       const now = new Date();
+      let isFirstPurchase = false;
+      let bonusMmk = 0;
+      const commissionMmk = Math.floor(totalMmk * 0.03); // 3% lifetime commission
+      let totalRewardMmk = 0;
 
-      // 4. Atomically persist rewards, wallet balance, and ledger
+      // 3. Atomically persist rewards, wallet balance, and ledger
       await db.transaction(async (tx) => {
-        // A. Update referral status
-        if (isFirstPurchase) {
-          await tx
-            .update(referrals)
-            .set({
-              status: "QUALIFIED",
-              firstPurchaseAt: now,
-              totalCommissionMmk: sql`${referrals.totalCommissionMmk} + ${commissionMmk}`,
-              updatedAt: now,
-            })
-            .where(eq(referrals.id, referral.id));
+        // Double check inside transaction if already rewarded (concurrency guard)
+        const [txExistingReward] = await tx
+          .select()
+          .from(referralRewards)
+          .where(eq(referralRewards.orderId, orderId))
+          .limit(1);
 
-          // Log first-purchase bonus reward
-          await tx.insert(referralRewards).values({
-            referrerId: referrer.id,
-            referredUserId: customerUserId,
-            orderId,
-            rewardType: "FIRST_PURCHASE_BONUS",
-            amountMmk: bonusMmk,
-          });
-        } else if (commissionMmk > 0) {
+        if (txExistingReward) {
+          return;
+        }
+
+        // Atomic first-purchase qualification: only wins if status is still PENDING
+        const qualifyRes = await tx
+          .update(referrals)
+          .set({
+            status: "QUALIFIED",
+            firstPurchaseAt: now,
+            updatedAt: now,
+          })
+          .where(and(eq(referrals.id, referral.id), eq(referrals.status, "PENDING")))
+          .returning();
+
+        if (qualifyRes.length > 0) {
+          isFirstPurchase = true;
+          bonusMmk = referral.referrerBonusMmk || 200;
+        }
+
+        totalRewardMmk = bonusMmk + commissionMmk;
+        if (totalRewardMmk <= 0) {
+          return;
+        }
+
+        // A. Update total commission on referrals
+        if (commissionMmk > 0) {
           await tx
             .update(referrals)
             .set({
@@ -305,7 +323,17 @@ export class ReferralService {
             .where(eq(referrals.id, referral.id));
         }
 
-        // Log 3% commission reward
+        // B. Insert rewards logs
+        if (bonusMmk > 0) {
+          await tx.insert(referralRewards).values({
+            referrerId: referrer.id,
+            referredUserId: customerUserId,
+            orderId,
+            rewardType: "FIRST_PURCHASE_BONUS",
+            amountMmk: bonusMmk,
+          });
+        }
+
         if (commissionMmk > 0) {
           await tx.insert(referralRewards).values({
             referrerId: referrer.id,
@@ -316,7 +344,7 @@ export class ReferralService {
           });
         }
 
-        // B. Credit referrer's wallet
+        // C. Credit referrer's wallet
         await tx
           .update(wallets)
           .set({
@@ -326,7 +354,7 @@ export class ReferralService {
           })
           .where(eq(wallets.id, referrerWallet.id));
 
-        // C. Record ledger entries
+        // D. Record ledger entries
         if (bonusMmk > 0) {
           await tx.insert(walletLedger).values({
             walletId: referrerWallet.id,
@@ -348,7 +376,11 @@ export class ReferralService {
         }
       });
 
-      // 5. Send real-time celebratory Telegram notification to referrer
+      if (totalRewardMmk <= 0) {
+        return { processed: false, bonusUnlocked: false, commissionAmount: 0 };
+      }
+
+      // 4. Send real-time celebratory Telegram notification to referrer
       if (botApi && referrer.telegramId) {
         this.notifyReferrerReward({
           botApi,
@@ -371,6 +403,150 @@ export class ReferralService {
     } catch (err: any) {
       console.error("[ReferralService] processOrderReferralCommission error:", err?.message || err);
       return { processed: false, bonusUnlocked: false, commissionAmount: 0 };
+    }
+  }
+
+  /**
+   * Reverses referral commission for a refunded order (Policy Option B).
+   * Business Policy:
+   * 1. Preserves the 200 MMK first-purchase bonus (referrer retains welcome goodwill).
+   * 2. Only claws back the 3% sales commission on the refunded sale amount.
+   * 3. Safeguards against negative wallet balances: GREATEST(0, balanceMmk - commissionAmount).
+   * 4. Completely idempotent: duplicate calls do nothing.
+   */
+  async reverseOrderCommission(params: {
+    orderId: string;
+    publicOrderNo: string;
+    tx?: any;
+  }): Promise<{
+    reversed: boolean;
+    commissionAmount: number;
+    referrerTelegramId?: string;
+    newBalanceMmk?: number;
+    reason?: string;
+  }> {
+    const { orderId, publicOrderNo, tx: externalTx } = params;
+    const db = getDb();
+    const runner = externalTx || db;
+
+    try {
+      // 1. Check if commission was awarded for this order
+      const [commissionReward] = await runner
+        .select()
+        .from(referralRewards)
+        .where(
+          and(
+            eq(referralRewards.orderId, orderId),
+            eq(referralRewards.rewardType, "ORDER_COMMISSION")
+          )
+        )
+        .limit(1);
+
+      if (!commissionReward || commissionReward.amountMmk <= 0) {
+        return { reversed: false, commissionAmount: 0, reason: "NO_COMMISSION_FOUND" };
+      }
+
+      // 2. Check if this commission was ALREADY reversed (idempotency guard)
+      const [alreadyReversed] = await runner
+        .select()
+        .from(referralRewards)
+        .where(
+          and(
+            eq(referralRewards.orderId, orderId),
+            eq(referralRewards.rewardType, "COMMISSION_REVERSED")
+          )
+        )
+        .limit(1);
+
+      if (alreadyReversed) {
+        return { reversed: false, commissionAmount: 0, reason: "ALREADY_REVERSED" };
+      }
+
+      const commissionAmount = commissionReward.amountMmk;
+      const referrerId = commissionReward.referrerId;
+
+      // 3. Fetch referrer and their wallet
+      const [referrer] = await runner
+        .select()
+        .from(users)
+        .where(eq(users.id, referrerId))
+        .limit(1);
+
+      const [referrerWallet] = await runner
+        .select()
+        .from(wallets)
+        .where(eq(wallets.userId, referrerId))
+        .limit(1);
+
+      if (!referrerWallet) {
+        return { reversed: false, commissionAmount: 0, reason: "WALLET_NOT_FOUND" };
+      }
+
+      const executeReversal = async (t: any) => {
+        // A. Deduct commission with 0 floor protection (never negative balance)
+        const [updatedWallet] = await t
+          .update(wallets)
+          .set({
+            balanceMmk: sql`GREATEST(0, ${wallets.balanceMmk} - ${commissionAmount})`,
+            totalReferralEarningsMmk: sql`GREATEST(0, ${wallets.totalReferralEarningsMmk} - ${commissionAmount})`,
+            updatedAt: new Date(),
+          })
+          .where(eq(wallets.id, referrerWallet.id))
+          .returning();
+
+        // B. Decrement referrals.totalCommissionMmk
+        await t
+          .update(referrals)
+          .set({
+            totalCommissionMmk: sql`GREATEST(0, ${referrals.totalCommissionMmk} - ${commissionAmount})`,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(referrals.referrerId, referrerId),
+              eq(referrals.referredUserId, commissionReward.referredUserId)
+            )
+          );
+
+        // C. Audit log reversal in referralRewards
+        await t.insert(referralRewards).values({
+          referrerId,
+          referredUserId: commissionReward.referredUserId,
+          orderId,
+          rewardType: "COMMISSION_REVERSED",
+          amountMmk: -commissionAmount,
+        });
+
+        // D. Record in wallet ledger
+        await t.insert(walletLedger).values({
+          walletId: referrerWallet.id,
+          amountMmk: -commissionAmount,
+          type: "REFERRAL_REVERSAL",
+          referenceId: `REF-REV-${orderId}`,
+          notes: `Referral commission reversed for refunded order ${publicOrderNo}`,
+        });
+
+        return updatedWallet?.balanceMmk ?? Math.max(0, referrerWallet.balanceMmk - commissionAmount);
+      };
+
+      let newBalanceMmk: number;
+      if (externalTx) {
+        newBalanceMmk = await executeReversal(externalTx);
+      } else if (typeof (db as any).transaction === "function") {
+        newBalanceMmk = await (db as any).transaction(executeReversal);
+      } else {
+        newBalanceMmk = await executeReversal(db);
+      }
+
+      return {
+        reversed: true,
+        commissionAmount,
+        referrerTelegramId: referrer?.telegramId || undefined,
+        newBalanceMmk,
+      };
+    } catch (err: any) {
+      console.error("[ReferralService] reverseOrderCommission error:", err?.message || err);
+      return { reversed: false, commissionAmount: 0, reason: err?.message };
     }
   }
 

@@ -34,6 +34,17 @@ const h = vi.hoisted(() => {
     return row[camel] !== undefined ? row[camel] : row[col];
   };
 
+  const matchesCond = (row: any, cond: any): boolean => {
+    if (!cond) return true;
+    if (cond.__type === "eq") {
+      return getRowVal(row, cond.col) === cond.val;
+    }
+    if (cond.__type === "and") {
+      return cond.conditions.every((c: any) => matchesCond(row, c));
+    }
+    return true;
+  };
+
   const evaluateMockSql = (sqlObj: any, row: any): any => {
     if (!sqlObj || typeof sqlObj !== "object" || !Array.isArray(sqlObj.queryChunks)) {
       return sqlObj;
@@ -58,7 +69,8 @@ const h = vi.hoisted(() => {
       }
     }
     try {
-      return Function(`"use strict"; return (${exprStr});`)();
+      const jsExpr = exprStr.replace(/GREATEST\s*\(/gi, "Math.max(");
+      return Function(`"use strict"; return (${jsExpr});`)();
     } catch {
       return sqlObj;
     }
@@ -81,31 +93,16 @@ const h = vi.hoisted(() => {
         return {
           where: (cond: any) => ({
             limit: (_n: number) => {
-              if (cond?.__type === "eq") {
-                const filtered = currentRows.filter((r) => getRowVal(r, cond.col) === cond.val);
-                return Promise.resolve(filtered.slice(0, _n));
-              }
-              return Promise.resolve(currentRows.slice(0, _n));
+              const filtered = currentRows.filter((r) => matchesCond(r, cond));
+              return Promise.resolve(filtered.slice(0, _n));
             },
             then: (resolve: any) => {
               if (selection && selection.count) {
-                if (cond?.__type === "and") {
-                  const filtered = currentRows.filter((r) =>
-                    cond.conditions.every((c: any) => getRowVal(r, c.col) === c.val)
-                  );
-                  return resolve([{ count: filtered.length }]);
-                }
-                if (cond?.__type === "eq") {
-                  const filtered = currentRows.filter((r) => getRowVal(r, cond.col) === cond.val);
-                  return resolve([{ count: filtered.length }]);
-                }
-                return resolve([{ count: currentRows.length }]);
+                const filtered = currentRows.filter((r) => matchesCond(r, cond));
+                return resolve([{ count: filtered.length }]);
               }
-              if (cond?.__type === "eq") {
-                const filtered = currentRows.filter((r) => getRowVal(r, cond.col) === cond.val);
-                return resolve(filtered);
-              }
-              return resolve(currentRows);
+              const filtered = currentRows.filter((r) => matchesCond(r, cond));
+              return resolve(filtered);
             },
           }),
           then: (resolve: any) => {
@@ -147,7 +144,7 @@ const h = vi.hoisted(() => {
           returning: () => {
             const tableName = table?._?.name || (table as any)?.[Symbol.for("drizzle:Name")];
             let list = tableName === "users" ? usersRows : tableName === "wallets" ? walletsRows : referralsRows;
-            const target = list.find((r) => (cond?.val !== undefined ? getRowVal(r, cond.col) === cond.val : true));
+            const target = list.find((r) => matchesCond(r, cond));
             if (target) {
               for (const [k, v] of Object.entries(patch)) {
                 const camelK = k.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
@@ -161,7 +158,7 @@ const h = vi.hoisted(() => {
           then: (resolve: any) => {
             const tableName = table?._?.name || (table as any)?.[Symbol.for("drizzle:Name")];
             let list = tableName === "users" ? usersRows : tableName === "wallets" ? walletsRows : referralsRows;
-            const target = list.find((r) => (cond?.val !== undefined ? getRowVal(r, cond.col) === cond.val : true));
+            const target = list.find((r) => matchesCond(r, cond));
             if (target) {
               for (const [k, v] of Object.entries(patch)) {
                 const camelK = k.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
@@ -498,6 +495,183 @@ describe("Referral & Affiliate Reward System", () => {
         expect.stringContaining("မိတ်ဆက် ကော်မရှင် ရရှိပါသည်"),
         expect.objectContaining({ parse_mode: "HTML" })
       );
+    });
+
+    it("idempotently ignores duplicate calls to processOrderReferralCommission for the same orderId", async () => {
+      h.usersRows.push({ id: 1, telegramId: "111111" });
+      h.usersRows.push({ id: 2, telegramId: "222222", referredBy: 1 });
+      h.walletsRows.push({ id: 1, userId: 1, balanceMmk: 1000, totalReferralEarningsMmk: 0 });
+      h.referralsRows.push({
+        id: 1,
+        referrerId: 1,
+        referredUserId: 2,
+        status: "PENDING",
+        welcomeRewardMmk: 200,
+        referrerBonusMmk: 200,
+        totalCommissionMmk: 0,
+      });
+
+      // First call processes successfully
+      const firstRes = await service.processOrderReferralCommission({
+        orderId: "ord-duplicate-test",
+        customerUserId: 2,
+        totalMmk: 10000,
+      });
+      expect(firstRes.processed).toBe(true);
+      expect(firstRes.commissionAmount).toBe(300);
+
+      const walletAfterFirst = h.walletsRows.find((w) => w.id === 1);
+      expect(walletAfterFirst?.balanceMmk).toBe(1500); // 1000 + 200 + 300
+
+      // Duplicate second call should be caught by idempotency guard
+      const secondRes = await service.processOrderReferralCommission({
+        orderId: "ord-duplicate-test",
+        customerUserId: 2,
+        totalMmk: 10000,
+      });
+      expect(secondRes.processed).toBe(false);
+      expect(secondRes.commissionAmount).toBe(0);
+
+      // Wallet balance remains unchanged
+      const walletAfterSecond = h.walletsRows.find((w) => w.id === 1);
+      expect(walletAfterSecond?.balanceMmk).toBe(1500);
+    });
+
+    it("reverses 3% commission on refunded order while preserving 200 MMK first-purchase bonus (Policy Option B)", async () => {
+      h.usersRows.push({ id: 1, telegramId: "111111" });
+      h.usersRows.push({ id: 2, telegramId: "222222", referredBy: 1 });
+      h.walletsRows.push({ id: 1, userId: 1, balanceMmk: 1500, totalReferralEarningsMmk: 500 });
+      h.referralsRows.push({
+        id: 1,
+        referrerId: 1,
+        referredUserId: 2,
+        status: "QUALIFIED",
+        welcomeRewardMmk: 200,
+        referrerBonusMmk: 200,
+        totalCommissionMmk: 300,
+      });
+
+      // Existing rewards for order
+      h.referralRewardsRows.push({
+        referrerId: 1,
+        referredUserId: 2,
+        orderId: "ord-refund-1",
+        rewardType: "FIRST_PURCHASE_BONUS",
+        amountMmk: 200,
+      });
+      h.referralRewardsRows.push({
+        referrerId: 1,
+        referredUserId: 2,
+        orderId: "ord-refund-1",
+        rewardType: "ORDER_COMMISSION",
+        amountMmk: 300,
+      });
+
+      const res = await service.reverseOrderCommission({
+        orderId: "ord-refund-1",
+        publicOrderNo: "ORD-REF-001",
+      });
+
+      expect(res.reversed).toBe(true);
+      expect(res.commissionAmount).toBe(300);
+      expect(res.referrerTelegramId).toBe("111111");
+
+      // Verify wallet balance: 1500 - 300 = 1200
+      const referrerWallet = h.walletsRows.find((w) => w.id === 1);
+      expect(referrerWallet?.balanceMmk).toBe(1200);
+      expect(referrerWallet?.totalReferralEarningsMmk).toBe(200);
+
+      // Verify referral totalCommissionMmk decremented: 300 - 300 = 0
+      const ref = h.referralsRows.find((r) => r.id === 1);
+      expect(ref?.totalCommissionMmk).toBe(0);
+      // Status remains QUALIFIED (bonus retained)
+      expect(ref?.status).toBe("QUALIFIED");
+
+      // Verify audit log row inserted in referralRewards
+      const revReward = h.referralRewardsRows.find((r) => r.rewardType === "COMMISSION_REVERSED");
+      expect(revReward).toBeDefined();
+      expect(revReward?.amountMmk).toBe(-300);
+
+      // Verify wallet ledger entry
+      const ledgerEntry = h.walletLedgerRows.find((l) => l.type === "REFERRAL_REVERSAL");
+      expect(ledgerEntry).toBeDefined();
+      expect(ledgerEntry?.amountMmk).toBe(-300);
+    });
+
+    it("protects referrer wallet from negative balance when commission is reversed (zero-floor protection)", async () => {
+      h.usersRows.push({ id: 1, telegramId: "111111" });
+      h.usersRows.push({ id: 2, telegramId: "222222", referredBy: 1 });
+      // Referrer withdrew/spent money, so only has 100 MMK left
+      h.walletsRows.push({ id: 1, userId: 1, balanceMmk: 100, totalReferralEarningsMmk: 500 });
+      h.referralsRows.push({
+        id: 1,
+        referrerId: 1,
+        referredUserId: 2,
+        status: "QUALIFIED",
+        totalCommissionMmk: 600,
+      });
+      h.referralRewardsRows.push({
+        referrerId: 1,
+        referredUserId: 2,
+        orderId: "ord-spent-balance",
+        rewardType: "ORDER_COMMISSION",
+        amountMmk: 600,
+      });
+
+      const res = await service.reverseOrderCommission({
+        orderId: "ord-spent-balance",
+        publicOrderNo: "ORD-SPENT-001",
+      });
+
+      expect(res.reversed).toBe(true);
+      expect(res.commissionAmount).toBe(600);
+
+      // Balance must floor at 0 (never negative)
+      const referrerWallet = h.walletsRows.find((w) => w.id === 1);
+      expect(referrerWallet?.balanceMmk).toBe(0);
+      expect(referrerWallet?.totalReferralEarningsMmk).toBe(0);
+    });
+
+    it("idempotently ignores duplicate reversal attempts for the same refunded order", async () => {
+      h.usersRows.push({ id: 1, telegramId: "111111" });
+      h.usersRows.push({ id: 2, telegramId: "222222", referredBy: 1 });
+      h.walletsRows.push({ id: 1, userId: 1, balanceMmk: 1000, totalReferralEarningsMmk: 300 });
+      h.referralsRows.push({
+        id: 1,
+        referrerId: 1,
+        referredUserId: 2,
+        status: "QUALIFIED",
+        totalCommissionMmk: 300,
+      });
+      h.referralRewardsRows.push({
+        referrerId: 1,
+        referredUserId: 2,
+        orderId: "ord-double-rev",
+        rewardType: "ORDER_COMMISSION",
+        amountMmk: 300,
+      });
+
+      // First reversal succeeds
+      const first = await service.reverseOrderCommission({
+        orderId: "ord-double-rev",
+        publicOrderNo: "ORD-DOUBLE-REV",
+      });
+      expect(first.reversed).toBe(true);
+
+      const walletAfterFirst = h.walletsRows.find((w) => w.id === 1);
+      expect(walletAfterFirst?.balanceMmk).toBe(700);
+
+      // Second reversal is rejected idempotently
+      const second = await service.reverseOrderCommission({
+        orderId: "ord-double-rev",
+        publicOrderNo: "ORD-DOUBLE-REV",
+      });
+      expect(second.reversed).toBe(false);
+      expect(second.reason).toBe("ALREADY_REVERSED");
+
+      // Balance remains 700
+      const walletAfterSecond = h.walletsRows.find((w) => w.id === 1);
+      expect(walletAfterSecond?.balanceMmk).toBe(700);
     });
   });
 });
