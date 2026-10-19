@@ -16,7 +16,7 @@
     "build": "pnpm -r build",
     "start": "node scripts/start-all.mjs",
     "start:backend": "node scripts/start-all.mjs",
-    "lint": "pnpm -r lint"
+    "lint": "pnpm -r exec tsc --noEmit"
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.6",

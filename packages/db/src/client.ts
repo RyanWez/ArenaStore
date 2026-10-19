@@ -1,10 +1,8 @@
 import { drizzle } from "drizzle-orm/node-postgres";
-import pg from "pg";
+import { Pool } from "pg";
 import * as schema from "./schema/index";
 
-const { Pool } = pg;
-
-let poolInstance: pg.Pool | null = null;
+let poolInstance: Pool | null = null;
 let dbInstance: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
 export function getDb(connectionString?: string) {
@@ -23,16 +21,23 @@ export function getDb(connectionString?: string) {
   });
 
   // Attach idle error listener to prevent Node.js uncaughtException crashes
-  // when Neon serverless auto-suspends compute and terminates idle connections
-  poolInstance.on("error", (err) => {
-    console.error("[DatabasePool] Unexpected error on idle PostgreSQL client:", err?.message || err);
-  });
+  // when Neon serverless auto-suspends compute and terminates idle connections.
+  // Cast through `any` because `tsc` under `moduleResolution: bundler` (tests
+  // workspace) resolves `pg` via its ESM export and loses the DefinitelyTyped
+  // `Pool extends EventEmitter` augmentation, causing `Property 'on' does not
+  // exist on type 'Pool'` only when type-checked from outside the db package.
+  (poolInstance as unknown as { on: (event: string, listener: (err: Error) => void) => void }).on(
+    "error",
+    (err: Error) => {
+      console.error("[DatabasePool] Unexpected error on idle PostgreSQL client:", err?.message || err);
+    }
+  );
 
   dbInstance = drizzle(poolInstance, { schema });
   return dbInstance;
 }
 
-export function getPool(): pg.Pool | null {
+export function getPool(): Pool | null {
   return poolInstance;
 }
 

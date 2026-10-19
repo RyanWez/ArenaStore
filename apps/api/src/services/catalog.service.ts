@@ -40,6 +40,29 @@ export class CatalogService {
     return this.lastSyncedAt;
   }
   /**
+   * Fetches all XPro products across paginated offsets until exhausted.
+   * Single-page `total` or short page terminates the loop; capped at 50 pages
+   * to avoid runaway on malformed upstream.
+   */
+  private async fetchAllXproProducts(): Promise<XProProduct[]> {
+    const pageSize = 100;
+    const all: XProProduct[] = [];
+    let offset = 0;
+    let total = Infinity;
+    for (let page = 0; page < 50; page++) {
+      const res = await xproClient.getProducts({ limit: pageSize, offset });
+      const chunk = res.products || [];
+      if (chunk.length === 0) break;
+      all.push(...chunk);
+      total = typeof res.total === "number" ? res.total : chunk.length < pageSize ? all.length : Infinity;
+      if (all.length >= total) break;
+      if (chunk.length < pageSize) break;
+      offset += chunk.length;
+    }
+    return all;
+  }
+
+  /**
    * Syncs upstream categories into the database.
    */
   /**
@@ -84,7 +107,7 @@ export class CatalogService {
    * Synchronizes all products from upstream supplier into local database using batch upsert.
    */
   async syncProducts(exchangeRateMmk: number = config.DEFAULT_EXCHANGE_RATE_MMK): Promise<number> {
-    const { products: upstreamProducts } = await xproClient.getProducts({ limit: 100 });
+    const upstreamProducts = await this.fetchAllXproProducts();
     if (!upstreamProducts || upstreamProducts.length === 0) return 0;
     const db = getDb();
 
@@ -203,10 +226,10 @@ export class CatalogService {
   async syncFullCatalog(exchangeRateMmk: number = config.DEFAULT_EXCHANGE_RATE_MMK): Promise<{ categories: number; products: number }> {
     const db = getDb();
 
-    // 1. Parallel fetch from upstream partner
-    const [upstreamCategories, { products: upstreamProducts }] = await Promise.all([
+    // 1. Parallel fetch from upstream partner (products paginated internally)
+    const [upstreamCategories, upstreamProducts] = await Promise.all([
       xproClient.getCategories(),
-      xproClient.getProducts({ limit: 100 }),
+      this.fetchAllXproProducts(),
     ]);
 
     // 2. Batch upsert categories
