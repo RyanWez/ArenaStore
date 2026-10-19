@@ -7,7 +7,11 @@ dotenv.config({ path: "../../.env" });
 dotenv.config({ path: "../.env" });
 
 const envSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  // Accept any environment name (production, staging, preview, …) rather than a
+  // fixed enum: insecure-default guards below fire for every env except an
+  // explicit "development"/"test", so a non-production deployment is protected
+  // too and cannot silently run on the public default secrets.
+  NODE_ENV: z.string().default("development"),
   TELEGRAM_BOT_TOKEN: z.string().min(1, "Telegram Bot Token is required in .env"),
   API_BASE_URL: z.string().url().default("http://localhost:4000"),
   UPSTREAM_BASE_URL: z.string().url().default("http://paid2.daki.cc:4153/api/partner/v1"),
@@ -78,10 +82,14 @@ export function loadBotConfig(): BotConfig {
 
   const data = parsed.data;
 
-  // Strict production security guard
-  if (data.NODE_ENV === "production" && data.DELIVERY_ENCRYPTION_KEY === "arena-store-default-dev-encryption-key-32bytes!") {
+  // Strict security guards: the public default key may only be used in
+  // explicit development or test. Any other environment (production, staging,
+  // preview, or an unrecognised NODE_ENV) must supply real values or the
+  // process refuses to boot.
+  const isDevOrTest = data.NODE_ENV === "development" || data.NODE_ENV === "test";
+  if (!isDevOrTest && data.DELIVERY_ENCRYPTION_KEY === "arena-store-default-dev-encryption-key-32bytes!") {
     throw new Error(
-      "CRITICAL SECURITY ERROR: DELIVERY_ENCRYPTION_KEY is using the insecure default key in production! Set a custom key in .env."
+      `CRITICAL SECURITY ERROR: DELIVERY_ENCRYPTION_KEY is using the insecure default key in a non-dev environment (NODE_ENV=${data.NODE_ENV})! Set a custom key in .env.`
     );
   }
 
