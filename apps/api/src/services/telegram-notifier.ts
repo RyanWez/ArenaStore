@@ -17,7 +17,8 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export async function sendTelegramMessage(
   chatId: string,
   text: string,
-  messageThreadId?: number
+  messageThreadId?: number,
+  replyMarkup?: any
 ): Promise<boolean> {
   if (!config.TELEGRAM_BOT_TOKEN) {
     console.warn("[Telegram Notifier] No TELEGRAM_BOT_TOKEN configured, skipped sending message to", chatId);
@@ -34,6 +35,7 @@ export async function sendTelegramMessage(
         text,
         parse_mode: "HTML",
         ...(messageThreadId && messageThreadId > 0 ? { message_thread_id: messageThreadId } : {}),
+        ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
       }),
     });
 
@@ -276,6 +278,30 @@ export function buildRestockedKeyboard(params: {
 }
 
 /**
+ * Quick navigation keyboard attached to successful top-up notifications.
+ * Provides direct, one-tap access to the product catalog and home dashboard.
+ */
+export function buildTopUpSuccessKeyboard() {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: "🛍️ ပစ္စည်းများ ဝယ်ယူရန်",
+          callback_data: "menu_categories",
+          icon_custom_emoji_id: BOT_EMOJIS.STORE,
+          style: "success",
+        },
+        {
+          text: "🏠 ပင်မစာမျက်နှာ",
+          callback_data: "menu_start",
+          icon_custom_emoji_id: BOT_EMOJIS.HOME,
+        },
+      ],
+    ],
+  };
+}
+
+/**
  * Sends a wallet top-up approval notification to the user in Telegram.
  */
 export async function notifyTopUpApproved(params: {
@@ -298,7 +324,7 @@ export async function notifyTopUpApproved(params: {
     `${sparkles} <b>လက်ကျန် Wallet Balance:</b> <b>${newBalanceMmk.toLocaleString("en-US")} Ks</b>\n\n` +
     `${bags} မိမိစိတ်ကြိုက် ဝန်ဆောင်မှုနှင့် ကုန်ပစ္စည်းများကို <b>Buy Now</b> ဖြင့် ချက်ချင်း ဝယ်ယူနိုင်ပါပြီခင်ဗျာ။`;
 
-  return sendTelegramMessage(telegramId, text);
+  return sendTelegramMessage(telegramId, text, undefined, buildTopUpSuccessKeyboard());
 }
 
 /**
@@ -354,7 +380,7 @@ export async function notifyMmpayTopUpSuccess(params: {
   // Returns whether the success card actually reached Telegram, so the caller
   // can release the one-time notification claim and let the bot's "Refresh"
   // button retry when this fire-and-forget push fails.
-  return sendTelegramMessage(telegramId, text);
+  return sendTelegramMessage(telegramId, text, undefined, buildTopUpSuccessKeyboard());
 }
 
 /**

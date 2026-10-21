@@ -5,6 +5,9 @@ import {
   notifyOrderCredentialsResent,
   notifyLowSupplierBalance,
   syncTelegramDepositReviewOutcome,
+  notifyTopUpApproved,
+  notifyMmpayTopUpSuccess,
+  buildTopUpSuccessKeyboard,
 } from "../../apps/api/src/services/telegram-notifier";
 import { config } from "../../apps/api/src/config";
 
@@ -23,10 +26,10 @@ vi.mock("../../apps/api/src/config", () => ({
 
 const TEST_TOKEN = "12345:TEST-TOKEN";
 
-function lastSentMessage(): { chatId: string; text: string } {
+function lastSentMessage(): { chatId: string; text: string; replyMarkup?: any } {
   const call = (global.fetch as any).mock.calls.at(-1);
   const body = JSON.parse(call[1].body);
-  return { chatId: body.chat_id, text: body.text };
+  return { chatId: body.chat_id, text: body.text, replyMarkup: body.reply_markup };
 }
 
 describe("Telegram Notifier Service", () => {
@@ -93,6 +96,17 @@ describe("Telegram Notifier Service", () => {
 
       const sent = await sendTelegramMessage("111222333", "text");
       expect(sent).toBe(false);
+    });
+
+    it("attaches reply_markup when provided", async () => {
+      mockTelegramOk();
+      const keyboard = { inline_keyboard: [[{ text: "Test", callback_data: "test" }]] };
+      const sent = await sendTelegramMessage("111222333", "text", undefined, keyboard);
+
+      expect(sent).toBe(true);
+      const call = (global.fetch as any).mock.calls.at(-1);
+      const body = JSON.parse(call[1].body);
+      expect(body.reply_markup).toEqual(keyboard);
     });
   });
 
@@ -321,6 +335,72 @@ describe("Telegram Notifier Service", () => {
         `https://api.telegram.org/bot${TEST_TOKEN}/editMessageCaption`,
         expect.anything()
       );
+    });
+  });
+
+  describe("buildTopUpSuccessKeyboard", () => {
+    it("returns an inline keyboard with menu_categories and menu_start buttons", () => {
+      const keyboard = buildTopUpSuccessKeyboard();
+      expect(keyboard.inline_keyboard).toHaveLength(1);
+      expect(keyboard.inline_keyboard[0]).toHaveLength(2);
+
+      const [buyButton, homeBtn] = keyboard.inline_keyboard[0];
+      expect(buyButton.text).toContain("ပစ္စည်းများ ဝယ်ယူရန်");
+      expect(buyButton.callback_data).toBe("menu_categories");
+      expect(buyButton.style).toBe("success");
+
+      expect(homeBtn.text).toContain("ပင်မစာမျက်နှာ");
+      expect(homeBtn.callback_data).toBe("menu_start");
+    });
+  });
+
+  describe("notifyTopUpApproved", () => {
+    it("sends manual slip approval notice with quick navigation buttons", async () => {
+      mockTelegramOk();
+
+      const sent = await notifyTopUpApproved({
+        telegramId: "111222333",
+        reference: "TOP-12345",
+        amountMmk: 5000,
+        newBalanceMmk: 6000,
+      });
+
+      expect(sent).toBe(true);
+      const { chatId, text, replyMarkup } = lastSentMessage();
+      expect(chatId).toBe("111222333");
+      expect(text).toContain("ငွေသွင်းမှု အောင်မြင်ပါသည်!");
+      expect(text).toContain("TOP-12345");
+      expect(text).toContain("+5,000 Ks");
+      expect(text).toContain("6,000 Ks");
+
+      expect(replyMarkup).toEqual(buildTopUpSuccessKeyboard());
+    });
+  });
+
+  describe("notifyMmpayTopUpSuccess", () => {
+    it("sends MMQR success notice with quick navigation buttons and deletes live QR", async () => {
+      mockTelegramOk();
+
+      const sent = await notifyMmpayTopUpSuccess({
+        telegramId: "111222333",
+        qrMessageId: 999,
+        reference: "MMQR-REF999",
+        amountMmk: 1000,
+        newBalanceMmk: 2000,
+      });
+
+      expect(sent).toBe(true);
+      // First call is deleteMessage, second call is sendMessage
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+
+      const { chatId, text, replyMarkup } = lastSentMessage();
+      expect(chatId).toBe("111222333");
+      expect(text).toContain("MMQR ငွေပေးချေမှု အောင်မြင်ပါပြီ!");
+      expect(text).toContain("MMQR-REF999");
+      expect(text).toContain("+1,000 MMK");
+      expect(text).toContain("2,000 MMK");
+
+      expect(replyMarkup).toEqual(buildTopUpSuccessKeyboard());
     });
   });
 });
