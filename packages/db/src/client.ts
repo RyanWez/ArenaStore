@@ -13,11 +13,20 @@ export function getDb(connectionString?: string) {
     throw new Error("DATABASE_URL environment variable is missing.");
   }
 
+  const isAiven = url.includes("aivencloud.com");
+  const cleanUrl = isAiven ? url.replace(/[?&]sslmode=[^&]+/, "") : url;
+  const rejectUnauthorized = process.env.DB_SSL_REJECT_UNAUTHORIZED === "true" 
+    ? true 
+    : isAiven || process.env.DB_SSL_REJECT_UNAUTHORIZED === "false" 
+      ? false 
+      : undefined;
+
   poolInstance = new Pool({
-    connectionString: url,
-    max: 10,
+    connectionString: cleanUrl,
+    max: parseInt(process.env.DB_POOL_MAX || "6", 10),
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
+    connectionTimeoutMillis: 10000,
+    ...(rejectUnauthorized !== undefined ? { ssl: { rejectUnauthorized } } : {}),
   });
 
   // Attach idle error listener to prevent Node.js uncaughtException crashes

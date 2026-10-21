@@ -5,7 +5,7 @@
 **COMPLETED & LIVE IN PRODUCTION (2026-10-03)**
 See [Memory/archive/2026-10-03.md](archive/2026-10-03.md) for full deployment details, architecture runbook, environment variables, and resolved pitfalls.
 - Backend API & Bot: `https://arenastore-backend.onrender.com/` (Render Free Web Service, Singapore)
-- Database: Neon Serverless PostgreSQL (`ep-steep-wave-b3bec48e-pooler.c-4.ap-southeast-1.aws.neon.tech`)
+- Database: Aiven Managed PostgreSQL (`arena-store-arena-store.g.aivencloud.com:26522`, migrated 2026-10-21 from Neon; see [Memory/2026-10-21.md](2026-10-21.md))
 - Admin Dashboard: Vercel (`arenastore-admin`)
 - Keep-Alive: UptimeRobot pinging every 10 minutes
 

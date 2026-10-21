@@ -21,9 +21,19 @@ export async function runMigrations() {
   }
 
   console.log(`[Migrations] Connecting to database using: ${url.replace(/:[^:@]*@/, ":***@")}`);
+  const isAiven = url.includes("aivencloud.com");
+  const cleanUrl = isAiven ? url.replace(/[?&]sslmode=[^&]+/, "") : url;
+  const rejectUnauthorized = process.env.DB_SSL_REJECT_UNAUTHORIZED === "true" 
+    ? true 
+    : isAiven || process.env.DB_SSL_REJECT_UNAUTHORIZED === "false" 
+      ? false 
+      : undefined;
+
   const pool = new Pool({
-    connectionString: url,
+    connectionString: cleanUrl,
     max: 1,
+    connectionTimeoutMillis: 10000,
+    ...(rejectUnauthorized !== undefined ? { ssl: { rejectUnauthorized } } : {}),
   });
 
   const db = drizzle(pool);
