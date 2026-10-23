@@ -53,7 +53,7 @@ The **Web Storefront** (`apps/web` hosted at `arena.ryanwez.com`) extends Arena 
             │                  Domain: arena.ryanwez.com                       │
             │  • Mobile: 2-Col Bento + 3D Card Stack + Bottom Navigation Bar   │
             │  • Desktop: 4-Col Grid + Left Rail + Spacious Header             │
-            │  • 2026 Flat Solid Aesthetic (Signal Orange #FF5A1F)             │
+            │  • 2026 Flat Solid Aesthetic (Signal Orange #FF5A1F)           │
             └──────────────────────────────────────────────────────────────────┘
 ```
 
