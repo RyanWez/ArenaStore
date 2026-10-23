@@ -9,6 +9,7 @@
     "start": "tsx src/index.ts"
   },
   "dependencies": {
+    "@arena/core": "workspace:*",
     "@arena/db": "workspace:*",
     "@arena/shared": "workspace:*",
     "@arena/suppliers": "workspace:*",
