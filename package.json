@@ -6,6 +6,7 @@
   "packageManager": "pnpm@12.8.1",
   "scripts": {
     "dev:admin": "pnpm --filter @arena/admin dev",
+    "dev:web": "pnpm --filter @arena/web dev",
     "dev:api": "pnpm --filter @arena/api dev",
     "dev:bot": "pnpm --filter @arena/bot dev",
     "totp:enroll": "node scripts/generate-totp.mjs",

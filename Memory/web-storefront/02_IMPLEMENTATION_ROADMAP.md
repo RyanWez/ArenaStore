@@ -114,41 +114,39 @@ Establish the complete customer-facing API surface in `apps/api` and implement t
 ### Phase 2: Nuxt 4 Storefront & Design System Foundation (`apps/web`)
 
 #### Objectives
-Build the modern, responsive storefront frontend matching the approved master designs.
+Build the modern, responsive storefront frontend matching the approved master designs. Broken down into 3 manageable, interconnected sub-phases:
+- **Sub-Phase 2A:** Nuxt 4 Setup, 2026 Flat Monolithic Design System & Responsive App Shell (COMPLETED).
+- **Sub-Phase 2B:** 3D Card Stack Hero Carousel, Category Scroll & Bento Product Grid (NEXT).
+- **Sub-Phase 2C:** 4-Digit Challenge Modal & Live Realtime SSE Handshake Integration.
 
 #### Tasks
-1. **Nuxt 4 Setup:**
-   - Initialize `apps/web` with Nuxt 4, Vue 3, and Tailwind CSS.
-   - Configure `@arena/shared` workspace dependency.
-   - Configure `nuxt.config.ts` with `experimental.viewTransition: true`.
-2. **Design Tokens & Global Styles:**
-   - Configure Tailwind with approved color tokens:
-     - Background: `#08090B`
-     - Surface: `#101216`
-     - Elevated Surface: `#161920`
-     - Border: `#1F232D`
-     - Solid Accent: `#FF5A1F` (Signal Orange)
-     - Typography: `Plus Jakarta Sans`, `JetBrains Mono`, `Noto Sans Myanmar`
-   - Enforce zero gradients and zero purple rule.
-3. **Responsive Mobile-First Shell:**
-   - **Mobile (Default):**
-     - Sticky top navigation bar with `ARENA` logo, wallet chip, and avatar.
-     - Frosted Glass Bottom Navigation Bar (`Home`, `Products`, `Orders`, `Profile`) with iOS safe area insets.
-     - 2-Column Bento Product Grid with squircle app icons, stock indicators, and MMK prices.
-   - **Desktop (Breakpoint `lg:`):**
-     - Expand to 4-column product grid and spacious header layout.
-4. **Hero 3D Card Stack Carousel:**
-   - Build 3D card deck with CSS `perspective: 1200px` and `transform-style: preserve-3d`.
-   - Center stage ChatGPT Plus card with flanking Notion and Canva cards.
-   - Touch gesture support (swipe left/right) and carousel dot indicator synchronization.
-5. **Horizontal Category Momentum Scrollbar:**
-   - Scroll-snapped horizontal pill bar (`All`, `AI`, `Design`, `Video`, `Productivity`).
-   - Smooth layout filtering via `motion-v`.
+1. **Sub-Phase 2A: Foundation & Responsive App Shell:**
+   - [x] Initialize `apps/web` with Nuxt 4 compatibility (`Nuxt 3.21.11`), Vue 3, and Tailwind CSS.
+   - [x] Configure `@arena/shared` workspace dependency and `"dev:web"` script.
+   - [x] Configure 2026 Flat Monolithic design tokens (Dark `#08090B`, Signal Orange `#FF5A1F`, zero purple, zero gradients).
+   - [x] Configure Nitro API proxy: `/api/**` -> `http://localhost:4000/api/**`.
+   - [x] Implement reactive auth composable (`useStoreAuth.ts`) with Telegram Mini App auto-login.
+   - [x] Build sticky Header (`TheHeader.vue`) with logo, JetBrains Mono wallet balance pill, and profile indicator.
+   - [x] Build frosted bottom navigation bar (`TheBottomNav.vue`) with iOS safe-area padding and 4 tabs (`Home`, `Products`, `Orders`, `Profile`).
+   - [x] Build default layout and live index landing page.
+
+2. **Sub-Phase 2B: 3D Showcase & Bento Grid:**
+   - [ ] Build 3D card deck with CSS `perspective: 1200px` and `transform-style: preserve-3d` (Hero Carousel).
+   - [ ] Center stage ChatGPT Plus card with flanking Notion and Canva cards with touch swipe gesture support.
+   - [ ] Horizontal category momentum scrollbar (`All`, `AI`, `Design`, `Video`, `Productivity`).
+   - [ ] 2-Column Mobile & 4-Column Desktop Bento Product Grid with squircle icons, stock badges, and MMK pricing.
+   - [ ] Integrate live catalog data from Fastify API (`GET /api/store/catalog`).
+
+3. **Sub-Phase 2C: Auth Modal & SSE Realtime Handshake UI:**
+   - [ ] W3K-style Login Modal: displays 4-digit code and direct Telegram bot deep link button.
+   - [ ] SSE real-time listener binding with ticket confirmation events for zero-refresh login.
+   - [ ] Instant wallet balance and profile sync.
 
 #### Acceptance Criteria
-- [ ] Mobile viewport (375px - 430px) renders pixel-perfect to approved mobile storefront mockup.
-- [ ] Desktop viewport (1200px+) renders pixel-perfect to approved desktop storefront mockup.
-- [ ] 3D Card Stack rotates smoothly on touch swipe and click.
+- [x] Sub-Phase 2A: Nuxt builds cleanly (`pnpm --filter @arena/web build`), `pnpm lint` 0 errors, 47 test files (401 tests) passing.
+- [ ] Sub-Phase 2B: Mobile viewport (375px - 430px) and Desktop viewport (1200px+) render pixel-perfect to approved mockups.
+- [ ] Sub-Phase 2C: Full browser login cycle via 4-digit challenge code completes seamlessly in < 2 seconds.
+
 
 ---
 
