@@ -41,6 +41,8 @@
 - `LINK`: `"5348498159251244132"` (🔗 Invite link)
 - `STATS`: `"5875291072225087249"` (📊 Referral stats / chart)
 - `SPARKLES`: `"5765017520612315383"` (✨ Benefits)
+- `GLOBE`: `"5879585266426973039"` (🌐 Web / IP Address)
+- `LOCATION`: `"5258509201306557640"` (📍 Device / Location Pin)
 - Emojis in HTML mode must use `tgEmoji(BOT_EMOJIS.<NAME>, "<fallback>")` which outputs `<tg-emoji emoji-id="...">fallback</tg-emoji>`.
 
 ## 5. Referral & Affiliate Reward System Architecture

@@ -99,10 +99,10 @@ export async function handleWebLoginDeepLink(ctx: BotContext, ticketId: string):
   const messageText =
     `${tgEmoji(BOT_EMOJIS.KEY, "🔐")} <b>Website Login အတည်ပြုခြင်း</b>\n\n` +
     `အောက်ပါ ကိရိယာမှ Arena Store Website သို့ Login ဝင်ရောက်ရန် ကြိုးစားနေပါသည်-\n` +
-    `📍 <b>ကိရိယာ:</b> ${escapeHtml(ticket.deviceSummary || "Browser")}\n` +
-    `🌐 <b>IP လိပ်စာ:</b> ${escapeHtml(ticket.ip || "Unknown")}\n\n` +
+    `${tgEmoji(BOT_EMOJIS.LOCATION, "📍")} <b>ကိရိယာ:</b> ${escapeHtml(ticket.deviceSummary || "Browser")}\n` +
+    `${tgEmoji(BOT_EMOJIS.GLOBE, "🌐")} <b>IP လိပ်စာ:</b> ${escapeHtml(ticket.ip || "Unknown")}\n\n` +
     `Website မျက်နှာပြင်တွင် ပေါ်နေသော <b>၄ လုံး ဂဏန်းနံပါတ်</b> နှင့် တူရာကို ရွေးချယ်နှိပ်ပေးပါခင်ဗျာ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}\n\n` +
-    `⚠️ <i>သင်ကိုယ်တိုင် Website တွင် Login ဝင်ရောက်ရန် ကြိုးစားခြင်း မဟုတ်ပါက မည်သည့်နံပါတ်ကိုမျှ မနှိပ်ဘဲ ချက်ချင်း ပယ်ဖျက်ပါခင်ဗျာ။</i>`;
+    `${tgEmoji(BOT_EMOJIS.WARNING, "⚠️")} <i>သင်ကိုယ်တိုင် Website တွင် Login ဝင်ရောက်ရန် ကြိုးစားခြင်း မဟုတ်ပါက မည်သည့်နံပါတ်ကိုမျှ မနှိပ်ဘဲ ချက်ချင်း ပယ်ဖျက်ပါခင်ဗျာ။</i>`;
 
   await ctx.reply(messageText, {
     parse_mode: "HTML",

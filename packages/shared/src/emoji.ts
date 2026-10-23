@@ -65,6 +65,11 @@ export const BOT_EMOJIS = {
   LINK: "5348498159251244132",        // 🔗 Invite link
   STATS: "5875291072225087249",       // 📊 Referral stats
   CHART: "5875291072225087249",       // 📊 Alias
+
+  // Web & Security Metadata
+  GLOBE: "5879585266426973039",       // 🌐 Web / IP Address
+  LOCATION: "5258509201306557640",    // 📍 Device / Location Pin
+  PIN: "5258509201306557640",         // 📍 Alias
 } as const;
 
 /**
