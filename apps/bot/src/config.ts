@@ -96,7 +96,10 @@ export function loadBotConfig(): BotConfig {
   return data;
 }
 
+import { setCoreConfig } from "@arena/core";
+
 export const botConfig = loadBotConfig();
+setCoreConfig(botConfig);
 
 /**
  * Normalizes any channel representation (@channel, channel, https://t.me/channel)

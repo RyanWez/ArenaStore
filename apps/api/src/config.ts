@@ -224,7 +224,10 @@ export function loadConfig(): AppConfig {
   return data;
 }
 
+import { setCoreConfig } from "@arena/core";
+
 export const config = loadConfig();
+setCoreConfig(config);
 
 export function getEnabledSuppliers(): ("XPRO" | "DIGITALCORE")[] {
   const raw = (config.SUPPLIERS_ENABLED || "xpro").toLowerCase().split(",").map((s) => s.trim());
