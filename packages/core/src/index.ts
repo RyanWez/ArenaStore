@@ -5,12 +5,9 @@ export { type CoreConfig, setCoreConfig, getCoreConfig } from "./config";
 export {
   encryptPayload,
   decryptPayload,
-  encryptField,
-  decryptField,
   formatCredentialsText,
   decryptDeliveryPayload,
   type DeliveryPayloadV2,
-  type CredentialsPayload,
 } from "./services/encryption.service";
 
 // App Settings & Telegram Support Links
@@ -23,7 +20,8 @@ export {
 
 // Catalog & Inventory
 export {
-  type BotCatalogProduct,
+  type BotProduct,
+  type BotCategory,
   BotCatalogService,
   botCatalog,
 } from "./services/catalog.service";
