@@ -45,3 +45,24 @@ export {
   BotOrderService,
   botOrderService,
 } from "./services/order.service";
+
+// Redis Infrastructure
+export {
+  getCoreRedis,
+  setCoreRedis,
+  createSubscriberRedis,
+  getSharedSubscriberRedis,
+  setSharedSubscriberRedis,
+} from "./redis";
+
+// Storefront Customer Auth Engine
+export {
+  type AuthTicket,
+  type CustomerSession,
+  type MiniAppInitDataUser,
+  StoreAuthService,
+  storeAuthService,
+  TICKET_TTL_SECONDS,
+  STORE_SESSION_TTL_SECONDS,
+  MINI_APP_MAX_AGE_SECONDS,
+} from "./services/store-auth.service";

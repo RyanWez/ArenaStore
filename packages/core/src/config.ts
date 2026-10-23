@@ -18,6 +18,7 @@ export interface CoreConfig {
   TELEGRAM_ADMIN_MENTIONS?: string;
   DELIVERY_ENCRYPTION_KEY?: string;
   TELEGRAM_APPROVER_IDS?: string;
+  REDIS_URL?: string;
 }
 
 let activeConfig: CoreConfig = {};
@@ -38,7 +39,13 @@ export function getCoreConfig(): CoreConfig {
     DIGITALCORE_API_KEY: activeConfig.DIGITALCORE_API_KEY || process.env.DIGITALCORE_API_KEY || "",
     DEFAULT_EXCHANGE_RATE_MMK: activeConfig.DEFAULT_EXCHANGE_RATE_MMK ?? (Number(process.env.DEFAULT_EXCHANGE_RATE_MMK) || 4500),
     DEFAULT_MARGIN_PERCENTAGE: activeConfig.DEFAULT_MARGIN_PERCENTAGE ?? (Number(process.env.DEFAULT_MARGIN_PERCENTAGE) || 15),
-    DELIVERY_ENCRYPTION_KEY: activeConfig.DELIVERY_ENCRYPTION_KEY || process.env.DELIVERY_ENCRYPTION_KEY || "dev-delivery-encryption-key-32chars!",
+    DELIVERY_ENCRYPTION_KEY: (() => {
+      const key = activeConfig.DELIVERY_ENCRYPTION_KEY || process.env.DELIVERY_ENCRYPTION_KEY || "dev-delivery-encryption-key-32chars!";
+      if (process.env.NODE_ENV === "production" && key.includes("dev-delivery")) {
+        console.warn("[SECURITY CRITICAL] Running in production with default DELIVERY_ENCRYPTION_KEY! Set a strong secret in .env immediately.");
+      }
+      return key;
+    })(),
     SUPPORT_USERNAME: activeConfig.SUPPORT_USERNAME || process.env.SUPPORT_USERNAME || "ryanwez",
     PAYMENT_ACCOUNT_NAME: activeConfig.PAYMENT_ACCOUNT_NAME || process.env.PAYMENT_ACCOUNT_NAME || "Arena Store",
     PAYMENT_KPAY_PHONE: activeConfig.PAYMENT_KPAY_PHONE || process.env.PAYMENT_KPAY_PHONE || "09 123 456 789",
@@ -47,5 +54,6 @@ export function getCoreConfig(): CoreConfig {
     TELEGRAM_BOT_ALERT_TOPIC_ID: activeConfig.TELEGRAM_BOT_ALERT_TOPIC_ID || process.env.TELEGRAM_BOT_ALERT_TOPIC_ID || "",
     TELEGRAM_ADMIN_MENTIONS: activeConfig.TELEGRAM_ADMIN_MENTIONS || process.env.TELEGRAM_ADMIN_MENTIONS || "",
     TELEGRAM_APPROVER_IDS: activeConfig.TELEGRAM_APPROVER_IDS || process.env.TELEGRAM_APPROVER_IDS || "",
+    REDIS_URL: activeConfig.REDIS_URL || process.env.REDIS_URL || "redis://localhost:6379",
   };
 }

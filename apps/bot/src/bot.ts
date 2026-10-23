@@ -58,6 +58,7 @@ import {
 import { channelVerificationService } from "./services/channel-verification.service";
 import { notifyAdminGroupDepositSlip } from "./services/admin-group.service";
 import { registerAdminDepositReviewHandlers } from "./handlers/admin-deposit-review";
+import { handleWebLoginDeepLink, registerWebLoginCallbacks } from "./handlers/web-login";
 import { referralService } from "./services/referral.service";
 import { BOT_EMOJIS, tgEmoji, escapeHtml, TopUpStatus, isMessageNotModified } from "@arena/shared";
 
@@ -300,6 +301,13 @@ export function createBot(): Bot<BotContext> {
     // Deep-link support: /start restock_<productId>, /start prod_<productId>, /start buy_<productId>, or section deep links
     const deepLinkPayload = ctx.match?.trim();
     if (deepLinkPayload) {
+      // 0.0 Web Login Handshake deep-link: /start login_<ticketId>
+      const loginMatch = deepLinkPayload.match(/^login_([a-zA-Z0-9_-]+)$/);
+      if (loginMatch) {
+        await handleWebLoginDeepLink(ctx, loginMatch[1]);
+        return;
+      }
+
       // 0. Explicit Referral deep-link: /start ref_<referrerId> or /start r_<referrerId>
       const refMatch = deepLinkPayload.match(/^(?:ref_|r_)(\d+)$/);
       if (refMatch) {
@@ -674,6 +682,9 @@ export function createBot(): Bot<BotContext> {
       }
     );
   });
+
+  // 3.0 Web Login Handshake Callback Handler
+  registerWebLoginCallbacks(bot);
 
   // 3.1 Force Channel Join Verification Callback
   bot.callbackQuery("verify_channel_join", async (ctx) => {

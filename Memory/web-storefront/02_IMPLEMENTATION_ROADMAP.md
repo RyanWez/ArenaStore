@@ -67,9 +67,9 @@ Eliminate architectural boundary violations and duplicate business logic by crea
    - Re-export services so existing unit and integration tests find their targets without breakage.
 
 #### Acceptance Criteria
-- [ ] `packages/core` builds cleanly with `tsc --noEmit`.
-- [ ] `pnpm test` runs all 45 test files and 379 tests with 0 failures.
-- [ ] Telegram bot starts and handles `/start`, catalog browsing, and wallet balance checks identically.
+- [x] `packages/core` builds cleanly with `tsc --noEmit`.
+- [x] `pnpm test` runs all 45 test files and 379 tests with 0 failures.
+- [x] Telegram bot starts and handles `/start`, catalog browsing, and wallet balance checks identically.
 
 ---
 
@@ -89,6 +89,7 @@ Establish the complete customer-facing API surface in `apps/api` and implement t
    - `GET /api/store/auth/events/:ticketId`: Server-Sent Events stream for instant login notification.
    - `POST /api/store/auth/telegram-webapp`: Validates `Telegram.WebApp.initData` HMAC-SHA256 signature for zero-click login.
    - `GET /api/store/auth/me`: Returns active session profile.
+   - `POST /api/store/auth/session`: Sets HttpOnly session cookie from confirmed token/ticket.
    - `POST /api/store/auth/logout` & `POST /api/store/auth/logout-all`: Session termination.
 3. **Bot Deep-Link & Keyboard Matching:**
    - In `apps/bot/src/bot.ts`, handle `/start login_<ticketId>`.
@@ -99,9 +100,14 @@ Establish the complete customer-facing API surface in `apps/api` and implement t
    - If cancel: invalidate ticket and edit message to cancelled.
 
 #### Acceptance Criteria
-- [ ] Ticket lifecycle test: ticket creation -> bot match -> confirmation event verified via unit tests.
-- [ ] Mini App HMAC signature verification rejects tampered query strings and accepts valid signatures.
-- [ ] Session cookie is generated with `httpOnly; Secure; SameSite=Lax`.
+- [x] Ticket lifecycle test: ticket creation -> bot match -> confirmation event verified via unit tests (`tests/unit/store-auth.test.ts`).
+- [x] Mini App HMAC signature verification rejects tampered query strings, malformed hashes, and clock-drift anomalies.
+- [x] Session cookie is generated with `httpOnly; Secure; SameSite=Lax` and full integration tests verified (`tests/integration/store-auth.integration.test.ts`).
+- [x] Security Hardened: Single-use ticket consumption (`consumeTicket`) completely prevents ticket replay attacks.
+- [x] Security Hardened: Route-level rate limiting on `POST /ticket` (15/min) and auth routes (30/min).
+- [x] Security Hardened: Strict regex validation on `ticketId` (`^tk_[a-f0-9]{24}$`) and session tokens (`^[a-f0-9]{64}$`).
+- [x] Security Hardened: Account status guards (`user.status === "ACTIVE"`) reject suspended/banned users with 403 `ACCOUNT_SUSPENDED`.
+- [x] Performance Hardened: Multiplexed Redis pub/sub over a single shared subscriber eliminates socket leaks and Redis maxclients exhaustion across SSE streams.
 
 ---
 

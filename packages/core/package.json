@@ -15,7 +15,8 @@
     "@arena/db": "workspace:*",
     "@arena/shared": "workspace:*",
     "@arena/suppliers": "workspace:*",
-    "drizzle-orm": "^0.45.3"
+    "drizzle-orm": "^0.45.3",
+    "ioredis": "^5.6.0"
   },
   "devDependencies": {
     "@types/node": "^22.13.9",
