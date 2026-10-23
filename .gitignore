@@ -55,3 +55,9 @@ tmp/
 
 # Runtime cache of Telegram deposit-slip images (customer PII; never commit)
 apps/api/.cache/
+
+films/*
+.agents
+.claude/*
+.claude/*/*
+skills-lock.json
