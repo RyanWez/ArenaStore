@@ -86,7 +86,7 @@ export async function handleWebLoginDeepLink(ctx: BotContext, ticketId: string):
     [allCodes[i], allCodes[j]] = [allCodes[j], allCodes[i]];
   }
 
-  // Build 2x2 inline keyboard grid + cancel button
+  // Build 2x2 inline keyboard grid + red cancel button with animated icon
   const keyboard = new InlineKeyboard()
     .text(allCodes[0], `wlogin:${ticketId}:${allCodes[0]}`)
     .text(allCodes[1], `wlogin:${ticketId}:${allCodes[1]}`)
@@ -94,14 +94,19 @@ export async function handleWebLoginDeepLink(ctx: BotContext, ticketId: string):
     .text(allCodes[2], `wlogin:${ticketId}:${allCodes[2]}`)
     .text(allCodes[3], `wlogin:${ticketId}:${allCodes[3]}`)
     .row()
-    .text("❌ ကျွန်တော် Login မဝင်ထားပါ", `wlogin:${ticketId}:cancel`);
+    .add({
+      text: "ကျွန်တော် Login မဝင်ထားပါ",
+      callback_data: `wlogin:${ticketId}:cancel`,
+      icon_custom_emoji_id: BOT_EMOJIS.CANCEL,
+      style: "danger",
+    } as any);
 
   const messageText =
     `${tgEmoji(BOT_EMOJIS.KEY, "🔐")} <b>Website Login အတည်ပြုခြင်း</b>\n\n` +
     `အောက်ပါ ကိရိယာမှ Arena Store Website သို့ Login ဝင်ရောက်ရန် ကြိုးစားနေပါသည်-\n` +
     `${tgEmoji(BOT_EMOJIS.LOCATION, "📍")} <b>ကိရိယာ:</b> ${escapeHtml(ticket.deviceSummary || "Browser")}\n` +
     `${tgEmoji(BOT_EMOJIS.GLOBE, "🌐")} <b>IP လိပ်စာ:</b> ${escapeHtml(ticket.ip || "Unknown")}\n\n` +
-    `Website မျက်နှာပြင်တွင် ပေါ်နေသော <b>၄ လုံး ဂဏန်းနံပါတ်</b> နှင့် တူရာကို ရွေးချယ်နှိပ်ပေးပါခင်ဗျာ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}\n\n` +
+    `Website မျက်နှာပြင်တွင် ပေါ်နေသော <b>ဂဏန်းနံပါတ် 4လုံး</b> နှင့် တူရာကို \n ရွေးချယ်နှိပ်ပေးပါခင်ဗျာ ${tgEmoji(BOT_EMOJIS.DOWN_ARROW, "👇")}\n\n` +
     `${tgEmoji(BOT_EMOJIS.WARNING, "⚠️")} <i>သင်ကိုယ်တိုင် Website တွင် Login ဝင်ရောက်ရန် ကြိုးစားခြင်း မဟုတ်ပါက မည်သည့်နံပါတ်ကိုမျှ မနှိပ်ဘဲ ချက်ချင်း ပယ်ဖျက်ပါခင်ဗျာ။</i>`;
 
   await ctx.reply(messageText, {

@@ -39,6 +39,7 @@ const envSchema = z.object({
     .string()
     .min(16)
     .default("arena-store-default-dev-encryption-key-32bytes!"),
+  REDIS_URL: z.string().default("redis://localhost:6379"),
 });
 
 export type BotConfig = z.infer<typeof envSchema>;
