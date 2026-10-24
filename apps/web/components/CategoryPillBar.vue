@@ -30,26 +30,67 @@ const iconMap: Record<string, any> = {
   Briefcase,
 };
 
+// Drag-to-scroll functionality for desktop mouse users
+const isDragging = ref(false);
+const startX = ref(0);
+const scrollLeftStart = ref(0);
+const hasMoved = ref(false);
+
+const startDrag = (e: MouseEvent) => {
+  if (!scrollContainer.value) return;
+  isDragging.value = true;
+  hasMoved.value = false;
+  startX.value = e.pageX - scrollContainer.value.offsetLeft;
+  scrollLeftStart.value = scrollContainer.value.scrollLeft;
+};
+
+const onDrag = (e: MouseEvent) => {
+  if (!isDragging.value || !scrollContainer.value) return;
+  e.preventDefault();
+  const x = e.pageX - scrollContainer.value.offsetLeft;
+  const walk = (x - startX.value) * 1.4;
+  if (Math.abs(x - startX.value) > 4) {
+    hasMoved.value = true;
+  }
+  scrollContainer.value.scrollLeft = scrollLeftStart.value - walk;
+};
+
+const stopDrag = () => {
+  isDragging.value = false;
+};
+
+const handleCategoryClick = (catId: string) => {
+  if (hasMoved.value) {
+    hasMoved.value = false;
+    return;
+  }
+  selectCategory(catId);
+};
+
 const scrollRight = () => {
   if (scrollContainer.value) {
-    scrollContainer.value.scrollBy({ left: 200, behavior: "smooth" });
+    scrollContainer.value.scrollBy({ left: 220, behavior: "smooth" });
   }
 };
 </script>
 
 <template>
   <div class="relative w-full flex items-center">
-    <!-- Horizontal Scrollable Track -->
+    <!-- Horizontal Scrollable Track with zero scrollbar and drag support -->
     <div
       ref="scrollContainer"
-      class="flex items-center space-x-2.5 overflow-x-auto py-2 no-scrollbar scroll-smooth flex-1 pr-10"
-      style="-webkit-overflow-scrolling: touch;"
+      @mousedown="startDrag"
+      @mousemove="onDrag"
+      @mouseup="stopDrag"
+      @mouseleave="stopDrag"
+      class="flex items-center space-x-2.5 overflow-x-auto py-2 no-scrollbar scroll-smooth flex-1 pr-6 cursor-grab active:cursor-grabbing select-none"
+      style="-webkit-overflow-scrolling: touch; scrollbar-width: none; -ms-overflow-style: none;"
     >
       <button
         v-for="cat in categories"
         :key="cat.id"
         type="button"
-        @click="selectCategory(cat.id)"
+        @click="handleCategoryClick(cat.id)"
         class="group flex items-center space-x-2 shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition-all duration-150 border select-none active:scale-95"
         :class="[
           selectedCategoryId === cat.id
@@ -70,10 +111,11 @@ const scrollRight = () => {
     <button
       type="button"
       @click="scrollRight"
-      class="hidden sm:flex h-8 w-8 items-center justify-center rounded-full border border-arena-border bg-arena-surface text-arena-muted hover:text-white hover:border-arena-border-strong transition-colors ml-2 shrink-0 shadow-sm"
+      class="hidden sm:flex h-8 w-8 items-center justify-center rounded-full border border-arena-border bg-arena-surface text-arena-muted hover:text-white hover:border-arena-border-strong transition-colors ml-2 shrink-0 shadow-sm active:scale-95"
       title="Scroll Categories"
     >
       <ChevronRight class="h-4 w-4" />
     </button>
   </div>
 </template>
+

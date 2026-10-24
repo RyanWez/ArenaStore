@@ -14,11 +14,10 @@ export const SITE_CONFIG = {
   telegramChannel: "https://t.me/arenasellerstore",
   supportContact: "https://t.me/ryanwez",
 
-  // Desktop Header Links matching Image 1
+  // Desktop Header Links - Streamlined, purposeful destinations
   headerNav: [
-    { label: "Products", path: "/#catalog" },
-    { label: "Categories", path: "/#catalog" },
-    { label: "How It Works", path: "/orders" },
+    { label: "Catalog", path: "/#catalog" },
+    { label: "Orders", path: "/orders" },
     { label: "Affiliate 3%", path: "/referral", badge: "3%" },
     { label: "Support", path: "https://t.me/ryanwez" },
   ] as NavItem[],

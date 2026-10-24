@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Wallet, KeyRound, User, Plus, Search, ShoppingBag } from "lucide-vue-next";
+import { Wallet, KeyRound, User, Plus, ShoppingBag } from "lucide-vue-next";
 import { useStoreAuth } from "~/composables/useStoreAuth";
 import { SITE_CONFIG } from "~/config/site";
 
@@ -9,6 +9,19 @@ const emit = defineEmits<{
   (e: "open-login"): void;
   (e: "open-topup"): void;
 }>();
+
+const handleNavClick = (e: MouseEvent, item: { path: string }) => {
+  if (item.path === "/#catalog") {
+    e.preventDefault();
+    if (typeof document !== "undefined") {
+      const el = document.getElementById("catalog");
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth" });
+        window.history.pushState(null, "", "/#catalog");
+      }
+    }
+  }
+};
 </script>
 
 <template>
@@ -30,6 +43,7 @@ const emit = defineEmits<{
           v-for="item in SITE_CONFIG.headerNav"
           :key="item.label"
           :to="item.path"
+          @click="handleNavClick($event, item)"
           class="transition-colors hover:text-white flex items-center space-x-1"
           active-class="text-white font-semibold"
         >
@@ -43,20 +57,12 @@ const emit = defineEmits<{
         </NuxtLink>
       </nav>
 
-      <!-- Right Actions: Search, Cart, Wallet Chip & Auth Button -->
+      <!-- Right Actions: Cart, Wallet Chip & Auth Button -->
       <div class="flex items-center space-x-3">
-        <!-- Search Icon Link -->
-        <a
-          href="#catalog"
-          class="hidden sm:flex h-8 w-8 items-center justify-center rounded-full text-arena-muted hover:text-white transition-colors"
-          title="Search"
-        >
-          <Search class="h-4 w-4" />
-        </a>
-
         <!-- Cart Bag Icon with Badge (0) -->
         <button
           type="button"
+          @click="handleNavClick($event, { path: '/#catalog' })"
           class="relative flex h-8 w-8 items-center justify-center rounded-full text-arena-muted hover:text-white transition-colors"
           title="Shopping Cart"
         >

@@ -11,6 +11,7 @@ const { fetchCatalog, searchQuery } = useStoreCatalog();
 const { isAuthenticated } = useStoreAuth();
 
 const localSearchInput = ref("");
+let searchDebounceTimer: NodeJS.Timeout | null = null;
 
 // Prefetch catalog for instant zero-flash SSR
 await useAsyncData("master_catalog_init", async () => {
@@ -18,9 +19,17 @@ await useAsyncData("master_catalog_init", async () => {
   return true;
 });
 
+// Live real-time reactive search filtering with 120ms debounce
+const onSearchInput = () => {
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    searchQuery.value = localSearchInput.value.trim();
+  }, 120);
+};
+
 const handleSearchSubmit = () => {
-  searchQuery.value = localSearchInput.value;
-  // Smooth scroll to catalog grid
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+  searchQuery.value = localSearchInput.value.trim();
   if (typeof document !== "undefined") {
     const el = document.getElementById("catalog");
     if (el) {
@@ -32,9 +41,9 @@ const handleSearchSubmit = () => {
 const handleBuyProduct = (product: StoreProduct) => {
   console.log("[Storefront] Product chosen for purchase:", product.name, product.id);
   if (!isAuthenticated.value) {
-    console.log("[Storefront] User not authenticated, trigger login modal");
-  } else {
-    console.log("[Storefront] User authenticated, proceed to checkout");
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("open-store-login", { detail: { product } }));
+    }
   }
 };
 
@@ -70,7 +79,7 @@ useHead({
           Get premium apps, memberships and digital tools in seconds. Trusted, fast and hassle-free — only at Arena Store.
         </p>
 
-        <!-- Integrated Search Pill Input matching Image 1 -->
+        <!-- Integrated Search Pill Input with instant live filtering -->
         <form @submit.prevent="handleSearchSubmit" class="relative w-full max-w-md">
           <div class="relative flex items-center rounded-full border border-arena-border bg-[#0E1015] p-1.5 shadow-xl transition-all focus-within:border-arena-border-strong">
             <div class="pl-3.5 pr-2 flex items-center pointer-events-none text-arena-muted">
@@ -78,6 +87,7 @@ useHead({
             </div>
             <input
               v-model="localSearchInput"
+              @input="onSearchInput"
               type="text"
               placeholder="Search for apps, memberships, tools..."
               class="w-full bg-transparent text-xs sm:text-sm text-white placeholder-arena-subtle focus:outline-none"
@@ -118,14 +128,11 @@ useHead({
       </div>
     </section>
 
-    <!-- 2. Thematic Category Pill Bar -->
-    <section>
+    <!-- 2. Catalog Section (Category Pill Bar + Product Grid unified under #catalog) -->
+    <section id="catalog" class="scroll-mt-16 pt-1 space-y-6">
       <CategoryPillBar />
-    </section>
-
-    <!-- 3. Popular Products 6-Column Bento Grid -->
-    <section id="catalog" class="scroll-mt-24 space-y-6">
       <ProductGrid @buy-product="handleBuyProduct" />
     </section>
   </div>
 </template>
+
