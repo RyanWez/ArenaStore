@@ -117,9 +117,25 @@ const getCardStyle = (index: number) => {
       class="relative w-full max-w-[340px] sm:max-w-[420px] lg:max-w-[480px] h-[270px] sm:h-[300px] flex items-center justify-center"
       style="perspective: 1400px;"
     >
+      <!-- Loading Skeleton / Shimmer Card when products are syncing or unavailable -->
+      <div
+        v-if="featuredCards.length === 0"
+        class="w-[270px] sm:w-[320px] h-[185px] sm:h-[215px] rounded-2xl p-5 sm:p-6 flex flex-col justify-between border border-arena-border/50 bg-[#101217]/80 backdrop-blur-md shadow-2xl relative overflow-hidden"
+      >
+        <div class="flex items-center justify-between">
+          <div class="h-7 w-7 rounded-lg bg-arena-elevated animate-pulse" />
+          <div class="h-4 w-12 rounded-full bg-arena-elevated animate-pulse" />
+        </div>
+        <div class="space-y-2">
+          <div class="h-5 w-32 rounded bg-arena-elevated animate-pulse" />
+          <div class="h-3 w-44 rounded bg-arena-elevated/70 animate-pulse" />
+        </div>
+        <div class="h-2.5 w-24 rounded bg-arena-elevated/50 animate-pulse" />
+      </div>
+
       <!-- 1. Gemini Pro Card (Deep Cosmic Sapphire Metallic) -->
       <div
-        v-if="featuredCards[0]"
+        v-else-if="featuredCards[0]"
         class="absolute w-[270px] sm:w-[320px] h-[185px] sm:h-[215px] rounded-2xl p-5 sm:p-6 flex flex-col justify-between transition-all duration-500 ease-out cursor-pointer overflow-hidden border border-sky-500/30"
         :style="getCardStyle(0)"
         style="
@@ -269,7 +285,7 @@ const getCardStyle = (index: number) => {
           </button>
 
           <span class="font-mono text-xs font-bold text-arena-text select-none tracking-wider px-1">
-            0{{ activeIndex + 1 }} / 0{{ featuredCards.length }}
+            0{{ featuredCards.length > 0 ? activeIndex + 1 : 0 }} / 0{{ featuredCards.length }}
           </span>
 
           <button

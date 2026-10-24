@@ -1,5 +1,5 @@
-import { ref, computed } from "vue";
-import { MASTER_CATEGORIES, MASTER_PRODUCTS, type MasterProduct } from "~/data/master-catalog";
+import { computed } from "vue";
+import { MASTER_CATEGORIES } from "~/data/master-catalog";
 import { parseProductTitleAndTerm } from "~/data/brand-registry";
 
 export interface StoreProduct {
@@ -64,17 +64,43 @@ export function useStoreCatalog() {
   const selectedCategoryId = useState<string>("master_selected_cat", () => "all");
   const searchQuery = useState<string>("master_search_query", () => "");
   const isLoading = useState<boolean>("master_catalog_loading", () => false);
+  const isError = useState<boolean>("master_catalog_error", () => false);
+  const errorMessage = useState<string | null>("master_catalog_error_msg", () => null);
+  const isRetrying = useState<boolean>("master_catalog_retrying", () => false);
 
   const formatPrice = (priceMmk: number): string => {
     return new Intl.NumberFormat("en-US").format(priceMmk) + " Ks";
   };
 
-  const fetchCatalog = async () => {
-    isLoading.value = true;
-    try {
-      const prodRes = await $fetch<{ products?: any[]; ok?: boolean }>("/api/catalog/products").catch(() => null);
+  const fetchCatalog = async (isManualRetry = false) => {
+    if (isManualRetry) {
+      isRetrying.value = true;
+    } else {
+      isLoading.value = true;
+    }
+    isError.value = false;
+    errorMessage.value = null;
 
-      if (prodRes && prodRes.products && prodRes.products.length > 0) {
+    try {
+      // Auto-retry once on network glitch with 1.2s delay
+      let prodRes: { products?: any[]; ok?: boolean } | null = null;
+      let attempt = 0;
+      const maxAttempts = 2;
+
+      while (attempt < maxAttempts) {
+        try {
+          prodRes = await $fetch<{ products?: any[]; ok?: boolean }>("/api/catalog/products", {
+            timeout: 8000,
+          });
+          if (prodRes && prodRes.ok) break;
+        } catch (e) {
+          attempt++;
+          if (attempt >= maxAttempts) throw e;
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+        }
+      }
+
+      if (prodRes && Array.isArray(prodRes.products)) {
         // Transform live DB products into normalized StoreProduct
         const liveList: StoreProduct[] = prodRes.products.map((rp: any) => {
           const rawTitle = rp.nameMmk || rp.rawName || "Digital Product";
@@ -113,28 +139,26 @@ export function useStoreCatalog() {
         });
 
         products.value = liveList;
+        isError.value = false;
       } else {
-        // Fallback to Master Catalog if API is empty or unreachable
-        products.value = MASTER_PRODUCTS.map((mp) => ({
-          ...mp,
-          formattedPrice: formatPrice(mp.priceMmk),
-          durationLabel: "/ month",
-          sellableStock: mp.stockStatus === "IN_STOCK" ? 10 : 0,
-        }));
+        // API returned unsuccessful without products: do NOT fallback to mock data
+        products.value = [];
+        isError.value = true;
+        errorMessage.value = "ဆာဗာမှ ဒေတာ မရရှိနိုင်သေးပါခင်ဗျာ။ ခဏအကြာတွင် ပြန်လည် စမ်းသပ်ပေးပါ။";
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("[useStoreCatalog] Error syncing live catalog:", err);
-      if (products.value.length === 0) {
-        products.value = MASTER_PRODUCTS.map((mp) => ({
-          ...mp,
-          formattedPrice: formatPrice(mp.priceMmk),
-          durationLabel: "/ month",
-          sellableStock: 10,
-        }));
-      }
+      products.value = [];
+      isError.value = true;
+      errorMessage.value = "ဆာဗာ ချိတ်ဆက်မှု ယာယီ ပြတ်တောက်နေပါသည်ခင်ဗျာ။ ခဏအကြာတွင် ပြန်လည် စမ်းသပ်ပေးပါ။";
     } finally {
       isLoading.value = false;
+      isRetrying.value = false;
     }
+  };
+
+  const retrySync = async () => {
+    await fetchCatalog(true);
   };
 
   const filteredProducts = computed(() => {
@@ -159,7 +183,9 @@ export function useStoreCatalog() {
   });
 
   const featuredCards = computed(() => {
-    // Look up corresponding live products from DB, with fallback to real catalog definitions
+    if (products.value.length === 0) return [];
+
+    // Look up corresponding live products from DB
     const geminiLive = products.value.find((p) => p.brand === "gemini" && p.sellableStock > 0) ||
       products.value.find((p) => p.brand === "gemini");
     const capcutLive = products.value.find((p) => p.brand === "capcut" && p.sellableStock > 0) ||
@@ -167,50 +193,22 @@ export function useStoreCatalog() {
     const youtubeLive = products.value.find((p) => p.brand === "youtube" && p.sellableStock > 0) ||
       products.value.find((p) => p.brand === "youtube");
 
-    return [
-      geminiLive || {
-        id: "gemini-pro-18m",
-        slug: "gemini-pro-18m",
-        name: "Gemini Pro",
-        subtitle: "Google Advanced AI ecosystem.",
-        category: "ai" as const,
-        priceMmk: 8200,
-        formattedPrice: "8,200 Ks",
-        durationLabel: "/ 18 months",
-        stockStatus: "IN_STOCK" as const,
-        sellableStock: 9,
-        brand: "gemini",
-        deliveryType: "LINK",
-      },
-      capcutLive || {
-        id: "capcut-1m",
-        slug: "capcut-1m",
-        name: "CapCut Pro",
-        subtitle: "Edit without limits.",
-        category: "video" as const,
-        priceMmk: 6800,
-        formattedPrice: "6,800 Ks",
-        durationLabel: "/ 1 month",
-        stockStatus: "IN_STOCK" as const,
-        sellableStock: 4,
-        brand: "capcut",
-        deliveryType: "TEXT",
-      },
-      youtubeLive || {
-        id: "youtube-premium-3m",
-        slug: "youtube-premium-3m",
-        name: "YouTube Premium",
-        subtitle: "Ad-free, offline background play.",
-        category: "entertainment" as const,
-        priceMmk: 9600,
-        formattedPrice: "9,600 Ks",
-        durationLabel: "/ 3 months",
-        stockStatus: "IN_STOCK" as const,
-        sellableStock: 7,
-        brand: "youtube",
-        deliveryType: "LINK",
-      },
-    ];
+    const cards: StoreProduct[] = [];
+    if (geminiLive) cards.push(geminiLive);
+    if (capcutLive) cards.push(capcutLive);
+    if (youtubeLive) cards.push(youtubeLive);
+
+    // If specific brands aren't in DB, populate up to 3 cards with other in-stock live products
+    if (cards.length < 3) {
+      for (const p of products.value) {
+        if (!cards.some((c) => c.id === p.id)) {
+          cards.push(p);
+          if (cards.length >= 3) break;
+        }
+      }
+    }
+
+    return cards;
   });
 
   const selectCategory = (catId: string) => {
@@ -223,9 +221,13 @@ export function useStoreCatalog() {
     selectedCategoryId,
     searchQuery,
     isLoading,
+    isError,
+    errorMessage,
+    isRetrying,
     filteredProducts,
     featuredCards,
     fetchCatalog,
+    retrySync,
     selectCategory,
     formatPrice,
   };
