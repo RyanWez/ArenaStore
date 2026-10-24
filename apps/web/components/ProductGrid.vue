@@ -53,9 +53,9 @@ const resetSearch = () => {
     <!-- 1. Loading Skeleton State -->
     <div
       v-if="isLoading && !isRetrying"
-      class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-3.5"
+      class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5"
     >
-      <ProductCardSkeleton v-for="i in 12" :key="i" />
+      <ProductCardSkeleton v-for="i in 6" :key="i" />
     </div>
 
     <!-- 2. Server Offline / Error State (No Mock Data Fallback) -->
@@ -130,10 +130,10 @@ const resetSearch = () => {
       </button>
     </div>
 
-    <!-- 4. Active Responsive Bento Grid matching desktop and mobile benchmarks -->
+    <!-- 4. Active Responsive Bento Grid (3 Columns on Desktop) -->
     <div
       v-else
-      class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-3.5 animate-fade-in"
+      class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 animate-fade-in"
     >
       <ProductCard
         v-for="product in filteredProducts"
