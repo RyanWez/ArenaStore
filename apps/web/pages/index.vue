@@ -8,7 +8,7 @@ import { useStoreCatalog, type StoreProduct } from "~/composables/useStoreCatalo
 import { useStoreAuth } from "~/composables/useStoreAuth";
 
 const { fetchCatalog, searchQuery } = useStoreCatalog();
-const { isAuthenticated } = useStoreAuth();
+const { isAuthenticated, openLoginModal } = useStoreAuth();
 
 const route = useRoute();
 const localSearchInput = ref("");
@@ -55,9 +55,7 @@ const handleSearchSubmit = () => {
 const handleBuyProduct = (product: StoreProduct) => {
   console.log("[Storefront] Product chosen for purchase:", product.name, product.id);
   if (!isAuthenticated.value) {
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("open-store-login", { detail: { product } }));
-    }
+    openLoginModal(`"${product.name}" ကို ဝယ်ယူရန် Telegram အကောင့်ဖြင့် အရင်ဆုံး Login ဝင်ရောက်ပေးပါခင်ဗျာ။`);
   }
 };
 

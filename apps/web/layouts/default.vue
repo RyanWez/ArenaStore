@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import TheHeader from "~/components/TheHeader.vue";
 import TheBottomNav from "~/components/TheBottomNav.vue";
+import AuthChallengeModal from "~/components/AuthChallengeModal.vue";
 import { useStoreAuth } from "~/composables/useStoreAuth";
 
-const { fetchMe, initTelegramMiniApp } = useStoreAuth();
+const { fetchMe, initTelegramMiniApp, openLoginModal } = useStoreAuth();
 
 onMounted(async () => {
   // First attempt zero-click auto-login if launched inside Telegram Mini App
@@ -15,8 +16,7 @@ onMounted(async () => {
 });
 
 const handleOpenLogin = () => {
-  // Dispatches event or opens 4-digit challenge modal (Sub-Phase 2C)
-  console.log("[Storefront] Open Login Modal triggered");
+  openLoginModal();
 };
 
 const handleOpenTopup = () => {
@@ -39,5 +39,8 @@ const handleOpenTopup = () => {
 
     <!-- Mobile Frosted Glass Navigation Bar -->
     <TheBottomNav />
+
+    <!-- 4-Digit Telegram Challenge Handshake Modal -->
+    <AuthChallengeModal />
   </div>
 </template>

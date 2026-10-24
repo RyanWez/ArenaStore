@@ -91,16 +91,16 @@ const scrollRight = () => {
         :key="cat.id"
         type="button"
         @click="handleCategoryClick(cat.id)"
-        class="group flex items-center space-x-2 shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition-all duration-150 border select-none active:scale-95"
+        class="group flex items-center space-x-2 shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition-all duration-300 ease-out border select-none active:scale-95"
         :class="[
           selectedCategoryId === cat.id
-            ? 'bg-white border-white text-black shadow-md'
+            ? 'bg-white border-white text-black shadow-lg shadow-white/10 scale-[1.02]'
             : 'bg-[#101216] border-[#1F232D] text-arena-muted hover:border-[#374151] hover:text-white hover:bg-[#161920]'
         ]"
       >
         <component
           :is="iconMap[cat.icon] || LayoutGrid"
-          class="h-3.5 w-3.5 transition-colors"
+          class="h-3.5 w-3.5 transition-colors duration-300"
           :class="selectedCategoryId === cat.id ? 'text-black' : 'text-arena-muted group-hover:text-white'"
         />
         <span>{{ cat.label }}</span>

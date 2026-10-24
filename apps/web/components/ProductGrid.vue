@@ -7,6 +7,7 @@ import { SITE_CONFIG } from "~/config/site";
 
 const {
   filteredProducts,
+  selectedCategoryId,
   isLoading,
   isError,
   errorMessage,
@@ -130,17 +131,35 @@ const resetSearch = () => {
       </button>
     </div>
 
-    <!-- 4. Active Responsive Bento Grid (3 Columns on Desktop) -->
-    <div
-      v-else
-      class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 animate-fade-in"
-    >
-      <ProductCard
-        v-for="product in filteredProducts"
-        :key="product.id"
-        :product="product"
-        @buy="emit('buy-product', $event)"
-      />
-    </div>
+    <!-- 4. Active Responsive Bento Grid (3 Columns on Desktop) with Smooth Tab Transition -->
+    <Transition name="tab-grid" mode="out-in">
+      <div
+        :key="selectedCategoryId + (searchQuery ? ':' + searchQuery : '')"
+        class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5"
+      >
+        <ProductCard
+          v-for="product in filteredProducts"
+          :key="product.id"
+          :product="product"
+          @buy="emit('buy-product', $event)"
+        />
+      </div>
+    </Transition>
   </div>
 </template>
+
+<style scoped>
+/* Silky calm tab crossfade */
+.tab-grid-enter-active,
+.tab-grid-leave-active {
+  transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.tab-grid-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.tab-grid-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+</style>
