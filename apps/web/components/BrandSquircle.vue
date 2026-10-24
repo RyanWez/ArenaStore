@@ -40,7 +40,7 @@ const sizeClasses = computed(() => {
       return "h-16 w-16 sm:h-20 sm:w-20 rounded-2xl text-2xl p-3";
     case "md":
     default:
-      return "h-11 w-11 sm:h-12 sm:w-12 rounded-xl text-base p-2";
+      return "h-12 w-12 sm:h-[52px] sm:w-[52px] rounded-2xl text-base p-2.5";
   }
 });
 

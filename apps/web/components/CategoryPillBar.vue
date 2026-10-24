@@ -50,11 +50,11 @@ const scrollRight = () => {
         :key="cat.id"
         type="button"
         @click="selectCategory(cat.id)"
-        class="group flex items-center space-x-2 shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition-all duration-150 border select-none"
+        class="group flex items-center space-x-2 shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition-all duration-150 border select-none active:scale-95"
         :class="[
           selectedCategoryId === cat.id
             ? 'bg-white border-white text-black shadow-md'
-            : 'bg-arena-surface border-arena-border text-arena-muted hover:border-arena-border-strong hover:text-white'
+            : 'bg-[#101216] border-[#1F232D] text-arena-muted hover:border-[#374151] hover:text-white hover:bg-[#161920]'
         ]"
       >
         <component

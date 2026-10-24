@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
 import { ChevronLeft, ChevronRight } from "lucide-vue-next";
+import EmvChip from "./EmvChip.vue";
 import { useStoreCatalog, type StoreProduct } from "~/composables/useStoreCatalog";
 
 const { featuredCards } = useStoreCatalog();
@@ -13,7 +14,7 @@ const activeIndex = ref(0);
 const isHovered = ref(false);
 let autoplayTimer: NodeJS.Timeout | null = null;
 
-// Safe Touch Swipe Handling
+// Touch Swipe Handling
 const touchStartX = ref(0);
 const touchEndX = ref(0);
 
@@ -72,27 +73,30 @@ const getCardStyle = (index: number) => {
   const diff = (index - activeIndex.value + total) % total;
 
   if (diff === 0) {
-    // Center Active Card
+    // Center Active Card - Raised forward with crisp focus
     return {
-      transform: "translate3d(0, -12px, 20px) rotateY(0deg) scale(1)",
+      transform: "translate3d(0, -8px, 40px) rotateY(0deg) scale(1)",
       zIndex: 30,
       opacity: 1,
+      filter: "drop-shadow(0 25px 35px rgba(0, 0, 0, 0.9))",
       pointerEvents: "auto" as const,
     };
   } else if (diff === 1 || (total === 2 && diff === 1)) {
-    // Right Flanking Card
+    // Right Flanking Card - Tilted back in 3D perspective
     return {
-      transform: "translate3d(46%, 6px, -70px) rotateY(-18deg) scale(0.9)",
+      transform: "translate3d(44%, 10px, -50px) rotateY(-14deg) scale(0.92)",
       zIndex: 10,
-      opacity: 0.72,
+      opacity: 0.8,
+      filter: "drop-shadow(0 15px 25px rgba(0, 0, 0, 0.8)) brightness(0.9)",
       pointerEvents: "auto" as const,
     };
   } else {
-    // Left Flanking Card
+    // Left Flanking Card - Tilted back in 3D perspective
     return {
-      transform: "translate3d(-46%, 6px, -70px) rotateY(18deg) scale(0.9)",
+      transform: "translate3d(-44%, 10px, -50px) rotateY(14deg) scale(0.92)",
       zIndex: 10,
-      opacity: 0.72,
+      opacity: 0.8,
+      filter: "drop-shadow(0 15px 25px rgba(0, 0, 0, 0.8)) brightness(0.9)",
       pointerEvents: "auto" as const,
     };
   }
@@ -101,28 +105,31 @@ const getCardStyle = (index: number) => {
 
 <template>
   <div
-    class="relative w-full flex flex-col items-center justify-center select-none pt-4 pb-2"
+    class="relative w-full flex flex-col items-center justify-center select-none pt-2 pb-4"
     @mouseenter="isHovered = true"
     @mouseleave="isHovered = false"
     @touchstart="onTouchStart"
     @touchmove="onTouchMove"
     @touchend="onTouchEnd"
   >
-    <!-- 3D Perspective Container -->
+    <!-- 3D Perspective Viewport -->
     <div
-      class="relative w-full max-w-[340px] sm:max-w-[420px] lg:max-w-[460px] h-[280px] sm:h-[310px] flex items-center justify-center"
-      style="perspective: 1200px;"
+      class="relative w-full max-w-[340px] sm:max-w-[420px] lg:max-w-[480px] h-[270px] sm:h-[300px] flex items-center justify-center"
+      style="perspective: 1400px;"
     >
-      <!-- 1. ChatGPT Plus Card (Dark Forest Emerald Metallic) -->
+      <!-- 1. ChatGPT Plus Card (Dark Titanium Emerald Metallic) -->
       <div
         v-if="featuredCards[0]"
-        class="absolute w-[270px] sm:w-[310px] h-[190px] sm:h-[215px] rounded-2xl p-5 flex flex-col justify-between transition-all duration-500 ease-out cursor-pointer shadow-2xl overflow-hidden border border-emerald-500/30"
+        class="absolute w-[270px] sm:w-[320px] h-[185px] sm:h-[215px] rounded-2xl p-5 sm:p-6 flex flex-col justify-between transition-all duration-500 ease-out cursor-pointer overflow-hidden border border-emerald-500/30"
         :style="getCardStyle(0)"
-        style="background: linear-gradient(135deg, #0A1C16 0%, #0F2E24 50%, #071711 100%);"
+        style="
+          background: linear-gradient(135deg, #0A1C16 0%, #103227 45%, #06140F 100%);
+          box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.3), 0 20px 45px -10px rgba(0, 0, 0, 0.95);
+        "
         @click="activeIndex === 0 ? emit('buy-card', featuredCards[0]) : (activeIndex = 0)"
       >
         <!-- Subtle Brushed Metal Glare -->
-        <div class="pointer-events-none absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/0 opacity-60" />
+        <div class="pointer-events-none absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/0 opacity-70" />
 
         <!-- Top Row: OpenAI Rosette + PLUS Badge -->
         <div class="flex items-center justify-between relative z-10">
@@ -134,7 +141,7 @@ const getCardStyle = (index: number) => {
           </span>
         </div>
 
-        <!-- Middle Row: Title + Slogan + Golden EMV Chip -->
+        <!-- Middle Row: Title + Slogan + Silver EMV Smart Chip -->
         <div class="flex items-center justify-between relative z-10 my-1">
           <div>
             <h3 class="text-xl sm:text-2xl font-extrabold tracking-tight text-white leading-none">
@@ -145,13 +152,8 @@ const getCardStyle = (index: number) => {
             </p>
           </div>
 
-          <!-- Realistic Golden EMV Chip -->
-          <div class="h-9 w-12 rounded-lg border border-amber-400/60 bg-gradient-to-br from-amber-300 via-amber-400 to-amber-600 shadow-md p-1 flex items-center justify-center shrink-0">
-            <div class="h-full w-full rounded border border-amber-800/40 grid grid-cols-2 gap-0.5 p-0.5">
-              <div class="border-r border-amber-800/40" />
-              <div class="border-l border-amber-800/40" />
-            </div>
-          </div>
+          <!-- Silver Metallic Smart Chip matching benchmark -->
+          <EmvChip variant="silver" size="md" />
         </div>
 
         <!-- Bottom Row: Official Membership Metadata -->
@@ -163,9 +165,12 @@ const getCardStyle = (index: number) => {
       <!-- 2. CapCut Pro Card (Frosted Platinum Silver Metallic) -->
       <div
         v-if="featuredCards[1]"
-        class="absolute w-[270px] sm:w-[310px] h-[190px] sm:h-[215px] rounded-2xl p-5 flex flex-col justify-between transition-all duration-500 ease-out cursor-pointer shadow-2xl overflow-hidden border border-slate-300/40"
+        class="absolute w-[270px] sm:w-[320px] h-[185px] sm:h-[215px] rounded-2xl p-5 sm:p-6 flex flex-col justify-between transition-all duration-500 ease-out cursor-pointer overflow-hidden border border-slate-300/50"
         :style="getCardStyle(1)"
-        style="background: linear-gradient(135deg, #FFFFFF 0%, #D8DFE6 50%, #BAC4CC 100%);"
+        style="
+          background: linear-gradient(135deg, #FFFFFF 0%, #DCE3EA 50%, #B8C4CE 100%);
+          box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.9), 0 25px 50px -10px rgba(0, 0, 0, 0.9);
+        "
         @click="activeIndex === 1 ? emit('buy-card', featuredCards[1]) : (activeIndex = 1)"
       >
         <!-- Top Row: Official CapCut Bowtie Ribbon + PRO Badge -->
@@ -178,7 +183,7 @@ const getCardStyle = (index: number) => {
           </span>
         </div>
 
-        <!-- Middle Row: Title + Slogan + Metallic EMV Chip -->
+        <!-- Middle Row: Title + Slogan + Gunmetal Titanium EMV Chip -->
         <div class="flex items-center justify-between relative z-10 my-1">
           <div>
             <h3 class="text-xl sm:text-2xl font-extrabold tracking-tight text-black leading-none">
@@ -189,13 +194,8 @@ const getCardStyle = (index: number) => {
             </p>
           </div>
 
-          <!-- Silver / Dark Gold EMV Chip -->
-          <div class="h-9 w-12 rounded-lg border border-slate-400/80 bg-gradient-to-br from-slate-200 via-slate-300 to-slate-400 shadow-md p-1 flex items-center justify-center shrink-0">
-            <div class="h-full w-full rounded border border-slate-600/40 grid grid-cols-2 gap-0.5 p-0.5">
-              <div class="border-r border-slate-600/40" />
-              <div class="border-l border-slate-600/40" />
-            </div>
-          </div>
+          <!-- Gunmetal Titanium Chip matching benchmark -->
+          <EmvChip variant="gunmetal" size="md" />
         </div>
 
         <!-- Bottom Row -->
@@ -207,9 +207,12 @@ const getCardStyle = (index: number) => {
       <!-- 3. Canva Pro Card (Royal Sapphire Blue Metallic) -->
       <div
         v-if="featuredCards[2]"
-        class="absolute w-[270px] sm:w-[310px] h-[190px] sm:h-[215px] rounded-2xl p-5 flex flex-col justify-between transition-all duration-500 ease-out cursor-pointer shadow-2xl overflow-hidden border border-cyan-400/40"
+        class="absolute w-[270px] sm:w-[320px] h-[185px] sm:h-[215px] rounded-2xl p-5 sm:p-6 flex flex-col justify-between transition-all duration-500 ease-out cursor-pointer overflow-hidden border border-cyan-400/40"
         :style="getCardStyle(2)"
-        style="background: linear-gradient(135deg, #072952 0%, #0A4585 50%, #0066B2 100%);"
+        style="
+          background: linear-gradient(135deg, #072952 0%, #0A4585 50%, #0066B2 100%);
+          box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.4), 0 20px 45px -10px rgba(0, 0, 0, 0.95);
+        "
         @click="activeIndex === 2 ? emit('buy-card', featuredCards[2]) : (activeIndex = 2)"
       >
         <!-- Top Row: Official Canva Cursive Script + PRO Badge -->
@@ -222,7 +225,7 @@ const getCardStyle = (index: number) => {
           </span>
         </div>
 
-        <!-- Middle Row: Title + Slogan + Golden EMV Chip -->
+        <!-- Middle Row: Title + Slogan + Golden EMV Smart Chip -->
         <div class="flex items-center justify-between relative z-10 my-1">
           <div>
             <h3 class="text-xl sm:text-2xl font-extrabold tracking-tight text-white leading-none">
@@ -233,13 +236,8 @@ const getCardStyle = (index: number) => {
             </p>
           </div>
 
-          <!-- Golden EMV Chip -->
-          <div class="h-9 w-12 rounded-lg border border-amber-400/60 bg-gradient-to-br from-amber-300 via-amber-400 to-amber-600 shadow-md p-1 flex items-center justify-center shrink-0">
-            <div class="h-full w-full rounded border border-amber-800/40 grid grid-cols-2 gap-0.5 p-0.5">
-              <div class="border-r border-amber-800/40" />
-              <div class="border-l border-amber-800/40" />
-            </div>
-          </div>
+          <!-- Gold Metallic Smart Chip matching benchmark -->
+          <EmvChip variant="gold" size="md" />
         </div>
 
         <!-- Bottom Row -->
@@ -249,37 +247,43 @@ const getCardStyle = (index: number) => {
       </div>
     </div>
 
-    <!-- The Textured Black Slate Rock / Podium Base -->
-    <div class="relative w-full max-w-[340px] sm:max-w-[440px] -mt-6 z-20">
-      <!-- Matte Slate Rock Silhouette with bevel edge -->
-      <div class="h-10 sm:h-12 w-full rounded-2xl bg-gradient-to-b from-[#181B22] via-[#0E1015] to-[#08090B] border-t border-[#2F3545] shadow-[0_20px_40px_rgba(0,0,0,0.95)] flex items-center justify-between px-4 sm:px-6">
+    <!-- Authentic Textured Volcanic Slate Rock / Pedestal Base -->
+    <div class="relative w-full max-w-[340px] sm:max-w-[460px] lg:max-w-[500px] -mt-5 z-20">
+      <!-- Dark Volcanic Slate Slab with Beveled Rim Highlight -->
+      <div
+        class="h-12 sm:h-14 w-full rounded-2xl border-t border-[#374151]/60 shadow-[0_25px_50px_rgba(0,0,0,0.95)] flex items-center justify-between px-4 sm:px-6 relative overflow-hidden"
+        style="background: radial-gradient(ellipse at 50% -20%, #1E232E 0%, #0E1015 60%, #08090B 100%);"
+      >
+        <!-- Ambient Specular Glow on the stone surface directly beneath cards -->
+        <div class="pointer-events-none absolute -top-4 left-1/4 right-1/4 h-8 bg-gradient-to-b from-white/10 to-transparent blur-sm" />
+
         <!-- Left: Carousel Navigation Chevrons & Numeric Counter -->
-        <div class="flex items-center space-x-3">
+        <div class="flex items-center space-x-2.5 relative z-10">
           <button
             type="button"
             @click="prev"
-            class="flex h-6 w-6 items-center justify-center rounded-full border border-arena-border bg-arena-surface text-arena-muted transition-colors hover:text-white hover:border-arena-border-strong"
+            class="flex h-6 w-6 items-center justify-center rounded-full border border-arena-border bg-[#101216] text-arena-muted transition-colors hover:text-white hover:border-arena-border-strong active:scale-95"
             title="Previous Card"
           >
             <ChevronLeft class="h-3.5 w-3.5" />
           </button>
 
-          <span class="font-mono text-xs font-bold text-arena-text select-none tracking-wider">
+          <span class="font-mono text-xs font-bold text-arena-text select-none tracking-wider px-1">
             0{{ activeIndex + 1 }} / 0{{ featuredCards.length }}
           </span>
 
           <button
             type="button"
             @click="next"
-            class="flex h-6 w-6 items-center justify-center rounded-full border border-arena-border bg-arena-surface text-arena-muted transition-colors hover:text-white hover:border-arena-border-strong"
+            class="flex h-6 w-6 items-center justify-center rounded-full border border-arena-border bg-[#101216] text-arena-muted transition-colors hover:text-white hover:border-arena-border-strong active:scale-95"
             title="Next Card"
           >
             <ChevronRight class="h-3.5 w-3.5" />
           </button>
         </div>
 
-        <!-- Right: Vertical Tagline Metadata -->
-        <div class="text-[8px] font-extrabold uppercase tracking-widest text-arena-subtle text-right leading-tight">
+        <!-- Right: Vertical Tagline Metadata matching desktop_storefront.png -->
+        <div class="text-[8px] font-bold uppercase tracking-[0.18em] text-[#5A6173] text-right leading-tight select-none relative z-10">
           SAME TOOLS<br />BIGGER POSSIBILITIES
         </div>
       </div>

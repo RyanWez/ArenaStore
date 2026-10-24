@@ -15,9 +15,11 @@ const emit = defineEmits<{
   <header class="sticky top-0 z-40 w-full border-b border-arena-border bg-arena-bg/95 backdrop-blur-md transition-colors">
     <div class="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
       <!-- Left: Brand Logo (A icon + Arena Store) matching desktop_storefront.png -->
-      <NuxtLink to="/" class="flex items-center space-x-2.5 group">
+      <NuxtLink to="/" class="flex items-center space-x-2.5 group select-none">
         <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-black font-black text-sm tracking-tighter shadow-sm">
-          A
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2L2 22h4.5l2.5-5.5h6l2.5 5.5H22L12 2zm0 5.8l2.1 4.7H9.9L12 7.8z" />
+          </svg>
         </div>
         <span class="text-base font-extrabold tracking-tight text-white sm:text-lg">Arena Store</span>
       </NuxtLink>
@@ -98,9 +100,15 @@ const emit = defineEmits<{
           <button
             type="button"
             @click="emit('open-login')"
-            class="flex items-center space-x-1.5 rounded-full bg-arena-orange px-4 py-1.5 text-xs font-bold text-white transition-colors hover:bg-arena-orange-hover active:scale-[0.98] shadow-sm"
+            class="hidden sm:inline-flex text-xs font-semibold text-arena-muted hover:text-white transition-colors px-2"
           >
-            <KeyRound class="h-3.5 w-3.5" />
+            Sign In
+          </button>
+          <button
+            type="button"
+            @click="emit('open-login')"
+            class="flex items-center space-x-1.5 rounded-full bg-arena-orange px-4 py-1.5 text-xs font-bold text-white transition-colors hover:bg-arena-orange-hover active:scale-[0.98] shadow-sm tracking-tight"
+          >
             <span>Create Account</span>
           </button>
         </template>

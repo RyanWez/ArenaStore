@@ -42,7 +42,7 @@ const resetSearch = () => {
     <!-- Loading Skeleton State -->
     <div
       v-if="isLoading"
-      class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5"
+      class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-3.5"
     >
       <ProductCardSkeleton v-for="i in 12" :key="i" />
     </div>
@@ -70,10 +70,10 @@ const resetSearch = () => {
       </button>
     </div>
 
-    <!-- Active 6-Column Grid matching desktop_storefront.png -->
+    <!-- Active Responsive Bento Grid matching desktop and mobile benchmarks -->
     <div
       v-else
-      class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5 animate-fade-in"
+      class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-3.5 animate-fade-in"
     >
       <ProductCard
         v-for="product in filteredProducts"
