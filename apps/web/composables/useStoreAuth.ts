@@ -40,6 +40,14 @@ export function useStoreAuth() {
   const isLoading = useState<boolean>("store_customer_loading", () => false);
   const isInitialized = useState<boolean>("store_customer_initialized", () => false);
 
+  // Persistent session token stored in cookie + localStorage
+  const authToken = useCookie<string | null>("arena_store_session_token", {
+    default: () => null,
+    maxAge: 60 * 60 * 24 * 30, // 30 days
+    path: "/",
+    sameSite: "lax",
+  });
+
   // Challenge Modal Reactive State
   const isAuthModalOpen = useState<boolean>("store_auth_modal_open", () => false);
   const authStep = useState<AuthStep>("store_auth_step", () => "idle");
@@ -50,6 +58,35 @@ export function useStoreAuth() {
 
   const isAuthenticated = computed(() => Boolean(user.value));
   const balanceMmk = computed(() => user.value?.balanceMmk ?? 0);
+
+  /**
+   * Helper to retrieve active token across cookie or localStorage.
+   */
+  const getStoredToken = (): string | null => {
+    if (authToken.value) return authToken.value;
+    if (import.meta.client) {
+      const local = localStorage.getItem("arena_store_token");
+      if (local) {
+        authToken.value = local;
+        return local;
+      }
+    }
+    return null;
+  };
+
+  /**
+   * Helper to persist or clear token across cookie and localStorage.
+   */
+  const saveToken = (token: string | null) => {
+    authToken.value = token;
+    if (import.meta.client) {
+      if (token) {
+        localStorage.setItem("arena_store_token", token);
+      } else {
+        localStorage.removeItem("arena_store_token");
+      }
+    }
+  };
 
   /**
    * Formats numbers into clean localized MMK strings (e.g. 12,500 MMK).
@@ -76,19 +113,35 @@ export function useStoreAuth() {
    * Fetches active session and profile from /api/store/auth/me.
    */
   const fetchMe = async (): Promise<StoreCustomer | null> => {
+    const token = getStoredToken();
     isLoading.value = true;
     try {
+      const headers: Record<string, string> = { Accept: "application/json" };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const response = await $fetch<{ ok: boolean; user: StoreCustomer }>("/api/store/auth/me", {
-        headers: { Accept: "application/json" },
+        headers,
+        credentials: "include",
       });
+
       if (response && response.ok && response.user) {
         user.value = response.user;
         return response.user;
       }
+
+      if (token) {
+        saveToken(null);
+      }
       user.value = null;
       return null;
-    } catch {
-      user.value = null;
+    } catch (err: any) {
+      // If 401 Unauthorized, token has expired or is invalid
+      if (err?.statusCode === 401 || err?.response?.status === 401) {
+        saveToken(null);
+        user.value = null;
+      }
       return null;
     } finally {
       isLoading.value = false;
@@ -153,19 +206,39 @@ export function useStoreAuth() {
           try {
             const data = JSON.parse(event.data);
             if (data.ok && data.user) {
-              authStep.value = "confirmed";
+              // 1. Immediately persist session token
+              if (data.token) {
+                saveToken(data.token);
+
+                // 2. Also establish HttpOnly session cookie
+                try {
+                  await $fetch("/api/store/auth/session", {
+                    method: "POST",
+                    body: { token: data.token },
+                    headers: {
+                      Authorization: `Bearer ${data.token}`,
+                    },
+                    credentials: "include",
+                  });
+                } catch (cookieErr) {
+                  console.warn("[useStoreAuth] Session cookie exchange warning:", cookieErr);
+                }
+              }
+
+              // 3. Immediately set user state from confirmed payload
               user.value = data.user;
+              authStep.value = "confirmed";
               cleanupSseAndTimer();
 
-              // Synchronize session cookie & full profile
+              // 4. Synchronize full profile & wallet balance from database
               await fetchMe();
 
-              // Auto-close modal after brief celebration
+              // 5. Keep celebration visible for 1.8s then auto-close modal
               setTimeout(() => {
                 if (authStep.value === "confirmed") {
                   closeLoginModal();
                 }
-              }, 1400);
+              }, 1800);
             }
           } catch (e) {
             console.error("[useStoreAuth] Failed to parse confirmed event:", e);
@@ -243,12 +316,16 @@ export function useStoreAuth() {
     if (tg?.initData && !isAuthenticated.value) {
       try {
         isLoading.value = true;
-        const res = await $fetch<{ ok: boolean; user: StoreCustomer }>("/api/store/auth/telegram-webapp", {
+        const res = await $fetch<{ ok: boolean; token?: string; user: StoreCustomer }>("/api/store/auth/telegram-webapp", {
           method: "POST",
           body: { initData: tg.initData },
+          credentials: "include",
         });
 
         if (res.ok && res.user) {
+          if (res.token) {
+            saveToken(res.token);
+          }
           user.value = res.user;
           // Notify Telegram WebApp container that app is ready
           tg.ready?.();
@@ -265,13 +342,21 @@ export function useStoreAuth() {
   };
 
   /**
-   * Terminates active session and clears cookies.
+   * Terminates active session and clears cookies and localStorage.
    */
   const logout = async (): Promise<void> => {
     isLoading.value = true;
+    const token = getStoredToken();
     try {
-      await $fetch("/api/store/auth/logout", { method: "POST" });
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      await $fetch("/api/store/auth/logout", {
+        method: "POST",
+        headers,
+        credentials: "include",
+      });
     } catch {}
+    saveToken(null);
     user.value = null;
     isLoading.value = false;
   };
