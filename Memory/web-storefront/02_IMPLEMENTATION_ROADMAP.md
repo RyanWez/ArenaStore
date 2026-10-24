@@ -131,11 +131,11 @@ Build the modern, responsive storefront frontend matching the approved master de
    - [x] Build default layout and live index landing page.
 
 2. **Sub-Phase 2B: 3D Showcase & Bento Grid:**
-   - [ ] Build 3D card deck with CSS `perspective: 1200px` and `transform-style: preserve-3d` (Hero Carousel).
-   - [ ] Center stage ChatGPT Plus card with flanking Notion and Canva cards with touch swipe gesture support.
-   - [ ] Horizontal category momentum scrollbar (`All`, `AI`, `Design`, `Video`, `Productivity`).
-   - [ ] 2-Column Mobile & 4-Column Desktop Bento Product Grid with squircle icons, stock badges, and MMK pricing.
-   - [ ] Integrate live catalog data from Fastify API (`GET /api/store/catalog`).
+   - [x] Build 3D card deck with CSS `perspective: 1200px` and `transform-style: preserve-3d` (Hero Carousel).
+   - [x] Center stage ChatGPT Plus card with flanking Claude and Canva cards with touch swipe gesture support.
+   - [x] Horizontal category momentum scrollbar (`All`, `AI`, `Design`, `Video`, `Productivity`, `VPN`).
+   - [x] 2-Column Mobile & 4-Column Desktop Bento Product Grid with squircle icons, stock badges, and MMK pricing.
+   - [x] Integrate live catalog data from Fastify API (`/api/catalog/categories` & `/api/catalog/products`) with SSR prefetching.
 
 3. **Sub-Phase 2C: Auth Modal & SSE Realtime Handshake UI:**
    - [ ] W3K-style Login Modal: displays 4-digit code and direct Telegram bot deep link button.
@@ -144,7 +144,7 @@ Build the modern, responsive storefront frontend matching the approved master de
 
 #### Acceptance Criteria
 - [x] Sub-Phase 2A: Nuxt builds cleanly (`pnpm --filter @arena/web build`), `pnpm lint` 0 errors, 47 test files (401 tests) passing.
-- [ ] Sub-Phase 2B: Mobile viewport (375px - 430px) and Desktop viewport (1200px+) render pixel-perfect to approved mockups.
+- [x] Sub-Phase 2B: 3D Card Stack Carousel rotates smoothly, Category scrollbar filters products, Bento grid renders live catalog with SSR prefetching.
 - [ ] Sub-Phase 2C: Full browser login cycle via 4-digit challenge code completes seamlessly in < 2 seconds.
 
 

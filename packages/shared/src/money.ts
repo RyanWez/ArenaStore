@@ -132,6 +132,9 @@ export function effectiveUnitCostUsdCents(
 
   // Fallback to highest tier if quantity exceeds all bounds
   const highest = sortedTiers[sortedTiers.length - 1];
+  if (!highest) {
+    throw new Error("No pricing tiers provided.");
+  }
   return usdToCents(highest.price);
 }
 

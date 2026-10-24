@@ -145,7 +145,7 @@ export interface ParsedEmojiText {
 export function parseCustomEmoji(rawText: string): ParsedEmojiText {
   if (!rawText) return { emojiId: null, cleanText: "" };
   const match = /\{pe:(\d+)\}/.exec(rawText);
-  const emojiId = match ? match[1] : null;
+  const emojiId = match?.[1] ?? null;
 
   // Strip placeholder and immediately following unicode emoji if present
   const cleanText = rawText

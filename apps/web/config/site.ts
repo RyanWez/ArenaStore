@@ -7,19 +7,20 @@ export interface NavItem {
 }
 
 export const SITE_CONFIG = {
-  name: "ARENA STORE",
-  tagline: "Digital Accounts & Instant Licenses",
-  description: "ChatGPT Plus, Canva Pro, YouTube Premium, and developer subscriptions delivered instantly via your prepaid MMK wallet.",
+  name: "Arena Store",
+  tagline: "Pay. Tap. Done.",
+  description: "Get premium apps, memberships and digital tools in seconds. Trusted, fast and hassle-free — only at Arena Store.",
   botUsername: process.env.PUBLIC_BOT_USERNAME || "arenastoredev_bot",
   telegramChannel: "https://t.me/arenasellerstore",
   supportContact: "https://t.me/ryanwez",
 
-  // Desktop Header Links
+  // Desktop Header Links matching Image 1
   headerNav: [
-    { label: "Storefront", path: "/" },
     { label: "Products", path: "/#catalog" },
-    { label: "My Orders", path: "/orders" },
+    { label: "Categories", path: "/#catalog" },
+    { label: "How It Works", path: "/orders" },
     { label: "Affiliate 3%", path: "/referral", badge: "3%" },
+    { label: "Support", path: "https://t.me/ryanwez" },
   ] as NavItem[],
 
   // Mobile Bottom Bar Navigation

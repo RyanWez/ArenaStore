@@ -1,60 +1,132 @@
 <script setup lang="ts">
-import { ShieldCheck, Zap, Sparkles, ArrowRight, Wallet } from "lucide-vue-next";
+import { ref } from "vue";
+import { Search, Zap, ShieldCheck, CreditCard, Headphones } from "lucide-vue-next";
+import HeroCardDeck from "~/components/HeroCardDeck.vue";
+import CategoryPillBar from "~/components/CategoryPillBar.vue";
+import ProductGrid from "~/components/ProductGrid.vue";
+import { useStoreCatalog } from "~/composables/useStoreCatalog";
 import { useStoreAuth } from "~/composables/useStoreAuth";
+import type { MasterProduct } from "~/data/master-catalog";
 
-const { user, balanceMmk, isAuthenticated, formatMmk } = useStoreAuth();
+const { fetchCatalog, searchQuery } = useStoreCatalog();
+const { isAuthenticated } = useStoreAuth();
+
+const localSearchInput = ref("");
+
+// Prefetch catalog for instant zero-flash SSR
+await useAsyncData("master_catalog_init", async () => {
+  await fetchCatalog();
+  return true;
+});
+
+const handleSearchSubmit = () => {
+  searchQuery.value = localSearchInput.value;
+  // Smooth scroll to catalog grid
+  if (typeof document !== "undefined") {
+    const el = document.getElementById("catalog");
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth" });
+    }
+  }
+};
+
+const handleBuyProduct = (product: MasterProduct) => {
+  console.log("[Storefront] Product chosen for purchase:", product.name, product.id);
+  if (!isAuthenticated.value) {
+    console.log("[Storefront] User not authenticated, trigger login modal");
+  } else {
+    console.log("[Storefront] User authenticated, proceed to checkout");
+  }
+};
+
+useHead({
+  title: "Arena Store — Pay. Tap. Done.",
+  meta: [
+    {
+      name: "description",
+      content: "Get premium apps, memberships and digital tools in seconds. Trusted, fast and hassle-free — only at Arena Store.",
+    },
+  ],
+});
 </script>
 
 <template>
-  <div class="space-y-8 animate-fade-in">
-    <!-- Hero Header Banner (2026 Flat Monolithic) -->
-    <section class="rounded-2xl border border-arena-border bg-arena-surface p-6 sm:p-8 relative overflow-hidden">
-      <div class="max-w-2xl space-y-4">
-        <!-- Status Pill -->
-        <div class="inline-flex items-center space-x-2 rounded-full border border-arena-orange/20 bg-arena-orange-subtle px-3 py-1 text-xs font-semibold text-arena-orange">
-          <Sparkles class="h-3.5 w-3.5" />
-          <span>PREMIUM DIGITAL STOREFRONT</span>
+  <div class="space-y-12 animate-fade-in pb-12">
+    <!-- 1. Hero Section matching desktop_storefront.png -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center pt-2 sm:pt-4">
+      <!-- Left Column: Headline, Search Pill & Trust Badges -->
+      <div class="lg:col-span-6 space-y-6 text-left">
+        <!-- Subtitle Label -->
+        <div class="text-[11px] font-bold uppercase tracking-widest text-arena-muted">
+          PREMIUM DIGITAL PRODUCTS FOR A SMARTER YOU
         </div>
 
-        <h1 class="text-2xl sm:text-4xl font-extrabold tracking-tight text-white leading-tight">
-          Arena Store Digital Accounts & Instant Licenses
+        <!-- Huge Bold Headline: Pay. Tap. Done. -->
+        <h1 class="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight text-white leading-[1.05]">
+          Pay. Tap. Done<span class="text-white">.</span>
         </h1>
 
-        <p class="text-sm sm:text-base text-arena-muted leading-relaxed">
-          ChatGPT Plus, Canva Pro, YouTube Premium, and developer subscriptions delivered instantly via your prepaid MMK wallet.
+        <!-- Paragraph Description -->
+        <p class="text-sm sm:text-base text-arena-muted max-w-lg leading-relaxed">
+          Get premium apps, memberships and digital tools in seconds. Trusted, fast and hassle-free — only at Arena Store.
         </p>
 
-        <!-- Live Auth Status Badge -->
-        <div class="pt-2 flex flex-wrap gap-3 items-center">
-          <div
-            v-if="isAuthenticated && user"
-            class="flex items-center space-x-2 rounded-lg border border-arena-border bg-arena-elevated px-3 py-1.5 text-xs text-arena-text"
-          >
-            <ShieldCheck class="h-4 w-4 text-arena-emerald" />
-            <span>Signed in as <strong class="text-white">{{ user.firstName }}</strong></span>
-            <span class="text-arena-subtle">•</span>
-            <span class="font-mono text-arena-orange font-semibold">{{ formatMmk(balanceMmk) }}</span>
+        <!-- Integrated Search Pill Input matching Image 1 -->
+        <form @submit.prevent="handleSearchSubmit" class="relative w-full max-w-md">
+          <div class="relative flex items-center rounded-full border border-arena-border bg-[#0E1015] p-1.5 shadow-xl transition-all focus-within:border-arena-border-strong">
+            <div class="pl-3.5 pr-2 flex items-center pointer-events-none text-arena-muted">
+              <Search class="h-4 w-4" />
+            </div>
+            <input
+              v-model="localSearchInput"
+              type="text"
+              placeholder="Search for apps, memberships, tools..."
+              class="w-full bg-transparent text-xs sm:text-sm text-white placeholder-arena-subtle focus:outline-none"
+            />
+            <button
+              type="submit"
+              class="rounded-full bg-arena-orange px-5 py-2 text-xs font-bold text-white transition-colors hover:bg-arena-orange-hover active:scale-95 shrink-0 shadow-sm"
+            >
+              Search
+            </button>
           </div>
-          <div
-            v-else
-            class="flex items-center space-x-2 rounded-lg border border-arena-border bg-arena-elevated px-3 py-1.5 text-xs text-arena-muted"
-          >
-            <Zap class="h-4 w-4 text-arena-orange" />
-            <span>Connect with Telegram to purchase</span>
+        </form>
+
+        <!-- Trust Badges Row (4 Items) -->
+        <div class="flex flex-wrap items-center gap-4 sm:gap-6 pt-2 text-xs text-arena-muted font-medium">
+          <div class="flex items-center space-x-1.5">
+            <Zap class="h-3.5 w-3.5 text-arena-muted" />
+            <span>Instant Delivery</span>
+          </div>
+          <div class="flex items-center space-x-1.5">
+            <ShieldCheck class="h-3.5 w-3.5 text-arena-muted" />
+            <span>100% Legit</span>
+          </div>
+          <div class="flex items-center space-x-1.5">
+            <CreditCard class="h-3.5 w-3.5 text-arena-muted" />
+            <span>Secure Payments</span>
+          </div>
+          <div class="flex items-center space-x-1.5">
+            <Headphones class="h-3.5 w-3.5 text-arena-muted" />
+            <span>24/7 Support</span>
           </div>
         </div>
+      </div>
+
+      <!-- Right Column: 3D Luxury Metallic Card Stack on Podium -->
+      <div class="lg:col-span-6 flex items-center justify-center">
+        <HeroCardDeck @buy-card="handleBuyProduct" />
       </div>
     </section>
 
-    <!-- Sub-Phase 2B Showcase Placeholder / Catalog Section -->
-    <section id="catalog" class="scroll-mt-20 rounded-2xl border border-dashed border-arena-border bg-arena-surface/50 p-8 text-center space-y-3">
-      <div class="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-arena-elevated border border-arena-border text-arena-orange">
-        <Sparkles class="h-5 w-5" />
-      </div>
-      <h3 class="text-base font-bold text-white">Sub-Phase 2A Foundation Operational</h3>
-      <p class="text-xs text-arena-muted max-w-md mx-auto">
-        Next step: Sub-Phase 2B will mount the signature 3D Card Stack Carousel, Category Momentum Scrollbar, and 2-Column Bento Product Grid right here!
-      </p>
+    <!-- 2. Thematic Category Pill Bar -->
+    <section>
+      <CategoryPillBar />
+    </section>
+
+    <!-- 3. Popular Products 6-Column Bento Grid -->
+    <section id="catalog" class="scroll-mt-24 space-y-6">
+      <ProductGrid @buy-product="handleBuyProduct" />
     </section>
   </div>
 </template>
