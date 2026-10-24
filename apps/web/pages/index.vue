@@ -4,9 +4,8 @@ import { Search, Zap, ShieldCheck, CreditCard, Headphones } from "lucide-vue-nex
 import HeroCardDeck from "~/components/HeroCardDeck.vue";
 import CategoryPillBar from "~/components/CategoryPillBar.vue";
 import ProductGrid from "~/components/ProductGrid.vue";
-import { useStoreCatalog } from "~/composables/useStoreCatalog";
+import { useStoreCatalog, type StoreProduct } from "~/composables/useStoreCatalog";
 import { useStoreAuth } from "~/composables/useStoreAuth";
-import type { MasterProduct } from "~/data/master-catalog";
 
 const { fetchCatalog, searchQuery } = useStoreCatalog();
 const { isAuthenticated } = useStoreAuth();
@@ -30,7 +29,7 @@ const handleSearchSubmit = () => {
   }
 };
 
-const handleBuyProduct = (product: MasterProduct) => {
+const handleBuyProduct = (product: StoreProduct) => {
   console.log("[Storefront] Product chosen for purchase:", product.name, product.id);
   if (!isAuthenticated.value) {
     console.log("[Storefront] User not authenticated, trigger login modal");

@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
 import { ChevronLeft, ChevronRight } from "lucide-vue-next";
-import { useStoreCatalog } from "~/composables/useStoreCatalog";
-import type { MasterProduct } from "~/data/master-catalog";
+import { useStoreCatalog, type StoreProduct } from "~/composables/useStoreCatalog";
 
 const { featuredCards } = useStoreCatalog();
 
 const emit = defineEmits<{
-  (e: "buy-card", card: MasterProduct): void;
+  (e: "buy-card", card: StoreProduct): void;
 }>();
 
 const activeIndex = ref(0);
@@ -169,10 +168,10 @@ const getCardStyle = (index: number) => {
         style="background: linear-gradient(135deg, #FFFFFF 0%, #D8DFE6 50%, #BAC4CC 100%);"
         @click="activeIndex === 1 ? emit('buy-card', featuredCards[1]) : (activeIndex = 1)"
       >
-        <!-- Top Row: CapCut Scissors + PRO Badge -->
+        <!-- Top Row: Official CapCut Bowtie Ribbon + PRO Badge -->
         <div class="flex items-center justify-between relative z-10">
-          <svg class="h-8 w-8 text-black" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M19.5 7.5L12 12l7.5 4.5V19l-9.5-5.7L4.5 16.5V13.8L9.8 12 4.5 10.2V7.5l5.5 3.2L19.5 5v2.5z"/>
+          <svg class="h-8 w-8 text-black" viewBox="0 0 25 24" fill="currentColor" fill-rule="evenodd">
+            <path d="M24.189 6.442V2.671l-4.535 2.383V4.91c.002-1.505-1.078-2.411-2.638-2.411H2.64C.993 2.5 0 3.407 0 4.91V8.72L6.354 12 0 15.316v3.8C0 20.595 1 21.5 2.64 21.5h14.373c1.56 0 2.639-.907 2.639-2.382v-.197l4.536 2.409v-3.828L13.64 12 24.19 6.443zM9.982 13.873l7.797 4.083H2.157l7.825-4.083zm7.741-7.828l-7.742 4.057-7.825-4.057h15.567z" />
           </svg>
           <span class="rounded-full bg-black/10 backdrop-blur-md border border-black/20 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-widest text-black shadow-sm">
             PRO
@@ -213,10 +212,10 @@ const getCardStyle = (index: number) => {
         style="background: linear-gradient(135deg, #072952 0%, #0A4585 50%, #0066B2 100%);"
         @click="activeIndex === 2 ? emit('buy-card', featuredCards[2]) : (activeIndex = 2)"
       >
-        <!-- Top Row: Canva Logo + PRO Badge -->
+        <!-- Top Row: Official Canva Cursive Script + PRO Badge -->
         <div class="flex items-center justify-between relative z-10">
-          <svg class="h-8 w-8 text-[#00C4CC]" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1.2 14.8c-2.4 0-4.1-1.8-4.1-4.8 0-3.3 2.1-5.1 4.7-5.1 1.8 0 3.1.8 3.7 2.1l-1.8 1.1c-.4-.8-1-1.2-1.9-1.2-1.6 0-2.6 1.4-2.6 3.1 0 1.9.9 3 2.3 3 .9 0 1.6-.4 2.1-1.1l1.8 1.1c-.8 1.2-2.3 1.8-4.2 1.8z"/>
+          <svg class="h-8 w-8 text-white drop-shadow" viewBox="0 0 80 80" fill="currentColor">
+            <path d="M57.2691 48.2052C56.939 48.2052 56.6485 48.484 56.3462 49.0928C52.9323 56.0153 47.0358 60.9134 40.2125 60.9134C32.3228 60.9134 27.437 53.7913 27.437 43.9522C27.437 27.2855 36.7232 17.6491 44.8796 17.6491C48.691 17.6491 51.0186 20.0443 51.0186 23.8559C51.0186 28.3796 48.4485 30.7748 48.4485 32.3702C48.4485 33.0864 48.8939 33.5201 49.7773 33.5201C53.3264 33.5201 57.4918 29.4419 57.4918 23.6808C57.4918 18.0947 52.63 13.9888 44.4737 13.9888C30.994 13.9888 19.0142 26.4858 19.0142 43.777C19.0142 57.1614 26.6572 66.0061 38.45 66.0061C50.9668 66.0061 58.2043 53.5526 58.2043 49.5105C58.2043 48.6153 57.7466 48.2052 57.2691 48.2052Z"/>
           </svg>
           <span class="rounded-full bg-white/10 backdrop-blur-md border border-white/20 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-widest text-white shadow-sm">
             PRO

@@ -2,13 +2,12 @@
 import { ChevronRight, PackageOpen } from "lucide-vue-next";
 import ProductCard from "./ProductCard.vue";
 import ProductCardSkeleton from "./ProductCardSkeleton.vue";
-import { useStoreCatalog } from "~/composables/useStoreCatalog";
-import type { MasterProduct } from "~/data/master-catalog";
+import { useStoreCatalog, type StoreProduct } from "~/composables/useStoreCatalog";
 
 const { filteredProducts, isLoading, selectCategory, searchQuery } = useStoreCatalog();
 
 const emit = defineEmits<{
-  (e: "buy-product", product: MasterProduct): void;
+  (e: "buy-product", product: StoreProduct): void;
 }>();
 
 const resetSearch = () => {
