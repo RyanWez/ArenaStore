@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { ShoppingCart } from "lucide-vue-next";
 import BrandSquircle from "./BrandSquircle.vue";
 import type { StoreProduct } from "~/composables/useStoreCatalog";
@@ -11,9 +12,51 @@ const emit = defineEmits<{
   (e: "buy", product: StoreProduct): void;
 }>();
 
-const formatPrice = (priceMmk: number): string => {
-  return new Intl.NumberFormat("en-US").format(priceMmk) + " Ks";
-};
+// Extract pure numeric formatted string (e.g. "12,500", "350,000", "1,250,000")
+const numericAmount = computed(() => {
+  if (typeof props.product.priceMmk === "number" && !isNaN(props.product.priceMmk) && props.product.priceMmk > 0) {
+    return new Intl.NumberFormat("en-US").format(props.product.priceMmk);
+  }
+  if (props.product.formattedPrice) {
+    // Strip non-numeric/non-comma characters (e.g. " Ks", "/ month", etc.)
+    const cleaned = props.product.formattedPrice.replace(/[^0-9,.]/g, "").trim();
+    if (cleaned) return cleaned;
+  }
+  if (typeof props.product.priceMmk === "number" && !isNaN(props.product.priceMmk)) {
+    return new Intl.NumberFormat("en-US").format(props.product.priceMmk);
+  }
+  return "0";
+});
+
+// Calculate digit count (excluding commas/dots) to dynamically scale font size
+const digitCount = computed(() => {
+  return numericAmount.value.replace(/[^0-9]/g, "").length;
+});
+
+// Dynamic font scaling classes:
+// <= 5 digits (e.g. 6,500, 35,000): prominent bold display (text-base sm:text-lg)
+// 6 digits (e.g. 120,000 - 999,999): balanced compact display (text-sm sm:text-[15px])
+// 7 digits (e.g. 1,250,000 - 9,999,999): streamlined display (text-[13px] sm:text-sm)
+// 8+ digits: ultra-compact display (text-xs sm:text-[13px])
+const priceTextClass = computed(() => {
+  if (digitCount.value >= 8) {
+    return "text-xs sm:text-[13px]";
+  }
+  if (digitCount.value === 7) {
+    return "text-[13px] sm:text-sm";
+  }
+  if (digitCount.value === 6) {
+    return "text-sm sm:text-[15px]";
+  }
+  return "text-base sm:text-lg";
+});
+
+const currencyTextClass = computed(() => {
+  if (digitCount.value >= 7) {
+    return "text-[10px] sm:text-[11px]";
+  }
+  return "text-[11px] sm:text-xs";
+});
 </script>
 
 <template>
@@ -54,14 +97,21 @@ const formatPrice = (priceMmk: number): string => {
       </div>
     </div>
 
-    <!-- Bottom Content: Price + Dynamic Duration + Cart Button -->
-    <div class="border-t border-arena-border/60 pt-3 mt-4 flex items-center justify-between">
-      <div class="flex items-baseline space-x-1">
-        <span class="font-mono text-sm sm:text-base font-extrabold text-white tracking-tight">
-          {{ product.formattedPrice || formatPrice(product.priceMmk) }}
+    <!-- Bottom Content: Single-line Price + Unit + Cart Button -->
+    <div class="border-t border-arena-border/60 pt-3 mt-4 flex items-center justify-between gap-2">
+      <!-- Single-line price + currency, guaranteed no wrapping -->
+      <div class="flex items-baseline whitespace-nowrap min-w-0 pr-1">
+        <span
+          class="font-mono font-extrabold text-white tracking-tight tabular-nums"
+          :class="priceTextClass"
+        >
+          {{ numericAmount }}
         </span>
-        <span class="text-[11px] text-arena-subtle font-medium">
-          {{ product.durationLabel || "/ month" }}
+        <span
+          class="font-bold text-arena-muted ml-1 select-none"
+          :class="currencyTextClass"
+        >
+          Ks
         </span>
       </div>
 
@@ -70,7 +120,7 @@ const formatPrice = (priceMmk: number): string => {
         type="button"
         @click="emit('buy', product)"
         :disabled="product.stockStatus === 'OUT_OF_STOCK'"
-        class="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-xl border border-arena-border bg-[#161920] text-arena-muted transition-all hover:border-arena-orange hover:text-arena-orange hover:bg-arena-orange/10 active:scale-95 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+        class="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl border border-arena-border bg-[#161920] text-arena-muted transition-all hover:border-arena-orange hover:text-arena-orange hover:bg-arena-orange/10 active:scale-95 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
         :title="product.stockStatus === 'OUT_OF_STOCK' ? 'Out of Stock' : 'Add to cart / Purchase'"
       >
         <ShoppingCart class="h-4 w-4" />
