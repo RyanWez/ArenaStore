@@ -10,6 +10,7 @@ import { useStoreAuth } from "~/composables/useStoreAuth";
 const { fetchCatalog, searchQuery } = useStoreCatalog();
 const { isAuthenticated } = useStoreAuth();
 
+const route = useRoute();
 const localSearchInput = ref("");
 let searchDebounceTimer: NodeJS.Timeout | null = null;
 
@@ -17,6 +18,19 @@ let searchDebounceTimer: NodeJS.Timeout | null = null;
 await useAsyncData("master_catalog_init", async () => {
   await fetchCatalog();
   return true;
+});
+
+onMounted(() => {
+  if (route.hash === "#catalog") {
+    nextTick(() => {
+      setTimeout(() => {
+        const el = document.getElementById("catalog");
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth" });
+        }
+      }, 150);
+    });
+  }
 });
 
 // Live real-time reactive search filtering with 120ms debounce

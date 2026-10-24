@@ -10,15 +10,33 @@ const emit = defineEmits<{
   (e: "open-topup"): void;
 }>();
 
-const handleNavClick = (e: MouseEvent, item: { path: string }) => {
+const route = useRoute();
+const router = useRouter();
+
+const handleNavClick = async (e: MouseEvent, item: { path: string }) => {
   if (item.path === "/#catalog") {
     e.preventDefault();
-    if (typeof document !== "undefined") {
-      const el = document.getElementById("catalog");
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth" });
-        window.history.pushState(null, "", "/#catalog");
+    if (route.path === "/") {
+      if (typeof document !== "undefined") {
+        const el = document.getElementById("catalog");
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth" });
+          window.history.pushState(null, "", "/#catalog");
+        }
       }
+    } else {
+      await router.push("/");
+      nextTick(() => {
+        setTimeout(() => {
+          if (typeof document !== "undefined") {
+            const el = document.getElementById("catalog");
+            if (el) {
+              el.scrollIntoView({ behavior: "smooth" });
+              window.history.pushState(null, "", "/#catalog");
+            }
+          }
+        }, 150);
+      });
     }
   }
 };

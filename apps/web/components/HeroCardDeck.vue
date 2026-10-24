@@ -117,27 +117,27 @@ const getCardStyle = (index: number) => {
       class="relative w-full max-w-[340px] sm:max-w-[420px] lg:max-w-[480px] h-[270px] sm:h-[300px] flex items-center justify-center"
       style="perspective: 1400px;"
     >
-      <!-- 1. ChatGPT Plus Card (Dark Titanium Emerald Metallic) -->
+      <!-- 1. Gemini Pro Card (Deep Cosmic Sapphire Metallic) -->
       <div
         v-if="featuredCards[0]"
-        class="absolute w-[270px] sm:w-[320px] h-[185px] sm:h-[215px] rounded-2xl p-5 sm:p-6 flex flex-col justify-between transition-all duration-500 ease-out cursor-pointer overflow-hidden border border-emerald-500/30"
+        class="absolute w-[270px] sm:w-[320px] h-[185px] sm:h-[215px] rounded-2xl p-5 sm:p-6 flex flex-col justify-between transition-all duration-500 ease-out cursor-pointer overflow-hidden border border-sky-500/30"
         :style="getCardStyle(0)"
         style="
-          background: linear-gradient(135deg, #0A1C16 0%, #103227 45%, #06140F 100%);
-          box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.3), 0 20px 45px -10px rgba(0, 0, 0, 0.95);
+          background: linear-gradient(135deg, #091322 0%, #0F2A4A 50%, #071526 100%);
+          box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.4), 0 20px 45px -10px rgba(0, 0, 0, 0.95);
         "
         @click="activeIndex === 0 ? emit('buy-card', featuredCards[0]) : (activeIndex = 0)"
       >
         <!-- Subtle Brushed Metal Glare -->
         <div class="pointer-events-none absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/0 opacity-70" />
 
-        <!-- Top Row: OpenAI Rosette + PLUS Badge -->
+        <!-- Top Row: Google Gemini Star Vector + PRO Badge -->
         <div class="flex items-center justify-between relative z-10">
-          <svg class="h-8 w-8 text-white drop-shadow" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M22.28 9.87a5.98 5.98 0 0 0-.52-4.9 6.05 6.05 0 0 0-4.32-2.92 6.02 6.02 0 0 0-4.9.99 6 6 0 0 0-4.22-1.99 6.06 6.06 0 0 0-5.7 4.14 6.05 6.05 0 0 0 .83 6.02 5.98 5.98 0 0 0 .52 4.9 6.05 6.05 0 0 0 4.32 2.92 6.02 6.02 0 0 0 4.9-.99 6 6 0 0 0 4.22 1.99 6.06 6.06 0 0 0 5.7-4.14 6.05 6.05 0 0 0-.83-6.02zm-8.88 10.74a4.57 4.57 0 0 1-2.93-.72l.14-.08 4.88-2.82a.77.77 0 0 0 .39-.67v-6.9l2.08 1.2a.07.07 0 0 1 .04.05v5.71a4.58 4.58 0 0 1-4.6 4.23zm-7.9-3.41a4.56 4.56 0 0 1-.58-3.04l.14.08 4.88 2.82a.76.76 0 0 0 .77 0l5.98-3.45v2.4a.07.07 0 0 1-.03.06l-4.95 2.86a4.59 4.59 0 0 1-6.21-1.73zm-1.68-7.98a4.56 4.56 0 0 1 2.35-2.32v5.79a.77.77 0 0 0 .39.67l5.97 3.45-2.08 1.2a.07.07 0 0 1-.07 0l-4.95-2.86a4.58 4.58 0 0 1-1.61-5.93zm14.77 2.1l-5.98-3.45 2.08-1.2a.07.07 0 0 1 .07 0l4.95 2.86a4.58 4.58 0 0 1 1.61 5.93 4.56 4.56 0 0 1-2.34 2.33v-5.8a.77.77 0 0 0-.39-.67zm1.7-3.83l-.14-.08-4.88-2.82a.76.76 0 0 0-.77 0l-5.98 3.45v-2.4a.07.07 0 0 1 .03-.06l4.95-2.86a4.58 4.58 0 0 1 6.79 4.77zm-10.7 4.73l-2.08-1.2a.07.07 0 0 1-.04-.05v-5.71a4.58 4.58 0 0 1 7.53-3.51l-.14.08-4.88 2.82a.77.77 0 0 0-.39.67v6.9z"/>
+          <svg class="h-8 w-8 text-sky-400 drop-shadow" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20.616 10.835a14.147 14.147 0 01-4.45-3.001 14.111 14.111 0 01-3.678-6.452.503.503 0 00-.975 0 14.134 14.134 0 01-3.679 6.452 14.155 14.155 0 01-4.45 3.001c-.65.28-1.318.505-2.002.678a.502.502 0 000 .975c.684.172 1.35.397 2.002.677a14.147 14.147 0 014.45 3.001 14.112 14.112 0 013.679 6.453.502.502 0 00.975 0c.172-.685.397-1.351.677-2.003a14.145 14.145 0 013.001-4.45 14.113 14.113 0 016.453-3.678.503.503 0 000-.975 13.245 13.245 0 01-2.003-.678z" />
           </svg>
-          <span class="rounded-full bg-white/10 backdrop-blur-md border border-white/20 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-widest text-white shadow-sm">
-            PLUS
+          <span class="rounded-full bg-sky-500/10 backdrop-blur-md border border-sky-500/30 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-widest text-sky-300 shadow-sm">
+            PRO
           </span>
         </div>
 
@@ -145,10 +145,10 @@ const getCardStyle = (index: number) => {
         <div class="flex items-center justify-between relative z-10 my-1">
           <div>
             <h3 class="text-xl sm:text-2xl font-extrabold tracking-tight text-white leading-none">
-              ChatGPT Plus
+              Gemini Pro
             </h3>
-            <p class="text-[11px] text-emerald-200/80 font-medium mt-1 leading-tight">
-              Higher limits<br />Bigger possibilities
+            <p class="text-[11px] text-sky-200/80 font-medium mt-1 leading-tight">
+              Google Advanced AI<br />Extended 18 Months
             </p>
           </div>
 
@@ -157,8 +157,8 @@ const getCardStyle = (index: number) => {
         </div>
 
         <!-- Bottom Row: Official Membership Metadata -->
-        <div class="relative z-10 text-[9px] font-semibold uppercase tracking-widest text-emerald-300/60">
-          Official Membership
+        <div class="relative z-10 text-[9px] font-semibold uppercase tracking-widest text-sky-300/60">
+          Official Google Ecosystem
         </div>
       </div>
 
@@ -204,24 +204,24 @@ const getCardStyle = (index: number) => {
         </div>
       </div>
 
-      <!-- 3. Canva Pro Card (Royal Sapphire Blue Metallic) -->
+      <!-- 3. YouTube Premium Card (Royal Velvet Ruby Red Metallic) -->
       <div
         v-if="featuredCards[2]"
-        class="absolute w-[270px] sm:w-[320px] h-[185px] sm:h-[215px] rounded-2xl p-5 sm:p-6 flex flex-col justify-between transition-all duration-500 ease-out cursor-pointer overflow-hidden border border-cyan-400/40"
+        class="absolute w-[270px] sm:w-[320px] h-[185px] sm:h-[215px] rounded-2xl p-5 sm:p-6 flex flex-col justify-between transition-all duration-500 ease-out cursor-pointer overflow-hidden border border-red-500/40"
         :style="getCardStyle(2)"
         style="
-          background: linear-gradient(135deg, #072952 0%, #0A4585 50%, #0066B2 100%);
-          box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.4), 0 20px 45px -10px rgba(0, 0, 0, 0.95);
+          background: linear-gradient(135deg, #220606 0%, #4A0D0D 50%, #1C0303 100%);
+          box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.4), 0 20px 45px -10px rgba(0, 0, 0, 0.95);
         "
         @click="activeIndex === 2 ? emit('buy-card', featuredCards[2]) : (activeIndex = 2)"
       >
-        <!-- Top Row: Official Canva Cursive Script + PRO Badge -->
+        <!-- Top Row: Official YouTube Play Icon + PREMIUM Badge -->
         <div class="flex items-center justify-between relative z-10">
-          <svg class="h-8 w-8 text-white drop-shadow" viewBox="0 0 80 80" fill="currentColor">
-            <path d="M57.2691 48.2052C56.939 48.2052 56.6485 48.484 56.3462 49.0928C52.9323 56.0153 47.0358 60.9134 40.2125 60.9134C32.3228 60.9134 27.437 53.7913 27.437 43.9522C27.437 27.2855 36.7232 17.6491 44.8796 17.6491C48.691 17.6491 51.0186 20.0443 51.0186 23.8559C51.0186 28.3796 48.4485 30.7748 48.4485 32.3702C48.4485 33.0864 48.8939 33.5201 49.7773 33.5201C53.3264 33.5201 57.4918 29.4419 57.4918 23.6808C57.4918 18.0947 52.63 13.9888 44.4737 13.9888C30.994 13.9888 19.0142 26.4858 19.0142 43.777C19.0142 57.1614 26.6572 66.0061 38.45 66.0061C50.9668 66.0061 58.2043 53.5526 58.2043 49.5105C58.2043 48.6153 57.7466 48.2052 57.2691 48.2052Z"/>
+          <svg class="h-8 w-8 text-red-500 drop-shadow" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
           </svg>
-          <span class="rounded-full bg-white/10 backdrop-blur-md border border-white/20 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-widest text-white shadow-sm">
-            PRO
+          <span class="rounded-full bg-red-500/10 backdrop-blur-md border border-red-500/30 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-widest text-red-300 shadow-sm">
+            PREMIUM
           </span>
         </div>
 
@@ -229,10 +229,10 @@ const getCardStyle = (index: number) => {
         <div class="flex items-center justify-between relative z-10 my-1">
           <div>
             <h3 class="text-xl sm:text-2xl font-extrabold tracking-tight text-white leading-none">
-              Canva Pro
+              YouTube Premium
             </h3>
-            <p class="text-[11px] text-cyan-200/80 font-medium mt-1 leading-tight">
-              Design anything
+            <p class="text-[11px] text-red-200/80 font-medium mt-1 leading-tight">
+              Ad-free. Offline play.
             </p>
           </div>
 
@@ -241,8 +241,8 @@ const getCardStyle = (index: number) => {
         </div>
 
         <!-- Bottom Row -->
-        <div class="relative z-10 text-[9px] font-semibold uppercase tracking-widest text-cyan-200/60">
-          Bigger ideas. Brighter designs.
+        <div class="relative z-10 text-[9px] font-semibold uppercase tracking-widest text-red-300/60">
+          Music & Video Streaming
         </div>
       </div>
     </div>

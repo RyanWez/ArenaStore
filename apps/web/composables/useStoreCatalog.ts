@@ -7,7 +7,7 @@ export interface StoreProduct {
   slug: string;
   name: string;
   subtitle: string;
-  category: "all" | "ai" | "design" | "video" | "social" | "dev" | "security" | "entertainment" | "business";
+  category: "all" | "ai" | "design" | "video" | "dev" | "entertainment" | "business";
   priceMmk: number;
   formattedPrice: string;
   durationLabel: string;
@@ -33,12 +33,12 @@ const BRAND_THEMATIC_CATEGORY: Record<string, StoreProduct["category"]> = {
   spotify: "entertainment",
   prime: "entertainment",
   xbox: "entertainment",
-  telegram: "social",
-  discord: "social",
+  telegram: "entertainment",
+  discord: "entertainment",
   microsoft: "business",
   duolingo: "ai",
   coursera: "ai",
-  vpn: "security",
+  vpn: "dev",
   lovable: "dev",
 };
 
@@ -159,53 +159,55 @@ export function useStoreCatalog() {
   });
 
   const featuredCards = computed(() => {
-    // Look up corresponding live products from DB, with fallback to master definitions
-    const chatgptLive = products.value.find((p) => p.brand === "chatgpt");
+    // Look up corresponding live products from DB, with fallback to real catalog definitions
+    const geminiLive = products.value.find((p) => p.brand === "gemini" && p.sellableStock > 0) ||
+      products.value.find((p) => p.brand === "gemini");
     const capcutLive = products.value.find((p) => p.brand === "capcut" && p.sellableStock > 0) ||
       products.value.find((p) => p.brand === "capcut");
-    const canvaLive = products.value.find((p) => p.brand === "canva");
+    const youtubeLive = products.value.find((p) => p.brand === "youtube" && p.sellableStock > 0) ||
+      products.value.find((p) => p.brand === "youtube");
 
     return [
-      chatgptLive || {
-        id: "chatgpt-plus",
-        slug: "chatgpt-plus",
-        name: "ChatGPT Plus",
-        subtitle: "Higher limits. Bigger possibilities.",
+      geminiLive || {
+        id: "gemini-pro-18m",
+        slug: "gemini-pro-18m",
+        name: "Gemini Pro",
+        subtitle: "Google Advanced AI ecosystem.",
         category: "ai" as const,
-        priceMmk: 12500,
-        formattedPrice: "12,500 Ks",
-        durationLabel: "/ month",
+        priceMmk: 8200,
+        formattedPrice: "8,200 Ks",
+        durationLabel: "/ 18 months",
         stockStatus: "IN_STOCK" as const,
-        sellableStock: 10,
-        brand: "chatgpt",
-        deliveryType: "INSTANT",
+        sellableStock: 9,
+        brand: "gemini",
+        deliveryType: "LINK",
       },
       capcutLive || {
-        id: "capcut-pro",
-        slug: "capcut-pro",
+        id: "capcut-1m",
+        slug: "capcut-1m",
         name: "CapCut Pro",
         subtitle: "Edit without limits.",
         category: "video" as const,
-        priceMmk: 10000,
-        formattedPrice: "10,000 Ks",
+        priceMmk: 6800,
+        formattedPrice: "6,800 Ks",
         durationLabel: "/ 1 month",
         stockStatus: "IN_STOCK" as const,
-        sellableStock: 5,
+        sellableStock: 4,
         brand: "capcut",
-        deliveryType: "INSTANT",
+        deliveryType: "TEXT",
       },
-      canvaLive || {
-        id: "canva-pro",
-        slug: "canva-pro",
-        name: "Canva Pro",
-        subtitle: "Design anything.",
-        category: "design" as const,
-        priceMmk: 7500,
-        formattedPrice: "7,500 Ks",
-        durationLabel: "/ month",
+      youtubeLive || {
+        id: "youtube-premium-3m",
+        slug: "youtube-premium-3m",
+        name: "YouTube Premium",
+        subtitle: "Ad-free, offline background play.",
+        category: "entertainment" as const,
+        priceMmk: 9600,
+        formattedPrice: "9,600 Ks",
+        durationLabel: "/ 3 months",
         stockStatus: "IN_STOCK" as const,
-        sellableStock: 10,
-        brand: "canva",
+        sellableStock: 7,
+        brand: "youtube",
         deliveryType: "LINK",
       },
     ];
