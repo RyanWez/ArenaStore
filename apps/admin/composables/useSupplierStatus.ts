@@ -20,9 +20,11 @@ export interface SupplierDetails {
 const supplierBalanceUsd = ref<string>('0.00')
 const xproBalanceUsd = ref<string>('0.00')
 const digitalcoreBalanceUsd = ref<string>('0.00')
+const aivaulthubBalanceUsd = ref<string>('0.00')
 const isOnline = ref<boolean>(true)
 const isXProOnline = ref<boolean>(true)
 const isDigitalcoreOnline = ref<boolean>(true)
+const isAivaulthubOnline = ref<boolean>(true)
 const isSyncing = ref<boolean>(false)
 const lastSyncMessage = ref<string>('')
 
@@ -51,6 +53,21 @@ const suppliersList = ref<SupplierDetails[]>([
     version: '1.0.0',
     userId: 'digitalcore',
     endpoint: 'https://digitalcore.top',
+    latencyMs: 50,
+    categoriesCount: 1,
+    productsCount: 0,
+    autoSyncIntervalMinutes: 10,
+    lastSyncedAt: null,
+  },
+  {
+    id: 'AIVAULTHUB',
+    name: 'AIVault Hub',
+    balanceUsd: '0.00',
+    currency: 'USD',
+    health: 'ONLINE',
+    version: '1.0.0',
+    userId: 'aivaulthub',
+    endpoint: 'https://reseller.aivaulthub.store/api/v1',
     latencyMs: 50,
     categoriesCount: 1,
     productsCount: 0,
@@ -123,6 +140,7 @@ export function useSupplierStatus() {
             suppliersList.value = res.suppliers
             const xpro = res.suppliers.find((s) => s.id === 'XPRO')
             const dc = res.suppliers.find((s) => s.id === 'DIGITALCORE')
+            const avh = res.suppliers.find((s) => s.id === 'AIVAULTHUB')
 
             if (xpro) {
               xproBalanceUsd.value = String(xpro.balanceUsd)
@@ -131,6 +149,10 @@ export function useSupplierStatus() {
             if (dc) {
               digitalcoreBalanceUsd.value = String(dc.balanceUsd)
               isDigitalcoreOnline.value = dc.health === 'ONLINE'
+            }
+            if (avh) {
+              aivaulthubBalanceUsd.value = String(avh.balanceUsd)
+              isAivaulthubOnline.value = avh.health === 'ONLINE'
             }
           }
         }
@@ -144,7 +166,7 @@ export function useSupplierStatus() {
     return inFlightPromise
   }
 
-  async function syncCatalog(supplier: 'ALL' | 'XPRO' | 'DIGITALCORE' = 'ALL') {
+  async function syncCatalog(supplier: 'ALL' | 'XPRO' | 'DIGITALCORE' | 'AIVAULTHUB' = 'ALL') {
     isSyncing.value = true
     try {
       const endpoint =
@@ -181,9 +203,11 @@ export function useSupplierStatus() {
     supplierBalanceUsd,
     xproBalanceUsd,
     digitalcoreBalanceUsd,
+    aivaulthubBalanceUsd,
     isOnline,
     isXProOnline,
     isDigitalcoreOnline,
+    isAivaulthubOnline,
     suppliersList,
     supplierDetails,
     isSyncing,

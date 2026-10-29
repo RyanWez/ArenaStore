@@ -48,6 +48,7 @@ export type ReviewPaymentInput = z.infer<typeof ReviewPaymentSchema>;
 // Admin Product Pricing & Limits Update
 export const UpdateProductPricingSchema = z.object({
   productId: z.number().int().positive(),
+  categoryId: z.number().int().positive().nullable().optional(),
   retailPriceMmk: z.number().int().nonnegative().optional(),
   localStockLimit: z.number().int().nonnegative().nullable().optional(),
   isActive: z.boolean().optional(),

@@ -25,6 +25,8 @@ export const BOT_EMOJIS = {
   MINUS: "5346176879751612829",      // ➖ Minus
   PLUS: "5346004239246183111",       // ➕ Plus
   COUNTER: "5226513232549664618",    // 🔢 Counter
+  REFRESH: "5346269127059196142",    // 🔄 Refresh / Sync
+  SYNC: "5346269127059196142",       // 🔄 Refresh / Sync
   CHECK: "5260416304224936047",      // ✅ Checkmark
   PARTY: "5994502837327892086",      // 🎉 Celebration
   BACK: "5258236805890710909",       // ⬅️ Back
@@ -41,6 +43,8 @@ export const BOT_EMOJIS = {
   RECEIPT: "5444856076954520455",    // 🧾 Receipt / Slip
   HOURGLASS: "5345809410939700735",  // ⏳
   KEY: "6005570495603282482",        // 🔑 Key / Credentials
+  LOCK: "5258476306152038031",       // 🔒 Lock / Security
+  SECURITY: "5258476306152038031",   // 🔒 Lock / Security
   WARNING: "5341498036868634459",    // ⚠️ Alert / Warning
   ALERT: "5341498036868634459",      // ⚠️ Alert / Warning
   CANCEL: "5985346521103604145",     // ❌ Cancel
@@ -70,6 +74,9 @@ export const BOT_EMOJIS = {
   GLOBE: "5879585266426973039",       // 🌐 Web / IP Address
   LOCATION: "5258509201306557640",    // 📍 Device / Location Pin
   PIN: "5258509201306557640",         // 📍 Alias
+
+  // Brands & Category Icons
+  APPLE: "5368329767013596242",       // 🍏/🍎 Apple
 } as const;
 
 /**
@@ -161,6 +168,7 @@ export function parseCustomEmoji(rawText: string): ParsedEmojiText {
  * to automatically render corresponding Telegram custom animated icons.
  */
 export const BRAND_EMOJI_MAP: Record<string, string> = {
+  apple: "5368329767013596242",
   gemini: "5069075201950483359",
   duolingo: "4963072209334567688",
   notion: "5364199932620194408",
@@ -185,6 +193,13 @@ export const BRAND_EMOJI_MAP: Record<string, string> = {
   prime: "6084483883942811660",
   autodesk: "6305045014531548800",
   researchgate: "6131674493510231476",
+  gmail: "5292170346063995499",
+  deezer: "4985999144192574149",
+  xbox: "5373019729566908647",
+  grok: "5472420966606851029",
+  windows: "5933550168996581523",
+  ilovepdf: "5841675320977007145",
+  muse: "5891219692881714411",
 };
 
 export function findBrandEmojiId(text?: string | null): string | null {

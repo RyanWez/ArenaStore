@@ -29,7 +29,7 @@ import {
 import { and, asc, desc, eq, ilike, inArray, or, ne, sql, gte } from "drizzle-orm";
 import { z } from "zod";
 import { config } from "../config";
-import { xproClient, digitalcoreClient } from "../services/xpro-client";
+import { xproClient, digitalcoreClient, aivaulthubClient } from "../services/xpro-client";
 import { catalogService } from "../services/catalog.service";
 import { restockNotifier } from "../services/restock-notifier";
 import {
@@ -79,7 +79,7 @@ function getOrDecryptPayload(encryptedPayload?: string | null): string {
 }
 
 interface CachedSupplierStatus {
-  supplier: "XPRO" | "DIGITALCORE";
+  supplier: "XPRO" | "DIGITALCORE" | "AIVAULTHUB";
   balanceUsd: string | number;
   currency: string;
   health: string;
@@ -114,8 +114,21 @@ let digitalcoreStatusCache: CachedSupplierStatus = {
   updatedAt: 0,
 };
 
+let aivaulthubStatusCache: CachedSupplierStatus = {
+  supplier: "AIVAULTHUB",
+  balanceUsd: "0.00",
+  currency: "USD",
+  health: "ONLINE",
+  version: "1.0.0",
+  userId: "aivaulthub",
+  endpoint: config.AIVAULTHUB_BASE_URL,
+  latencyMs: 50,
+  updatedAt: 0,
+};
+
 let inFlightSupplierRefresh: Promise<CachedSupplierStatus> | null = null;
 let inFlightDigitalcoreRefresh: Promise<CachedSupplierStatus> | null = null;
+let inFlightAivaulthubRefresh: Promise<CachedSupplierStatus> | null = null;
 
 async function refreshSupplierStatus(force = false): Promise<CachedSupplierStatus> {
   const now = Date.now();
@@ -245,10 +258,74 @@ async function refreshDigitalcoreStatus(force = false): Promise<CachedSupplierSt
   return inFlightDigitalcoreRefresh;
 }
 
+async function refreshAivaulthubStatus(force = false): Promise<CachedSupplierStatus> {
+  const now = Date.now();
+  if (!force && now - aivaulthubStatusCache.updatedAt < 30_000 && aivaulthubStatusCache.updatedAt > 0) {
+    return aivaulthubStatusCache;
+  }
+
+  if (inFlightAivaulthubRefresh) {
+    return inFlightAivaulthubRefresh;
+  }
+
+  inFlightAivaulthubRefresh = (async () => {
+    const startPing = Date.now();
+    try {
+      const [balanceResult, healthResult] = await Promise.allSettled([
+        aivaulthubClient.getBalance(4000),
+        aivaulthubClient.getHealth(4000),
+      ]);
+      const latency = Math.max(1, Date.now() - startPing);
+
+      let balance = aivaulthubStatusCache.balanceUsd;
+      let currency = aivaulthubStatusCache.currency;
+      let health = "OFFLINE";
+      let version = aivaulthubStatusCache.version;
+      let userId = aivaulthubStatusCache.userId;
+
+      if (balanceResult.status === "fulfilled" && balanceResult.value) {
+        balance = balanceResult.value.balanceUsd;
+        currency = "USD";
+      }
+
+      if (healthResult.status === "fulfilled" && healthResult.value.online) {
+        health = "ONLINE";
+      } else if (balanceResult.status === "fulfilled") {
+        health = "ONLINE";
+      }
+
+      aivaulthubStatusCache = {
+        supplier: "AIVAULTHUB",
+        balanceUsd: balance,
+        currency,
+        health,
+        version,
+        userId,
+        endpoint: config.AIVAULTHUB_BASE_URL,
+        latencyMs: latency,
+        updatedAt: Date.now(),
+      };
+      return aivaulthubStatusCache;
+    } catch {
+      aivaulthubStatusCache = {
+        ...aivaulthubStatusCache,
+        health: "OFFLINE",
+        updatedAt: Date.now(),
+      };
+      return aivaulthubStatusCache;
+    } finally {
+      inFlightAivaulthubRefresh = null;
+    }
+  })();
+
+  return inFlightAivaulthubRefresh;
+}
+
 export async function adminRoutes(server: FastifyInstance) {
   // Proactively warm up supplier status in background on server startup
   refreshSupplierStatus(true).catch(() => {});
   refreshDigitalcoreStatus(true).catch(() => {});
+  refreshAivaulthubStatus(true).catch(() => {});
 
   // GET /api/admin/stats (Dashboard overview summary stats)
   server.get(
@@ -350,19 +427,22 @@ export async function adminRoutes(server: FastifyInstance) {
 
   // Helper handler for supplier status
   async function handleSupplierStatus() {
-    const [status, dcStatus] = await Promise.all([
+    const [status, dcStatus, avhStatus] = await Promise.all([
       refreshSupplierStatus(),
       refreshDigitalcoreStatus(),
+      refreshAivaulthubStatus(),
     ]);
     const db = getDb();
-    const [[catResult], [xproProdResult], [dcProdResult]] = await Promise.all([
+    const [[catResult], [xproProdResult], [dcProdResult], [avhProdResult]] = await Promise.all([
       db.select({ count: sql<number>`count(${categories.id})` }).from(categories),
       db.select({ count: sql<number>`count(${products.id})` }).from(products).where(eq(products.supplier, "XPRO")),
       db.select({ count: sql<number>`count(${products.id})` }).from(products).where(eq(products.supplier, "DIGITALCORE")),
+      db.select({ count: sql<number>`count(${products.id})` }).from(products).where(eq(products.supplier, "AIVAULTHUB")),
     ]);
 
     let lastSyncedAt = catalogService.getLastSyncedAt();
     let dcLastSyncedAt: string | null = null;
+    let avhLastSyncedAt: string | null = null;
     try {
       const rows = await db
         .select()
@@ -370,12 +450,14 @@ export async function adminRoutes(server: FastifyInstance) {
         .where(
           or(
             eq(appSettings.key, "catalog_last_synced_at"),
-            eq(appSettings.key, "catalog_last_synced_at_DIGITALCORE")
+            eq(appSettings.key, "catalog_last_synced_at_DIGITALCORE"),
+            eq(appSettings.key, "catalog_last_synced_at_AIVAULTHUB")
           )
         );
       for (const r of rows) {
         if (r.key === "catalog_last_synced_at" && !lastSyncedAt) lastSyncedAt = r.value;
         if (r.key === "catalog_last_synced_at_DIGITALCORE") dcLastSyncedAt = r.value;
+        if (r.key === "catalog_last_synced_at_AIVAULTHUB") avhLastSyncedAt = r.value;
       }
     } catch {}
 
@@ -411,10 +493,26 @@ export async function adminRoutes(server: FastifyInstance) {
       lastSyncedAt: dcLastSyncedAt || null,
     };
 
+    const avhSupplier = {
+      id: "AIVAULTHUB",
+      name: "AIVault Hub",
+      balanceUsd: avhStatus.balanceUsd,
+      currency: avhStatus.currency,
+      health: avhStatus.health,
+      version: avhStatus.version,
+      userId: avhStatus.userId || "aivaulthub",
+      endpoint: avhStatus.endpoint || config.AIVAULTHUB_BASE_URL,
+      latencyMs: avhStatus.latencyMs || 50,
+      categoriesCount: 1,
+      productsCount: Number(avhProdResult?.count || 0),
+      autoSyncIntervalMinutes: config.CATALOG_SYNC_INTERVAL_MINUTES,
+      lastSyncedAt: avhLastSyncedAt || null,
+    };
+
     return {
       ok: true,
       supplier: xproSupplier,
-      suppliers: [xproSupplier, dcSupplier],
+      suppliers: [xproSupplier, dcSupplier, avhSupplier],
     };
   }
 
@@ -472,6 +570,21 @@ export async function adminRoutes(server: FastifyInstance) {
               autoSyncIntervalMinutes: config.CATALOG_SYNC_INTERVAL_MINUTES,
               lastSyncedAt: null,
             },
+            {
+              id: "AIVAULTHUB",
+              name: "AIVault Hub",
+              balanceUsd: aivaulthubStatusCache.balanceUsd,
+              currency: aivaulthubStatusCache.currency,
+              health: "OFFLINE",
+              version: "1.0",
+              userId: "aivaulthub",
+              endpoint: config.AIVAULTHUB_BASE_URL,
+              latencyMs: 0,
+              categoriesCount: 0,
+              productsCount: 0,
+              autoSyncIntervalMinutes: config.CATALOG_SYNC_INTERVAL_MINUTES,
+              lastSyncedAt: null,
+            },
           ],
         };
       }
@@ -497,6 +610,8 @@ export async function adminRoutes(server: FastifyInstance) {
         let result: any;
         if (target === "DIGITALCORE") {
           result = await catalogService.syncSupplier("DIGITALCORE");
+        } else if (target === "AIVAULTHUB") {
+          result = await catalogService.syncSupplier("AIVAULTHUB");
         } else if (target === "XPRO") {
           result = await catalogService.syncSupplier("XPRO");
         } else if (target === "ALL") {
@@ -504,7 +619,7 @@ export async function adminRoutes(server: FastifyInstance) {
         } else {
           return reply.status(400).send({
             ok: false,
-            error: `Invalid supplier '${request.params.supplier}'. Valid values: 'xpro', 'digitalcore', 'all'`,
+            error: `Invalid supplier '${request.params.supplier}'. Valid values: 'xpro', 'digitalcore', 'aivaulthub', 'all'`,
           });
         }
 
@@ -543,6 +658,8 @@ export async function adminRoutes(server: FastifyInstance) {
         let result: any;
         if (targetSupplier === "DIGITALCORE") {
           result = await catalogService.syncSupplier("DIGITALCORE");
+        } else if (targetSupplier === "AIVAULTHUB") {
+          result = await catalogService.syncSupplier("AIVAULTHUB");
         } else if (targetSupplier === "XPRO") {
           result = await catalogService.syncSupplier("XPRO");
         } else {
@@ -735,6 +852,10 @@ export async function adminRoutes(server: FastifyInstance) {
         updateValues.retailPriceMmk = parseRes.data.retailPriceMmk;
       }
 
+      if (parseRes.data.categoryId !== undefined) {
+        updateValues.categoryId = parseRes.data.categoryId;
+      }
+
       if (parseRes.data.localStockLimit !== undefined) {
         updateValues.localStockLimit = parseRes.data.localStockLimit;
       }
@@ -843,6 +964,62 @@ export async function adminRoutes(server: FastifyInstance) {
       return {
         ok: true,
         category: updated,
+      };
+    }
+  );
+
+  // POST /api/admin/categories (Create category)
+  server.post<{
+    Body: { name?: string; iconEmoji?: string; sortOrder?: number; isActive?: boolean };
+  }>(
+    "/api/admin/categories",
+    { preHandler: requirePermission("products.edit") },
+    async (request, reply) => {
+      const { name, iconEmoji = "📁", sortOrder = 0, isActive = true } = request.body || {};
+      if (!name || !name.trim()) {
+        return reply.status(400).send({ ok: false, error: "Category name is required" });
+      }
+
+      const db = getDb();
+      const clean = stripCustomEmojiPlaceholders(name).trim();
+      let baseSlug = clean.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      if (!baseSlug) baseSlug = `cat-${Date.now()}`;
+      let slug = baseSlug;
+      let counter = 1;
+      while (true) {
+        const [existing] = await db
+          .select({ id: categories.id })
+          .from(categories)
+          .where(eq(categories.slug, slug));
+        if (!existing) break;
+        slug = `${baseSlug}-${counter++}`;
+      }
+
+      const [inserted] = await db
+        .insert(categories)
+        .values({
+          name: name.trim(),
+          slug,
+          iconEmoji: iconEmoji || "📁",
+          sortOrder: typeof sortOrder === "number" ? sortOrder : 0,
+          isActive: isActive !== false,
+        })
+        .returning();
+
+      await writeAudit({
+        actorId: getRbac(request)?.userId ?? null,
+        action: "CATEGORY_CREATE",
+        entityType: "CATEGORY",
+        entityId: inserted.id,
+        details: inserted,
+      });
+
+      return {
+        ok: true,
+        category: {
+          ...inserted,
+          cleanName: stripCustomEmojiPlaceholders(inserted.name),
+        },
       };
     }
   );

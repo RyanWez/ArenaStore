@@ -56,4 +56,16 @@ describe("SupplierError and Mapper Matrix Unit Tests", () => {
       expect(err.statusCode).toBe(422);
     });
   });
+
+  describe("fromAIVaultHub mapper matrix", () => {
+    it("maps known HTTP status codes to canonical codes", () => {
+      expect(SupplierError.fromAIVaultHub(401, { error: "invalid_api_key" }).code).toBe("AUTH_FAILED");
+      expect(SupplierError.fromAIVaultHub(402, { error: "Insufficient balance" }).code).toBe("INSUFFICIENT_BALANCE");
+      expect(SupplierError.fromAIVaultHub(404, { error: "unknown_service" }).code).toBe("PRODUCT_NOT_FOUND");
+      expect(SupplierError.fromAIVaultHub(409, { error: "Buffer Stock Conflict" }).code).toBe("OUT_OF_STOCK");
+      expect(SupplierError.fromAIVaultHub(429, { error: "rate_limited" }).code).toBe("RETRYABLE_ERROR");
+      expect(SupplierError.fromAIVaultHub(500, { error: "internal_error" }).code).toBe("SUPPLIER_OUTAGE");
+      expect(SupplierError.fromAIVaultHub(400, { error: "invalid_json" }).code).toBe("INVALID_REQUEST");
+    });
+  });
 });

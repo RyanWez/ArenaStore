@@ -3,6 +3,7 @@ import {
   XProClient,
   XProApiError,
   DigitalCoreClient,
+  AIVaultHubClient,
   type XProProduct,
   type XProCategory,
   type XProBalanceResponse,
@@ -16,6 +17,7 @@ export {
   XProClient,
   XProApiError,
   DigitalCoreClient,
+  AIVaultHubClient,
   type XProProduct,
   type XProCategory,
   type XProBalanceResponse,
@@ -33,4 +35,9 @@ export const xproClient = new XProClient({
 export const digitalcoreClient = new DigitalCoreClient({
   baseUrl: config.DIGITALCORE_BASE_URL,
   apiKey: config.DIGITALCORE_API_KEY,
+});
+
+export const aivaulthubClient = new AIVaultHubClient({
+  baseUrl: config.AIVAULTHUB_BASE_URL,
+  apiKey: config.AIVAULTHUB_API_KEY,
 });

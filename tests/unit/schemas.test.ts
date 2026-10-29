@@ -98,6 +98,20 @@ describe("Shared Zod Schemas Validation", () => {
     };
     expect(UpdateProductPricingSchema.safeParse(statusOnly).success).toBe(true);
 
+    // Allows updating categoryId (number or null)
+    const withCategory = {
+      productId: 12102,
+      categoryId: 30,
+      retailPriceMmk: 2300,
+    };
+    expect(UpdateProductPricingSchema.safeParse(withCategory).success).toBe(true);
+
+    const withNullCategory = {
+      productId: 12102,
+      categoryId: null,
+    };
+    expect(UpdateProductPricingSchema.safeParse(withNullCategory).success).toBe(true);
+
     // Rejects negative retailPriceMmk
     const negativePrice = {
       productId: 31,

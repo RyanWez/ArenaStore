@@ -1141,12 +1141,23 @@ export class BotOrderService {
       let upstreamUnitPrice = product.supplierPriceUsd;
 
       const isTest = process.env.NODE_ENV === "test" || process.env.VITEST !== undefined;
-      const supplierId: SupplierId = product.supplier === "DIGITALCORE" ? "DIGITALCORE" : "XPRO";
+      const supplierId: SupplierId = (product.supplier || "XPRO").toUpperCase() as SupplierId;
 
       if (!isTest) {
         const config = getCoreConfig();
-        const apiKey = supplierId === "DIGITALCORE" ? config.DIGITALCORE_API_KEY : config.UPSTREAM_API_KEY;
-        const baseUrl = supplierId === "DIGITALCORE" ? config.DIGITALCORE_BASE_URL : config.UPSTREAM_BASE_URL;
+        let apiKey = config.UPSTREAM_API_KEY;
+        let baseUrl = config.UPSTREAM_BASE_URL;
+        let envKeyVar = "UPSTREAM_API_KEY";
+
+        if (supplierId === "DIGITALCORE") {
+          apiKey = config.DIGITALCORE_API_KEY;
+          baseUrl = config.DIGITALCORE_BASE_URL;
+          envKeyVar = "DIGITALCORE_API_KEY";
+        } else if (supplierId === "AIVAULTHUB") {
+          apiKey = config.AIVAULTHUB_API_KEY;
+          baseUrl = config.AIVAULTHUB_BASE_URL;
+          envKeyVar = "AIVAULTHUB_API_KEY";
+        }
 
         if (!apiKey) {
           if (debitedWalletId !== null) {
@@ -1182,7 +1193,7 @@ export class BotOrderService {
             `• <b>Product:</b> ${escapeHtml(product.cleanName)} (ID: ${product.id})\n` +
             `• <b>Customer:</b> @${params.telegramUsername || params.customerName} (TG: <code>${params.telegramId}</code>)\n` +
             `• <b>Action:</b> Wallet debited was automatically refunded to customer.\n` +
-            `⚠️ Please configure <code>${supplierId === "DIGITALCORE" ? "DIGITALCORE_API_KEY" : "UPSTREAM_API_KEY"}</code> in environment!`
+            `⚠️ Please configure <code>${envKeyVar}</code> in environment!`
           );
 
           return {

@@ -9,8 +9,10 @@ const {
   supplierBalanceUsd,
   xproBalanceUsd,
   digitalcoreBalanceUsd,
+  aivaulthubBalanceUsd,
   isXProOnline,
   isDigitalcoreOnline,
+  isAivaulthubOnline,
   isSyncing,
   syncCatalog,
   fetchStatus,
@@ -34,11 +36,15 @@ let tickerInterval: any = null
 let pollInterval: any = null
 
 function getSupplierHealth(supplierId: string): boolean {
-  return supplierId === 'DIGITALCORE' ? isDigitalcoreOnline.value : isXProOnline.value
+  if (supplierId === 'AIVAULTHUB') return isAivaulthubOnline.value
+  if (supplierId === 'DIGITALCORE') return isDigitalcoreOnline.value
+  return isXProOnline.value
 }
 
 function getSupplierBalance(supplierId: string): string {
-  return supplierId === 'DIGITALCORE' ? digitalcoreBalanceUsd.value : xproBalanceUsd.value
+  if (supplierId === 'AIVAULTHUB') return aivaulthubBalanceUsd.value
+  if (supplierId === 'DIGITALCORE') return digitalcoreBalanceUsd.value
+  return xproBalanceUsd.value
 }
 
 onMounted(async () => {
@@ -58,7 +64,7 @@ onMounted(async () => {
     {
       timestamp: now,
       type: 'INFO',
-      message: `Multi-supplier engine loaded: XPro and DigitalCore active.`,
+      message: `Multi-supplier engine loaded: XPro, DigitalCore, and AIVault Hub active.`,
     },
     {
       timestamp: now,
@@ -70,6 +76,11 @@ onMounted(async () => {
       type: isDigitalcoreOnline.value ? 'SUCCESS' : 'WARN',
       message: `DigitalCore: ${isDigitalcoreOnline.value ? 'ONLINE' : 'OFFLINE'} · Balance: $${digitalcoreBalanceUsd.value} USD.`,
     },
+    {
+      timestamp: now,
+      type: isAivaulthubOnline.value ? 'SUCCESS' : 'WARN',
+      message: `AIVault Hub: ${isAivaulthubOnline.value ? 'ONLINE' : 'OFFLINE'} · Balance: $${aivaulthubBalanceUsd.value} USD.`,
+    },
   ]
 })
 
@@ -78,7 +89,7 @@ onUnmounted(() => {
   if (pollInterval) clearInterval(pollInterval)
 })
 
-async function handleSync(supplier: 'ALL' | 'XPRO' | 'DIGITALCORE' = 'ALL') {
+async function handleSync(supplier: 'ALL' | 'XPRO' | 'DIGITALCORE' | 'AIVAULTHUB' = 'ALL') {
   try {
     syncLogs.value.unshift({
       timestamp: new Date().toLocaleTimeString(),
@@ -179,7 +190,7 @@ function openTopUp(supplier: SupplierDetails) {
             <div class="flex items-center gap-2">
               <span
                 class="px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider"
-                :class="s.id === 'DIGITALCORE' ? 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20' : 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20'"
+                :class="s.id === 'AIVAULTHUB' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' : s.id === 'DIGITALCORE' ? 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20' : 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20'"
               >
                 {{ s.name }}
               </span>

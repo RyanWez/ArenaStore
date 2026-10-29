@@ -7,6 +7,8 @@ export interface CoreConfig {
   UPSTREAM_API_KEY?: string;
   DIGITALCORE_BASE_URL?: string;
   DIGITALCORE_API_KEY?: string;
+  AIVAULTHUB_BASE_URL?: string;
+  AIVAULTHUB_API_KEY?: string;
   DEFAULT_EXCHANGE_RATE_MMK?: number;
   DEFAULT_MARGIN_PERCENTAGE?: number;
   SUPPORT_USERNAME?: string;
@@ -37,6 +39,8 @@ export function getCoreConfig(): CoreConfig {
     UPSTREAM_API_KEY: activeConfig.UPSTREAM_API_KEY || process.env.UPSTREAM_API_KEY || "",
     DIGITALCORE_BASE_URL: activeConfig.DIGITALCORE_BASE_URL || process.env.DIGITALCORE_BASE_URL || "https://api.digitalcore.com",
     DIGITALCORE_API_KEY: activeConfig.DIGITALCORE_API_KEY || process.env.DIGITALCORE_API_KEY || "",
+    AIVAULTHUB_BASE_URL: activeConfig.AIVAULTHUB_BASE_URL || process.env.AIVAULTHUB_BASE_URL || "https://reseller.aivaulthub.store/api/v1",
+    AIVAULTHUB_API_KEY: activeConfig.AIVAULTHUB_API_KEY || process.env.AIVAULTHUB_API_KEY || "",
     DEFAULT_EXCHANGE_RATE_MMK: activeConfig.DEFAULT_EXCHANGE_RATE_MMK ?? (Number(process.env.DEFAULT_EXCHANGE_RATE_MMK) || 4500),
     DEFAULT_MARGIN_PERCENTAGE: activeConfig.DEFAULT_MARGIN_PERCENTAGE ?? (Number(process.env.DEFAULT_MARGIN_PERCENTAGE) || 15),
     DELIVERY_ENCRYPTION_KEY: (() => {

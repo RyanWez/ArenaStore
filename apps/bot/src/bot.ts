@@ -675,7 +675,7 @@ export function createBot(): Bot<BotContext> {
   // Wallet crediting is Dashboard/admin-only — /deposit must never credit from Telegram.
   bot.command("deposit", async (ctx) => {
     await ctx.reply(
-      "🔒 လုံခြုံရေးအကြောင်းပြချက်ဖြင့် တိုက်ရိုက်ငွေသွင်းသည့် command ကို ပိတ်ထားပါသည်။\n\n💰 ငွေသွင်းလိုပါက <b>Wallet → ဘဏ်/အိတ်မှ ငွေသွင်းပါ</b> မှတဆင့် slip တင်ပြီး Admin စစ်ဆေးအတည်ပြုပေးမှုဖြင့်သာ ငွေထည့်သွင်းနိုင်ပါသည်။",
+      `${tgEmoji(BOT_EMOJIS.LOCK, "🔒")} လုံခြုံရေးအကြောင်းပြချက်ဖြင့် တိုက်ရိုက်ငွေသွင်းသည့် command ကို ပိတ်ထားပါသည်။\n\n${tgEmoji(BOT_EMOJIS.MONEY, "💰")} ငွေသွင်းလိုပါက <b>Wallet → ဘဏ်/အိတ်မှ ငွေသွင်းပါ</b> မှတဆင့် slip တင်ပြီး Admin စစ်ဆေးအတည်ပြုပေးမှုဖြင့်သာ ငွေထည့်သွင်းနိုင်ပါသည်။`,
       {
         parse_mode: "HTML",
         reply_markup: buildWalletKeyboard(),
@@ -771,13 +771,14 @@ export function createBot(): Bot<BotContext> {
 
     if (categories.length === 0) {
       await ctx.editMessageText(
-        `${tgEmoji(BOT_EMOJIS.STORE, "🛍")} <b>ပစ္စည်း အမျိုးအစားများ</b>\n\n⚠️ လက်ရှိတွင် ပစ္စည်းစာရင်း ရယူ၍ မရနိုင်သေးပါခင်ဗျာ။ ခေတ္တစောင့်ပြီး ပြန်လည်ကြိုးစားပေးပါ။`,
+        `${tgEmoji(BOT_EMOJIS.STORE, "🛍")} <b>ပစ္စည်း အမျိုးအစားများ</b>\n\n${tgEmoji(BOT_EMOJIS.WARNING, "⚠️")} လက်ရှိတွင် ပစ္စည်းစာရင်း ရယူ၍ မရနိုင်သေးပါခင်ဗျာ။ ခေတ္တစောင့်ပြီး ပြန်လည်ကြိုးစားပေးပါ။`,
         {
           parse_mode: "HTML",
           reply_markup: new InlineKeyboard()
             .add({
-              text: "🔄 ပြန်လည်ကြိုးစားမည်",
+              text: "ပြန်လည်ကြိုးစားမည်",
               callback_data: "menu_categories",
+              icon_custom_emoji_id: BOT_EMOJIS.REFRESH,
             })
             .row()
             .add({
@@ -1361,7 +1362,7 @@ export function createBot(): Bot<BotContext> {
     await ctx.deleteMessage().catch(() => {});
 
     await ctx.reply(
-      "❌ <b>MMQR ငွေပေးချေမှုကို ဖျက်သိမ်းပြီးပါပြီ။</b>\nငွေဖြည့်သွင်းလိုပါက အသစ် ပြန်လည် တောင်းခံနိုင်ပါပြီ ခင်ဗျာ။",
+      `${tgEmoji(BOT_EMOJIS.CANCEL, "❌")} <b>MMQR ငွေပေးချေမှုကို ဖျက်သိမ်းပြီးပါပြီ။</b>\nငွေဖြည့်သွင်းလိုပါက အသစ် ပြန်လည် တောင်းခံနိုင်ပါပြီ ခင်ဗျာ။`,
       {
         parse_mode: "HTML",
         reply_markup: buildWalletKeyboard(),
@@ -1472,7 +1473,7 @@ export function createBot(): Bot<BotContext> {
       await ctx.deleteMessage().catch(() => {});
       if (owns) {
         await ctx.reply(
-          "⚠️ <b>MMQR သက်တမ်းကုန်ဆုံးသွားပါပြီ (Expired)</b>\nကျေးဇူးပြု၍ ငွေပမာဏ အသစ် ရွေးချယ်ပေးပါခင်ဗျာ။",
+          `${tgEmoji(BOT_EMOJIS.WARNING, "⚠️")} <b>MMQR သက်တမ်းကုန်ဆုံးသွားပါပြီ (Expired)</b>\nကျေးဇူးပြု၍ ငွေပမာဏ အသစ် ရွေးချယ်ပေးပါခင်ဗျာ။`,
           {
             parse_mode: "HTML",
             reply_markup: buildWalletKeyboard(),
@@ -1483,10 +1484,13 @@ export function createBot(): Bot<BotContext> {
       activeMmpayCheckCooldowns.delete(reference);
       await ctx.answerCallbackQuery({ text: "ဤအော်ဒါကို ဖျက်သိမ်းထားပြီးဖြစ်ပါသည်။", show_alert: true });
       await ctx.deleteMessage().catch(() => {});
-      await ctx.reply("❌ <b>ဤအော်ဒါကို ဖျက်သိမ်းထားပြီးဖြစ်ပါသည်။</b>", {
-        parse_mode: "HTML",
-        reply_markup: buildWalletKeyboard(),
-      });
+      await ctx.reply(
+        `${tgEmoji(BOT_EMOJIS.CANCEL, "❌")} <b>ဤအော်ဒါကို ဖျက်သိမ်းထားပြီးဖြစ်ပါသည်။</b>`,
+        {
+          parse_mode: "HTML",
+          reply_markup: buildWalletKeyboard(),
+        }
+      );
     } else if (statusRes.status === TopUpStatus.FAILED) {
       activeMmpayCheckCooldowns.delete(reference);
       // The gateway reported the payment as failed. Like the success path, the

@@ -12,7 +12,7 @@ const route = useRoute()
 const { isCollapsed, toggleCollapse, toggleMobile } = useSidebar()
 const { isDark, toggleTheme } = useTheme()
 const { isConnected: isLiveEventsConnected } = useAdminEvents()
-const { xproBalanceUsd, digitalcoreBalanceUsd, isXProOnline, isDigitalcoreOnline, isSyncing, syncCatalog, fetchStatus } = useSupplierStatus()
+const { xproBalanceUsd, digitalcoreBalanceUsd, aivaulthubBalanceUsd, isXProOnline, isDigitalcoreOnline, isAivaulthubOnline, isSyncing, syncCatalog, fetchStatus } = useSupplierStatus()
 const { settings: storeSettings, fetchSettings: fetchStoreSettings } = useStoreSettings()
 const toast = useToast()
 
@@ -138,6 +138,12 @@ async function handleQuickSync() {
         <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border border-cyan-500/20" title="DigitalCore Supplier Balance">
           <span class="w-2 h-2 rounded-full" :class="isDigitalcoreOnline ? 'bg-cyan-500' : 'bg-red-500'"></span>
           <span class="font-mono font-semibold">DigitalCore: ${{ digitalcoreBalanceUsd }}</span>
+        </div>
+
+        <!-- AIVault Hub Balance -->
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20" title="AIVault Hub Supplier Balance">
+          <span class="w-2 h-2 rounded-full" :class="isAivaulthubOnline ? 'bg-emerald-500' : 'bg-red-500'"></span>
+          <span class="font-mono font-semibold">AIVault: ${{ aivaulthubBalanceUsd }}</span>
         </div>
 
         <!-- Quick Sync Button -->

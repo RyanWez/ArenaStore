@@ -180,8 +180,8 @@ export class BotCatalogService {
     return { categories, products };
   }
 
-  private lastBalanceFetchedAt: Record<string, number> = { XPRO: 0, DIGITALCORE: 0 };
-  private cachedWalletBalances: Record<string, number> = { XPRO: 0.0, DIGITALCORE: 0.0 };
+  private lastBalanceFetchedAt: Record<string, number> = { XPRO: 0, DIGITALCORE: 0, AIVAULTHUB: 0 };
+  private cachedWalletBalances: Record<string, number> = { XPRO: 0.0, DIGITALCORE: 0.0, AIVAULTHUB: 0.0 };
 
   /**
    * Fetches the latest Upstream Partner wallet balance to constrain sellable stock per supplier.
@@ -216,6 +216,30 @@ export class BotCatalogService {
         // Keep cached
       }
       return this.cachedWalletBalances.DIGITALCORE ?? 0.0;
+    }
+
+    if (s === "AIVAULTHUB") {
+      if (!config.AIVAULTHUB_API_KEY) {
+        return this.cachedWalletBalances.AIVAULTHUB ?? 0.0;
+      }
+      try {
+        const res = await fetch(`${(config.AIVAULTHUB_BASE_URL || "https://reseller.aivaulthub.store/api/v1").replace(/\/+$/, "")}/me`, {
+          headers: { "X-API-Key": config.AIVAULTHUB_API_KEY, Accept: "application/json" },
+          signal: AbortSignal.timeout(2500),
+        });
+        if (res.ok) {
+          const json: any = await res.json();
+          const bal = json?.balance;
+          if (bal !== undefined) {
+            this.cachedWalletBalances.AIVAULTHUB = parseFloat(String(bal)) || 0;
+            this.lastBalanceFetchedAt.AIVAULTHUB = now;
+            return this.cachedWalletBalances.AIVAULTHUB;
+          }
+        }
+      } catch {
+        // Keep cached
+      }
+      return this.cachedWalletBalances.AIVAULTHUB ?? 0.0;
     }
 
     // Default: XPro
@@ -290,9 +314,10 @@ export class BotCatalogService {
       if (prodRows.length === 0) return null;
 
       // Query wallet balances per supplier to accurately calculate sellable capacity
-      const [xproWalletBalanceUsd, dcWalletBalanceUsd] = await Promise.all([
+      const [xproWalletBalanceUsd, dcWalletBalanceUsd, avhWalletBalanceUsd] = await Promise.all([
         this.getSupplierWalletBalance("XPRO"),
         this.getSupplierWalletBalance("DIGITALCORE"),
+        this.getSupplierWalletBalance("AIVAULTHUB"),
       ]);
 
       const isNumericEmojiId = (val?: string | null): boolean =>
@@ -326,7 +351,11 @@ export class BotCatalogService {
 
         const pSupplier = (p.supplier || "XPRO").toUpperCase();
         const effectiveWalletBalance =
-          pSupplier === "DIGITALCORE" ? dcWalletBalanceUsd : xproWalletBalanceUsd;
+          pSupplier === "AIVAULTHUB"
+            ? avhWalletBalanceUsd
+            : pSupplier === "DIGITALCORE"
+            ? dcWalletBalanceUsd
+            : xproWalletBalanceUsd;
 
         const stockCalc = calculateSellableStock({
           supplierStock: p.supplierStock ?? 999,
@@ -477,6 +506,13 @@ export class BotCatalogService {
     await this.ensureFreshCache();
     const prods = this.productsCache || [];
     return prods.find((p) => p.id === productId) || null;
+  }
+
+  /**
+   * Forces the catalog cache to expire so the next read fetches fresh data from DB.
+   */
+  invalidateCache(): void {
+    this.lastFetchedAt = 0;
   }
 
   /**

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SupplierBalanceMonitor } from "../../apps/api/src/services/supplier-balance-monitor";
-import { xproClient, digitalcoreClient } from "../../apps/api/src/services/xpro-client";
+import { xproClient, digitalcoreClient, aivaulthubClient } from "../../apps/api/src/services/xpro-client";
 import * as telegramNotifier from "../../apps/api/src/services/telegram-notifier";
 
 vi.mock("../../apps/api/src/services/xpro-client", () => ({
@@ -8,6 +8,9 @@ vi.mock("../../apps/api/src/services/xpro-client", () => ({
     getBalance: vi.fn(),
   },
   digitalcoreClient: {
+    getBalance: vi.fn(),
+  },
+  aivaulthubClient: {
     getBalance: vi.fn(),
   },
 }));
@@ -31,6 +34,10 @@ describe("Supplier Balance Monitor (Coalesced $5.00 Alert)", () => {
     vi.clearAllMocks();
     monitor = new SupplierBalanceMonitor();
     notifySpy = vi.spyOn(telegramNotifier, "notifyLowSupplierBalance").mockResolvedValue(true);
+    vi.mocked(aivaulthubClient.getBalance).mockResolvedValue({
+      balanceUsd: "50.00",
+      balanceUsdCents: 5000,
+    } as any);
   });
 
   it("does not alert when balances are above the threshold ($5.00)", async () => {

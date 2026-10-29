@@ -1,7 +1,7 @@
 import { eq, and, lt, sql } from "drizzle-orm";
 import { getDb, categories, products, productSupplierSnapshots, stockReservations, appSettings } from "@arena/db";
 import { calculateRetailMmk, calculateSellableStock, formatMmk, stripCustomEmojiPlaceholders, parseCustomEmoji } from "@arena/shared";
-import { xproClient, digitalcoreClient, XProProduct, XProCategory } from "./xpro-client";
+import { xproClient, digitalcoreClient, aivaulthubClient, XProProduct, XProCategory } from "./xpro-client";
 import { config, getEnabledSuppliers } from "../config";
 
 export interface LocalizedProduct {
@@ -30,10 +30,12 @@ export class CatalogService {
   private cachedBalances: Record<string, string> = {
     XPRO: "0.00",
     DIGITALCORE: "0.00",
+    AIVAULTHUB: "0.00",
   };
   private lastBalanceFetchTime: Record<string, number> = {
     XPRO: 0,
     DIGITALCORE: 0,
+    AIVAULTHUB: 0,
   };
 
   getLastSyncedAt(): string | null {
@@ -402,7 +404,17 @@ export class CatalogService {
       }
     }
 
-    return { categories: upstreamCategories.length, products: xproProductCount + dcProductCount };
+    // Sync AIVaultHub if enabled
+    let avhProductCount = 0;
+    if (enabled.includes("AIVAULTHUB")) {
+      try {
+        avhProductCount = await this.syncAIVaultHubCatalog(exchangeRateMmk);
+      } catch (err) {
+        console.error("[CatalogService] Failed to sync AIVaultHub catalog:", err);
+      }
+    }
+
+    return { categories: upstreamCategories.length, products: xproProductCount + dcProductCount + avhProductCount };
   }
 
   /**
@@ -561,15 +573,162 @@ export class CatalogService {
   }
 
   /**
-   * Syncs catalog for a specific supplier ("XPRO" | "DIGITALCORE").
+   * Synchronizes catalog from AIVault Hub partner API.
+   * Preserves admin manual category overrides.
    */
-  async syncSupplier(supplier: "XPRO" | "DIGITALCORE", exchangeRateMmk?: number): Promise<{ supplier: string; count: number }> {
+  async syncAIVaultHubCatalog(exchangeRateMmk: number = config.DEFAULT_EXCHANGE_RATE_MMK): Promise<number> {
+    const avhProducts = await aivaulthubClient.listProducts();
+    if (!avhProducts || avhProducts.length === 0) return 0;
+    const db = getDb();
+
+    // Default category 'uncategorized'
+    const allCategories = await db.select().from(categories);
+    const defaultCat =
+      allCategories.find((c) => c.slug === "uncategorized") ||
+      allCategories[0];
+
+    const findMatchingCategoryId = (name: string): number | null => {
+      const lower = name.toLowerCase();
+
+      // Special check for Apple / Music services
+      if (lower.includes("apple") || lower.includes("itunes")) {
+        const appleCat = allCategories.find((c) => {
+          const cName = (c.name || "").toLowerCase();
+          return cName.includes("apple") || c.slug.includes("apple");
+        });
+        if (appleCat) return appleCat.id;
+      }
+
+      for (const cat of allCategories) {
+        if (cat.slug === "uncategorized") continue;
+        const cleanCat = (cat.name || "").replace(/\{pe:\d+\}/g, "").trim().toLowerCase();
+        if (!cleanCat) continue;
+        const firstWord = cleanCat.split(" ")[0];
+        if (lower.includes(cleanCat) || (firstWord.length >= 3 && lower.includes(firstWord))) {
+          return cat.id;
+        }
+      }
+      return defaultCat?.id || null;
+    };
+
+    const productValues: any[] = [];
+    const validItems: any[] = [];
+
+    for (const item of avhProducts) {
+      const upstreamId = item.upstreamProductId;
+      if (!upstreamId) continue;
+
+      const usdPrice = item.basePriceUsd;
+      const initialPricing = calculateRetailMmk({
+        upstreamUsdCost: usdPrice,
+        exchangeRateMmk,
+        marginPercentage: config.DEFAULT_MARGIN_PERCENTAGE,
+      });
+
+      productValues.push({
+        supplier: "AIVAULTHUB",
+        upstreamProductId: upstreamId,
+        categoryId: findMatchingCategoryId(item.name),
+        nameMmk: item.name,
+        descriptionMmk: item.description || null,
+        retailPriceMmk: initialPricing.retailPriceMmk,
+        localStockLimit: null,
+        isActive: true,
+      });
+
+      validItems.push({ item, upstreamId, usdPrice });
+    }
+
+    if (productValues.length === 0) return 0;
+
+    // Do NOT clobber custom categories assigned by admin
+    const localProducts = await db
+      .insert(products)
+      .values(productValues)
+      .onConflictDoUpdate({
+        target: [products.supplier, products.upstreamProductId],
+        set: {
+          categoryId: sql`CASE WHEN ${products.categoryId} IS NULL OR ${products.categoryId} = ${defaultCat?.id || 0} THEN EXCLUDED.category_id ELSE ${products.categoryId} END`,
+          nameMmk: sql`EXCLUDED.name_mmk`,
+          descriptionMmk: sql`EXCLUDED.description_mmk`,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+
+    const localProdByUpstreamId = new Map<string, number>();
+    for (const p of localProducts) {
+      localProdByUpstreamId.set(p.upstreamProductId, p.id);
+    }
+
+    const snapshotValues = validItems.map(({ item, upstreamId, usdPrice }) => ({
+      productId: localProdByUpstreamId.get(upstreamId)!,
+      supplier: "AIVAULTHUB",
+      upstreamProductId: upstreamId,
+      rawName: item.name,
+      rawDescription: item.description || null,
+      deliveryType: "LINK",
+      supplierPriceUsd: String(usdPrice),
+      pricingTiers: item.pricingTiers || null,
+      supplierStock: item.stock ?? 0,
+      inStock: item.inStock && (item.stock ?? 0) > 0,
+      syncedAt: new Date(),
+    }));
+
+    await db
+      .insert(productSupplierSnapshots)
+      .values(snapshotValues)
+      .onConflictDoUpdate({
+        target: [productSupplierSnapshots.productId, productSupplierSnapshots.supplier],
+        set: {
+          upstreamProductId: sql`EXCLUDED.upstream_product_id`,
+          rawName: sql`EXCLUDED.raw_name`,
+          rawDescription: sql`EXCLUDED.raw_description`,
+          deliveryType: sql`EXCLUDED.delivery_type`,
+          supplierPriceUsd: sql`EXCLUDED.supplier_price_usd`,
+          pricingTiers: sql`EXCLUDED.pricing_tiers`,
+          supplierStock: sql`EXCLUDED.supplier_stock`,
+          inStock: sql`EXCLUDED.in_stock`,
+          syncedAt: new Date(),
+        },
+      });
+
+    const now = new Date();
+    await db
+      .insert(appSettings)
+      .values({
+        key: "catalog_last_synced_at_AIVAULTHUB",
+        value: now.toISOString(),
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: appSettings.key,
+        set: {
+          value: now.toISOString(),
+          updatedAt: now,
+        },
+      })
+      .catch(() => {});
+
+    return validItems.length;
+  }
+
+  /**
+   * Syncs catalog for a specific supplier ("XPRO" | "DIGITALCORE" | "AIVAULTHUB").
+   */
+  async syncSupplier(
+    supplier: "XPRO" | "DIGITALCORE" | "AIVAULTHUB",
+    exchangeRateMmk?: number
+  ): Promise<{ supplier: string; count: number }> {
     if (supplier === "XPRO") {
       const res = await this.syncFullCatalog(exchangeRateMmk);
       return { supplier: "XPRO", count: res.products };
-    } else {
+    } else if (supplier === "DIGITALCORE") {
       const count = await this.syncDigitalCoreCatalog(exchangeRateMmk);
       return { supplier: "DIGITALCORE", count };
+    } else {
+      const count = await this.syncAIVaultHubCatalog(exchangeRateMmk);
+      return { supplier: "AIVAULTHUB", count };
     }
   }
 

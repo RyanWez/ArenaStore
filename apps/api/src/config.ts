@@ -47,6 +47,11 @@ const envSchema = z.object({
     .url()
     .default("https://digitalcore.top"),
   DIGITALCORE_API_KEY: z.string().default(""),
+  AIVAULTHUB_BASE_URL: z
+    .string()
+    .url()
+    .default("https://reseller.aivaulthub.store/api/v1"),
+  AIVAULTHUB_API_KEY: z.string().default(""),
   SUPPLIERS_ENABLED: z.string().default("xpro"),
   DELIVERY_ENCRYPTION_KEY: z
     .string()
@@ -162,6 +167,12 @@ export function loadConfig(): AppConfig {
     DIGITALCORE_API_KEY:
       process.env.DIGITALCORE_API_KEY ||
       "",
+    AIVAULTHUB_BASE_URL:
+      process.env.AIVAULTHUB_BASE_URL ||
+      "https://reseller.aivaulthub.store/api/v1",
+    AIVAULTHUB_API_KEY:
+      process.env.AIVAULTHUB_API_KEY ||
+      "",
     SUPPLIERS_ENABLED:
       process.env.SUPPLIERS_ENABLED ||
       "xpro",
@@ -229,11 +240,12 @@ import { setCoreConfig } from "@arena/core";
 export const config = loadConfig();
 setCoreConfig(config);
 
-export function getEnabledSuppliers(): ("XPRO" | "DIGITALCORE")[] {
+export function getEnabledSuppliers(): ("XPRO" | "DIGITALCORE" | "AIVAULTHUB")[] {
   const raw = (config.SUPPLIERS_ENABLED || "xpro").toLowerCase().split(",").map((s) => s.trim());
-  const list: ("XPRO" | "DIGITALCORE")[] = [];
+  const list: ("XPRO" | "DIGITALCORE" | "AIVAULTHUB")[] = [];
   if (raw.includes("xpro")) list.push("XPRO");
   if (raw.includes("digitalcore")) list.push("DIGITALCORE");
+  if (raw.includes("aivaulthub")) list.push("AIVAULTHUB");
   return list.length > 0 ? list : ["XPRO"];
 }
 

@@ -1,6 +1,6 @@
 import type { PricingTierItem } from "@arena/shared";
 
-export type SupplierId = "XPRO" | "DIGITALCORE";
+export type SupplierId = "XPRO" | "DIGITALCORE" | "AIVAULTHUB";
 
 export interface PricingTier extends PricingTierItem {}
 

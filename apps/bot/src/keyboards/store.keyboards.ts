@@ -548,7 +548,7 @@ export function buildMmpayInvoiceKeyboard(reference: string): InlineKeyboard {
     .add({
       text: "အခြေအနေ ပြန်စစ်မည်",
       callback_data: `mmpay_check_${reference}`,
-      icon_custom_emoji_id: BOT_EMOJIS.COUNTER,
+      icon_custom_emoji_id: BOT_EMOJIS.REFRESH,
     })
     .row()
     .add({

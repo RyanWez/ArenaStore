@@ -1,7 +1,8 @@
-import { xproClient, digitalcoreClient } from "./xpro-client";
+import { xproClient, digitalcoreClient, aivaulthubClient } from "./xpro-client";
 import { notifyLowSupplierBalance } from "./telegram-notifier";
 import { getDb, appSettings } from "@arena/db";
 import { eq } from "drizzle-orm";
+import { getEnabledSuppliers } from "../config";
 
 export interface BalanceCheckResult {
   supplier: string;
@@ -20,10 +21,12 @@ export class SupplierBalanceMonitor {
   async checkBalances(thresholdUsd: number = 5.0): Promise<{
     XPRO?: BalanceCheckResult;
     DIGITALCORE?: BalanceCheckResult;
+    AIVAULTHUB?: BalanceCheckResult;
   }> {
     const results: {
       XPRO?: BalanceCheckResult;
       DIGITALCORE?: BalanceCheckResult;
+      AIVAULTHUB?: BalanceCheckResult;
     } = {};
 
     // Dynamic threshold from DB if set
@@ -126,6 +129,50 @@ export class SupplierBalanceMonitor {
       }
     } catch (err: any) {
       console.warn("[BalanceMonitor] Failed to fetch DigitalCore balance:", err.message);
+    }
+
+    // Check AIVAULTHUB if enabled
+    if (getEnabledSuppliers().includes("AIVAULTHUB")) {
+      try {
+        const avhBal = await aivaulthubClient.getBalance();
+        const balNum = parseFloat(avhBal.balanceUsd);
+        if (!isNaN(balNum)) {
+          if (balNum < effectiveThreshold) {
+            if (!this.alertedSuppliers.has("AIVAULTHUB")) {
+              this.alertedSuppliers.add("AIVAULTHUB");
+              await notifyLowSupplierBalance({
+                supplier: "AIVAULTHUB",
+                balanceUsd: avhBal.balanceUsd,
+                thresholdUsd: effectiveThreshold,
+              });
+              results.AIVAULTHUB = {
+                supplier: "AIVAULTHUB",
+                balanceUsd: avhBal.balanceUsd,
+                thresholdUsd: effectiveThreshold,
+                alertSent: true,
+              };
+            } else {
+              results.AIVAULTHUB = {
+                supplier: "AIVAULTHUB",
+                balanceUsd: avhBal.balanceUsd,
+                thresholdUsd: effectiveThreshold,
+                alertSent: false,
+              };
+            }
+          } else {
+            // Recovered above threshold -> re-arm
+            this.alertedSuppliers.delete("AIVAULTHUB");
+            results.AIVAULTHUB = {
+              supplier: "AIVAULTHUB",
+              balanceUsd: avhBal.balanceUsd,
+              thresholdUsd: effectiveThreshold,
+              alertSent: false,
+            };
+          }
+        }
+      } catch (err: any) {
+        console.warn("[BalanceMonitor] Failed to fetch AIVaultHub balance:", err.message);
+      }
     }
 
     return results;

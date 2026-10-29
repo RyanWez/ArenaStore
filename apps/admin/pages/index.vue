@@ -8,7 +8,7 @@ import { useSmartSync } from '~/composables/useAdminEvents'
 import { formatMyanmarDateTime } from '~/utils/date'
 
 const router = useRouter()
-const { supplierBalanceUsd, xproBalanceUsd, digitalcoreBalanceUsd, isSyncing, syncCatalog, lastSyncMessage, fetchStatus } = useSupplierStatus()
+const { supplierBalanceUsd, xproBalanceUsd, digitalcoreBalanceUsd, aivaulthubBalanceUsd, isSyncing, syncCatalog, lastSyncMessage, fetchStatus } = useSupplierStatus()
 const { getAuthHeaders } = useAuth()
 const toast = useToast()
 
@@ -310,14 +310,16 @@ function navigateToCustomer(telegramId?: string, customerName?: string, event?: 
           <div class="h-3 w-28 rounded bg-slate-200 dark:bg-slate-800 mt-2"></div>
         </div>
         <template v-else>
-          <div class="mt-2 flex items-baseline gap-2 font-mono">
-            <span class="text-xl font-bold text-emerald-600 dark:text-emerald-400" title="XPro Balance">${{ xproBalanceUsd }}</span>
+          <div class="mt-2 flex items-baseline gap-2 font-mono flex-wrap">
+            <span class="text-xl font-bold text-purple-600 dark:text-purple-400" title="XPro Balance">${{ xproBalanceUsd }}</span>
             <span class="text-slate-300 dark:text-slate-700">/</span>
             <span class="text-xl font-bold text-cyan-600 dark:text-cyan-400" title="DigitalCore Balance">${{ digitalcoreBalanceUsd }}</span>
+            <span class="text-slate-300 dark:text-slate-700">/</span>
+            <span class="text-xl font-bold text-emerald-600 dark:text-emerald-400" title="AIVault Hub Balance">${{ aivaulthubBalanceUsd }}</span>
           </div>
           <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1.5">
             <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span>XPro & DigitalCore Balances</span>
+            <span>XPro, DigitalCore & AIVault Hub Balances</span>
           </p>
         </template>
       </NuxtLink>

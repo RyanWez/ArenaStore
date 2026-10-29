@@ -82,4 +82,29 @@ export class SupplierError extends Error {
     }
     return new SupplierError(canonicalCode, `DigitalCore: ${msg}`, statusCode, undefined, details);
   }
+
+  static fromAIVaultHub(statusCode: number, data?: any): SupplierError {
+    const rawError = data?.error || data?.message || `HTTP ${statusCode}`;
+    let canonicalCode: SupplierErrorCode;
+    switch (statusCode) {
+      case 401:
+        canonicalCode = "AUTH_FAILED";
+        break;
+      case 402:
+        canonicalCode = "INSUFFICIENT_BALANCE";
+        break;
+      case 404:
+        canonicalCode = "PRODUCT_NOT_FOUND";
+        break;
+      case 409:
+        canonicalCode = "OUT_OF_STOCK";
+        break;
+      case 429:
+        canonicalCode = "RETRYABLE_ERROR";
+        break;
+      default:
+        canonicalCode = statusCode >= 500 ? "SUPPLIER_OUTAGE" : "INVALID_REQUEST";
+    }
+    return new SupplierError(canonicalCode, `AIVaultHub: ${rawError}`, statusCode, undefined, data);
+  }
 }

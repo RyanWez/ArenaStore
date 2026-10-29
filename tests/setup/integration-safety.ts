@@ -1,4 +1,4 @@
-import { TEST_DB_URL, TEST_UPSTREAM_BASE_URL, TEST_DIGITALCORE_BASE_URL } from "./test-env";
+import { TEST_DB_URL, TEST_UPSTREAM_BASE_URL, TEST_DIGITALCORE_BASE_URL, TEST_AIVAULTHUB_BASE_URL } from "./test-env";
 
 /**
  * Defense-in-depth guard that runs before EVERY integration test file.
@@ -65,6 +65,26 @@ function assertSafeTestEnvironment(): void {
     throw new Error(
       "[Safety] Integration tests refused: DIGITALCORE_API_KEY is present in the test environment. " +
         "Tests must run with DIGITALCORE_API_KEY cleared."
+    );
+  }
+
+  let aivaulthubHost = "";
+  try {
+    aivaulthubHost = new URL(process.env.AIVAULTHUB_BASE_URL || TEST_AIVAULTHUB_BASE_URL).hostname;
+  } catch {
+    throw new Error("[Safety] AIVAULTHUB_BASE_URL in the test environment is not a valid URL.");
+  }
+  if (!localHosts.includes(aivaulthubHost)) {
+    throw new Error(
+      `[Safety] Integration tests refused: AIVAULTHUB_BASE_URL must point at localhost during tests ` +
+        `(got "${aivaulthubHost}") so no real AIVaultHub request can ever be made.`
+    );
+  }
+
+  if (process.env.AIVAULTHUB_API_KEY) {
+    throw new Error(
+      "[Safety] Integration tests refused: AIVAULTHUB_API_KEY is present in the test environment. " +
+        "Tests must run with AIVAULTHUB_API_KEY cleared."
     );
   }
 }

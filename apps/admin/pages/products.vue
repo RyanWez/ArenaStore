@@ -6,7 +6,7 @@ import { useAuth } from '~/composables/useAuth'
 import { useStoreSettings } from '~/composables/useStoreSettings'
 import { usePermission } from '~/composables/usePermission'
 
-const { supplierBalanceUsd, xproBalanceUsd, digitalcoreBalanceUsd, isSyncing, syncCatalog: runSync } = useSupplierStatus()
+const { supplierBalanceUsd, xproBalanceUsd, digitalcoreBalanceUsd, aivaulthubBalanceUsd, isSyncing, syncCatalog: runSync } = useSupplierStatus()
 const { getAuthHeaders } = useAuth()
 const { settings: storeSettings, fetchSettings: fetchStoreSettings } = useStoreSettings()
 const toast = useToast()
@@ -27,10 +27,11 @@ const isBulkUpdating = ref(false)
 
 interface ProductItem {
   id: number
-  supplier: 'XPRO' | 'DIGITALCORE'
+  supplier: 'XPRO' | 'DIGITALCORE' | 'AIVAULTHUB'
   upstreamProductId: string | number
   nameMmk: string
   rawName: string
+  categoryId?: number | null
   categoryName: string
   descriptionMmk: string
   supplierPriceUsd: string
@@ -42,12 +43,15 @@ interface ProductItem {
   deliveryType: string
 }
 
+function getSupplierBalanceUsd(supplier: string): string {
+  if (supplier === 'AIVAULTHUB') return aivaulthubBalanceUsd.value
+  if (supplier === 'DIGITALCORE') return digitalcoreBalanceUsd.value
+  return xproBalanceUsd.value
+}
+
 function getProductWalletCapacity(product: ProductItem): number {
   const usdCost = parseFloat(product.supplierPriceUsd) || 0
-  const walletBal =
-    product.supplier === 'DIGITALCORE'
-      ? parseFloat(digitalcoreBalanceUsd.value) || 0
-      : parseFloat(xproBalanceUsd.value) || 0
+  const walletBal = parseFloat(getSupplierBalanceUsd(product.supplier)) || 0
   if (usdCost <= 0) return product.supplierStock
   return Math.floor(walletBal / usdCost)
 }
@@ -70,7 +74,7 @@ watch(searchQuery, (newVal) => {
   }, 250)
 })
 
-const supplierFilter = ref<'ALL' | 'XPRO' | 'DIGITALCORE'>('ALL')
+const supplierFilter = ref<'ALL' | 'XPRO' | 'DIGITALCORE' | 'AIVAULTHUB'>('ALL')
 const stockFilter = ref<'ALL' | 'IN_STOCK' | 'OUT_OF_STOCK'>('ALL')
 const statusFilter = ref<'ALL' | 'ACTIVE' | 'PAUSED'>('ALL')
 const categoryFilter = ref('ALL')
@@ -82,12 +86,72 @@ const isSaving = ref(false)
 // Edit form state
 const editForm = ref({
   nameMmk: '',
+  categoryId: null as number | null,
   descriptionMmk: '',
   retailPriceMmk: 0,
   marginPct: 25,
   localStockLimit: null as number | null,
   isActive: true,
 })
+
+interface CategoryOption {
+  id: number
+  name: string
+  cleanName: string
+  iconEmoji?: string | null
+}
+const allDbCategories = ref<CategoryOption[]>([])
+const isCreatingCategory = ref(false)
+const newCategoryName = ref('')
+const newCategoryEmoji = ref('🍎')
+const isSubmittingCategory = ref(false)
+
+async function fetchCategories() {
+  try {
+    const res: any = await $fetch('/api/admin/categories', {
+      headers: getAuthHeaders(),
+    })
+    if (res.ok && Array.isArray(res.categories)) {
+      allDbCategories.value = res.categories.sort((a: any, b: any) =>
+        (a.cleanName || a.name || '').localeCompare(b.cleanName || b.name || '')
+      )
+    }
+  } catch (err) {
+    console.warn('Failed to load categories:', err)
+  }
+}
+
+async function handleCreateCategory() {
+  const name = newCategoryName.value.trim()
+  if (!name) return
+  isSubmittingCategory.value = true
+  try {
+    const res: any = await $fetch('/api/admin/categories', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: {
+        name,
+        iconEmoji: newCategoryEmoji.value.trim() || '📁',
+      },
+    })
+    if (res.ok && res.category) {
+      allDbCategories.value.push(res.category)
+      allDbCategories.value.sort((a, b) =>
+        (a.cleanName || a.name || '').localeCompare(b.cleanName || b.name || '')
+      )
+      editForm.value.categoryId = res.category.id
+      isCreatingCategory.value = false
+      newCategoryName.value = ''
+      toast.success(`Category "${cleanProductName(res.category.name)}" created!`, 'Category Added')
+    } else {
+      toast.error(res.error || 'Failed to create category')
+    }
+  } catch (err: any) {
+    toast.error('Failed to create category: ' + (err.message || 'Unknown error'))
+  } finally {
+    isSubmittingCategory.value = false
+  }
+}
 
 const productsList = ref<ProductItem[]>([])
 
@@ -101,6 +165,7 @@ const categoriesList = computed(() => {
 
 const xproCount = computed(() => productsList.value.filter((p) => (p.supplier || 'XPRO') === 'XPRO').length)
 const dcCount = computed(() => productsList.value.filter((p) => p.supplier === 'DIGITALCORE').length)
+const aivaultCount = computed(() => productsList.value.filter((p) => p.supplier === 'AIVAULTHUB').length)
 const activeCount = computed(() => productsList.value.filter((p) => p.isActive).length)
 const pausedCount = computed(() => productsList.value.filter((p) => !p.isActive).length)
 const inStockCount = computed(() => productsList.value.filter((p) => getProductSellableStock(p) > 0).length)
@@ -124,6 +189,7 @@ async function fetchProducts(isSilent = false) {
         id: p.id,
         supplier: (p.supplier || 'XPRO').toUpperCase(),
         upstreamProductId: p.supplierProductId || p.upstreamProductId || p.id,
+        categoryId: p.categoryId ?? null,
         nameMmk: p.nameMmk || p.name,
         rawName: p.name || p.nameMmk,
         categoryName: p.categoryName || 'General',
@@ -149,7 +215,7 @@ async function fetchProducts(isSilent = false) {
   }
 }
 
-async function handleSyncCatalog(targetSupplier: 'ALL' | 'XPRO' | 'DIGITALCORE' = supplierFilter.value) {
+async function handleSyncCatalog(targetSupplier: 'ALL' | 'XPRO' | 'DIGITALCORE' | 'AIVAULTHUB' = supplierFilter.value) {
   try {
     await runSync(targetSupplier)
     toast.success(`Catalog synced successfully for ${targetSupplier === 'ALL' ? 'all suppliers' : targetSupplier}!`, 'Sync Complete')
@@ -162,6 +228,7 @@ async function handleSyncCatalog(targetSupplier: 'ALL' | 'XPRO' | 'DIGITALCORE' 
 onMounted(() => {
   fetchProducts()
   fetchStoreSettings()
+  fetchCategories()
 })
 
 const filteredProducts = computed(() => {
@@ -268,10 +335,13 @@ function openEditDrawer(product: ProductItem, event?: Event) {
   if (event) event.stopPropagation()
   selectedProduct.value = product
   editForm.value.nameMmk = product.nameMmk
+  editForm.value.categoryId = product.categoryId ?? null
   editForm.value.descriptionMmk = product.descriptionMmk
   editForm.value.retailPriceMmk = product.retailPriceMmk
   editForm.value.localStockLimit = product.localStockLimit
   editForm.value.isActive = product.isActive
+  isCreatingCategory.value = false
+  newCategoryName.value = ''
 
   const rate = storeSettings.value.usdToMmkRate || 4500
   const baseCostMmk = parseFloat(product.supplierPriceUsd) * rate
@@ -305,6 +375,7 @@ async function saveProductChanges() {
       headers: getAuthHeaders(),
       body: {
         nameMmk: editForm.value.nameMmk,
+        categoryId: editForm.value.categoryId,
         descriptionMmk: editForm.value.descriptionMmk,
         retailPriceMmk: editForm.value.retailPriceMmk,
         localStockLimit: editForm.value.localStockLimit,
@@ -314,6 +385,9 @@ async function saveProductChanges() {
 
     if (res.ok) {
       selectedProduct.value.nameMmk = editForm.value.nameMmk
+      selectedProduct.value.categoryId = editForm.value.categoryId
+      const matchedCat = allDbCategories.value.find((c) => c.id === editForm.value.categoryId)
+      selectedProduct.value.categoryName = matchedCat ? (matchedCat.cleanName || cleanProductName(matchedCat.name)) : 'Uncategorized'
       selectedProduct.value.descriptionMmk = editForm.value.descriptionMmk
       selectedProduct.value.retailPriceMmk = editForm.value.retailPriceMmk
       selectedProduct.value.localStockLimit = editForm.value.localStockLimit
@@ -517,7 +591,7 @@ async function executeConfirmAction() {
           class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20 active:scale-95 transition-all disabled:opacity-50"
         >
           <i class="pi pi-sync text-xs" :class="{ 'animate-spin': isSyncing }"></i>
-          <span>{{ isSyncing ? 'Syncing Catalog...' : supplierFilter === 'ALL' ? 'Sync All Suppliers' : `Sync ${supplierFilter === 'DIGITALCORE' ? 'DigitalCore' : 'XPro'}` }}</span>
+          <span>{{ isSyncing ? 'Syncing Catalog...' : supplierFilter === 'ALL' ? 'Sync All Suppliers' : `Sync ${supplierFilter === 'DIGITALCORE' ? 'DigitalCore' : supplierFilter === 'AIVAULTHUB' ? 'AIVault Hub' : 'XPro'}` }}</span>
         </button>
       </div>
     </div>
@@ -556,6 +630,15 @@ async function executeConfirmAction() {
               >
                 <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
                 <span>DigitalCore ({{ dcCount }})</span>
+              </button>
+              <button
+                type="button"
+                @click="supplierFilter = 'AIVAULTHUB'"
+                :class="supplierFilter === 'AIVAULTHUB' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400'"
+                class="px-3 py-1 rounded-lg transition-all flex items-center gap-1.5"
+              >
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                <span>AIVault Hub ({{ aivaultCount }})</span>
               </button>
             </div>
 
@@ -783,7 +866,13 @@ async function executeConfirmAction() {
                     </span>
                     <!-- Supplier Badge -->
                     <span
-                      v-if="p.supplier === 'DIGITALCORE'"
+                      v-if="p.supplier === 'AIVAULTHUB'"
+                      class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 uppercase tracking-wide shrink-0"
+                    >
+                      AIVault Hub
+                    </span>
+                    <span
+                      v-else-if="p.supplier === 'DIGITALCORE'"
                       class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20 uppercase tracking-wide shrink-0"
                     >
                       DigitalCore
@@ -853,14 +942,14 @@ async function executeConfirmAction() {
                     <span
                       v-if="getProductWalletCapacity(p) < p.supplierStock && p.supplierStock > 0"
                       class="text-[11px] text-amber-500 cursor-help"
-                      :title="`Constrained by ${p.supplier} wallet balance ($${p.supplier === 'DIGITALCORE' ? digitalcoreBalanceUsd : xproBalanceUsd} USD). Can only fulfill ${getProductWalletCapacity(p)} units.`"
+                      :title="`Constrained by ${p.supplier} wallet balance ($${getSupplierBalanceUsd(p.supplier)} USD). Can only fulfill ${getProductWalletCapacity(p)} units.`"
                     >
                       <i class="pi pi-exclamation-triangle"></i>
                     </span>
                   </div>
                   <div v-if="getProductSellableStock(p) === 0 && getProductWalletCapacity(p) === 0" class="text-[11px] text-rose-500 dark:text-rose-400 font-medium mt-0.5 flex items-center gap-1">
                     <i class="pi pi-wallet text-[10px]"></i>
-                    <span>Wallet low (${{ (parseFloat(p.supplier === 'DIGITALCORE' ? digitalcoreBalanceUsd : xproBalanceUsd) || 0).toFixed(2) }} vs ${{ p.supplierPriceUsd }})</span>
+                    <span>Wallet low (${{ (parseFloat(getSupplierBalanceUsd(p.supplier)) || 0).toFixed(2) }} vs ${{ p.supplierPriceUsd }})</span>
                   </div>
                   <div v-else-if="getProductWalletCapacity(p) < p.supplierStock" class="text-[11px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">
                     Wallet cap: {{ getProductWalletCapacity(p) }} units
@@ -1033,6 +1122,77 @@ async function executeConfirmAction() {
                 />
               </div>
 
+              <!-- Category Selection (Storefront Grouping) -->
+              <div>
+                <div class="flex items-center justify-between mb-1.5">
+                  <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Category (Storefront Grouping)
+                  </label>
+                  <button
+                    type="button"
+                    v-if="!isCreatingCategory"
+                    @click="isCreatingCategory = true"
+                    class="text-[11px] font-semibold text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1 transition-colors"
+                  >
+                    <i class="pi pi-plus text-[9px]"></i>
+                    <span>New Category</span>
+                  </button>
+                  <button
+                    type="button"
+                    v-else
+                    @click="isCreatingCategory = false"
+                    class="text-[11px] font-semibold text-slate-400 hover:text-slate-500 dark:hover:text-slate-300 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+
+                <!-- Create Category Inline Form -->
+                <div v-if="isCreatingCategory" class="p-2.5 mb-2 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 space-y-2">
+                  <div class="flex items-center gap-2">
+                    <input
+                      v-model="newCategoryEmoji"
+                      type="text"
+                      placeholder="Emoji"
+                      title="Category Emoji"
+                      class="w-12 px-2 py-1.5 rounded-lg text-center text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100"
+                    />
+                    <input
+                      v-model="newCategoryName"
+                      type="text"
+                      placeholder="Category Name (e.g. Apple Music)"
+                      class="flex-1 px-3 py-1.5 rounded-lg text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-indigo-500"
+                      @keydown.enter.prevent="handleCreateCategory"
+                    />
+                    <button
+                      type="button"
+                      @click="handleCreateCategory"
+                      :disabled="isSubmittingCategory || !newCategoryName.trim()"
+                      class="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50 shrink-0 transition-colors"
+                    >
+                      <i v-if="isSubmittingCategory" class="pi pi-spinner animate-spin text-[10px]"></i>
+                      <span v-else>Add</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Dropdown Select -->
+                <select
+                  v-model="editForm.categoryId"
+                  class="w-full px-3.5 py-2.5 rounded-xl text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                  style="outline: none !important; box-shadow: none !important;"
+                >
+                  <option :value="null">Uncategorized</option>
+                  <option
+                    v-for="cat in allDbCategories"
+                    :key="cat.id"
+                    :value="cat.id"
+                  >
+                    {{ cat.iconEmoji ? cat.iconEmoji + ' ' : '' }}{{ cat.cleanName || cleanProductName(cat.name) }}
+                  </option>
+                </select>
+              </div>
+
               <!-- Myanmar Description / Warranty Notes -->
               <div>
                 <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
@@ -1107,7 +1267,7 @@ async function executeConfirmAction() {
                   <span class="font-mono font-bold text-slate-700 dark:text-slate-300">{{ selectedProduct.supplierStock }} in stock</span>
                 </div>
                 <div class="flex items-center justify-between text-xs">
-                  <span class="text-slate-500 dark:text-slate-400">Wallet Capacity (${{ selectedProduct.supplier === 'DIGITALCORE' ? digitalcoreBalanceUsd : xproBalanceUsd }} balance):</span>
+                  <span class="text-slate-500 dark:text-slate-400">Wallet Capacity (${{ getSupplierBalanceUsd(selectedProduct.supplier) }} balance):</span>
                   <span class="font-mono font-bold" :class="getProductWalletCapacity(selectedProduct) > 0 ? 'text-emerald-500' : 'text-rose-500'">
                     {{ getProductWalletCapacity(selectedProduct) }} units affordable
                   </span>
