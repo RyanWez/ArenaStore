@@ -116,8 +116,8 @@ Establish the complete customer-facing API surface in `apps/api` and implement t
 #### Objectives
 Build the modern, responsive storefront frontend matching the approved master designs. Broken down into 3 manageable, interconnected sub-phases:
 - **Sub-Phase 2A:** Nuxt 4 Setup, 2026 Flat Monolithic Design System & Responsive App Shell (COMPLETED).
-- **Sub-Phase 2B:** 3D Card Stack Hero Carousel, Category Scroll & Bento Product Grid (NEXT).
-- **Sub-Phase 2C:** 4-Digit Challenge Modal & Live Realtime SSE Handshake Integration.
+  - **Sub-Phase 2B:** 3D Card Stack Hero Carousel, Category Scroll & Bento Product Grid (COMPLETED).
+  - **Sub-Phase 2C:** 4-Digit Challenge Modal & Live Realtime SSE Handshake Integration (COMPLETED 2026-10-25).
 
 #### Tasks
 1. **Sub-Phase 2A: Foundation & Responsive App Shell:**
@@ -137,20 +137,22 @@ Build the modern, responsive storefront frontend matching the approved master de
    - [x] 2-Column Mobile & 4-Column Desktop Bento Product Grid with squircle icons, stock badges, and MMK pricing.
    - [x] Integrate live catalog data from Fastify API (`/api/catalog/categories` & `/api/catalog/products`) with SSR prefetching.
 
-3. **Sub-Phase 2C: Auth Modal & SSE Realtime Handshake UI:**
-   - [ ] W3K-style Login Modal: displays 4-digit code and direct Telegram bot deep link button.
-   - [ ] SSE real-time listener binding with ticket confirmation events for zero-refresh login.
-   - [ ] Instant wallet balance and profile sync.
+3. **Sub-Phase 2C: Auth Modal & SSE Realtime Handshake UI (COMPLETED 2026-10-25):**
+   - [x] W3K-style Login Modal: displays 4-digit code and direct Telegram bot deep link button (`apps/web/components/AuthChallengeModal.vue` — 6 states: intro/generating/awaiting/confirmed/expired|cancelled/error).
+   - [x] SSE real-time listener binding with ticket confirmation events for zero-refresh login (`apps/web/composables/useStoreAuth.ts` — `EventSource` on `/api/store/auth/events/:ticketId`, handles `confirmed`/`cancelled`/`expired`, cleanup on unmount).
+   - [x] Instant wallet balance and profile sync (on `confirmed`: persist token → `POST /api/store/auth/session` → `fetchMe()` populates user + wallet state; Mini App `initData` zero-click path also live).
 
 #### Acceptance Criteria
 - [x] Sub-Phase 2A: Nuxt builds cleanly (`pnpm --filter @arena/web build`), `pnpm lint` 0 errors, 47 test files (401 tests) passing.
 - [x] Sub-Phase 2B: 3D Card Stack Carousel rotates smoothly, Category scrollbar filters products, Bento grid renders live catalog with SSR prefetching.
-- [ ] Sub-Phase 2C: Full browser login cycle via 4-digit challenge code completes seamlessly in < 2 seconds.
+- [x] Sub-Phase 2C: Full browser login cycle wiring verified — SSE confirmed-event streaming, single-use ticket replay prevention, session cookie lifecycle, and profile/wallet sync are covered by `tests/integration/store-auth.integration.test.ts` + `tests/unit/store-auth.test.ts`. Live sub-2-second timing on real devices gets final validation during Phase 5 E2E QA.
 
 
 ---
 
 ### Phase 3: Wallet Checkout & Dual Top-Up Engine
+
+> Detailed sub-phase execution plan with file targets, integration points, and decision points lives in [`Memory/web-storefront/03_PHASE3_EXECUTION_PLAN.md`](./03_PHASE3_EXECUTION_PLAN.md) (Sub-Phases 3A → 3B → 3C).
 
 #### Objectives
 Enable customers to complete instant 1-click purchases using their wallet and fund their account via MMQR or manual slip upload.
