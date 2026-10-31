@@ -11,7 +11,7 @@ import { useAdminEvents } from '~/composables/useAdminEvents'
 const route = useRoute()
 const { isCollapsed, toggleCollapse, toggleMobile } = useSidebar()
 const { isDark, toggleTheme } = useTheme()
-const { isConnected: isLiveEventsConnected } = useAdminEvents()
+const { isConnected: isLiveEventsConnected, isPaused: isLiveEventsPaused } = useAdminEvents()
 const { xproBalanceUsd, digitalcoreBalanceUsd, aivaulthubBalanceUsd, isXProOnline, isDigitalcoreOnline, isAivaulthubOnline, isSyncing, syncCatalog, fetchStatus } = useSupplierStatus()
 const { settings: storeSettings, fetchSettings: fetchStoreSettings } = useStoreSettings()
 const toast = useToast()
@@ -110,8 +110,14 @@ async function handleQuickSync() {
         class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors select-none"
         :class="isLiveEventsConnected 
           ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' 
-          : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'"
-        :title="isLiveEventsConnected ? 'Real-time Event Stream Active (Zero-Polling)' : 'Reconnecting real-time stream...'"
+          : isLiveEventsPaused
+          ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+          : 'bg-slate-500/10 text-slate-500 dark:text-slate-400 border-slate-500/20'"
+        :title="isLiveEventsConnected 
+          ? 'Real-time Event Stream Active (Zero-Polling)' 
+          : isLiveEventsPaused
+          ? 'Stream paused to save compute (tab hidden or idle) — resumes instantly on activity'
+          : 'Reconnecting real-time stream...'"
       >
         <span class="relative flex h-2 w-2">
           <span
@@ -120,10 +126,10 @@ async function handleQuickSync() {
           ></span>
           <span
             class="relative inline-flex rounded-full h-2 w-2"
-            :class="isLiveEventsConnected ? 'bg-emerald-500' : 'bg-amber-500'"
+            :class="isLiveEventsConnected ? 'bg-emerald-500' : isLiveEventsPaused ? 'bg-amber-500' : 'bg-slate-400'"
           ></span>
         </span>
-        <span class="text-[11px] font-semibold">{{ isLiveEventsConnected ? 'Live' : 'Offline' }}</span>
+        <span class="text-[11px] font-semibold">{{ isLiveEventsConnected ? 'Live' : isLiveEventsPaused ? 'Paused' : 'Offline' }}</span>
       </div>
 
       <!-- Upstream Suppliers Balances Widget -->
